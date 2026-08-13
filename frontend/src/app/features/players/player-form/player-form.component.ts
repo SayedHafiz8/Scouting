@@ -171,8 +171,15 @@ const MAX_PLAYER_IMAGE_MB = 4;
                 @for (c of countries; track c.en) {
                   <option [value]="c.en">{{ label(c.en, c.ar) }}</option>
                 }
+                <option value="__other__">{{ 'PLAYERS.FORM.NATIONALITY_OTHER' | translate }}</option>
               </select>
-              @if (form.get('nationality')?.invalid && form.get('nationality')?.touched) {
+              @if (form.get('nationality')?.value === '__other__') {
+                <input formControlName="nationalityOther" type="text" class="form-input mt-2"
+                       [placeholder]="'PLAYERS.FORM.NATIONALITY_OTHER_PH' | translate" />
+                @if (form.get('nationalityOther')?.invalid && form.get('nationalityOther')?.touched) {
+                  <p class="field-error">{{ 'PLAYERS.FORM.NATIONALITY_ERR' | translate }}</p>
+                }
+              } @else if (form.get('nationality')?.invalid && form.get('nationality')?.touched) {
                 <p class="field-error">{{ 'PLAYERS.FORM.NATIONALITY_ERR' | translate }}</p>
               }
             </div>
@@ -180,23 +187,31 @@ const MAX_PLAYER_IMAGE_MB = 4;
             <!-- City (governorate — depends on the selected country) -->
             <div>
               <label class="block text-sm font-medium mb-1.5" style="color:var(--text-primary)">{{ 'PLAYERS.FORM.CITY' | translate }}</label>
-              <select formControlName="city" class="form-input">
-                <option value="">
-                  {{ cities().length === 0 ? ('PLAYERS.FORM.CITY_LOCKED' | translate) : ('PLAYERS.FORM.CITY_PH' | translate) }}
-                </option>
-                @for (r of cities(); track r[0]) {
-                  <option [value]="r[0]">{{ label(r[0], r[1]) }}</option>
+              @if (form.get('nationality')?.value === '__other__') {
+                <input formControlName="cityOther" type="text" class="form-input"
+                       [placeholder]="'PLAYERS.FORM.CITY_OTHER_PH' | translate" />
+                @if (form.get('cityOther')?.invalid && form.get('cityOther')?.touched) {
+                  <p class="field-error">{{ 'PLAYERS.FORM.CITY_ERR' | translate }}</p>
                 }
-              </select>
-              @if (cities().length === 0) {
-                <p class="text-xs mt-1.5 flex items-center gap-1" style="color:var(--text-muted)">
-                  <svg style="width:12px;height:12px;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                  </svg>
-                  {{ 'PLAYERS.FORM.CITY_HINT' | translate }}
-                </p>
-              } @else if (form.get('city')?.invalid && form.get('city')?.touched) {
-                <p class="field-error">{{ 'PLAYERS.FORM.CITY_ERR' | translate }}</p>
+              } @else {
+                <select formControlName="city" class="form-input">
+                  <option value="">
+                    {{ cities().length === 0 ? ('PLAYERS.FORM.CITY_LOCKED' | translate) : ('PLAYERS.FORM.CITY_PH' | translate) }}
+                  </option>
+                  @for (r of cities(); track r[0]) {
+                    <option [value]="r[0]">{{ label(r[0], r[1]) }}</option>
+                  }
+                </select>
+                @if (cities().length === 0) {
+                  <p class="text-xs mt-1.5 flex items-center gap-1" style="color:var(--text-muted)">
+                    <svg style="width:12px;height:12px;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    {{ 'PLAYERS.FORM.CITY_HINT' | translate }}
+                  </p>
+                } @else if (form.get('city')?.invalid && form.get('city')?.touched) {
+                  <p class="field-error">{{ 'PLAYERS.FORM.CITY_ERR' | translate }}</p>
+                }
               }
             </div>
 
@@ -336,7 +351,31 @@ export class PlayerFormComponent implements OnInit {
   // User picked a different country → load its regions and clear the old city
   onCountryChange(): void {
     this.form.get('city')?.setValue('');
-    this.refreshCities(this.form.get('nationality')?.value ?? '');
+    this.syncNationalityMode();
+  }
+
+  // "غير موجودة — اكتب اسم الدولة" اتاختارت: الدولة بقت نص حر، وبالتبعية
+  // المحافظة كمان لازم تبقى نص حر — معندناش قائمة محافظات لدولة مش عندنا.
+  // nationalityOther/cityOther حقول واجهة بس، مش بيتبعتوا للسيرفر (شوف submit()).
+  private syncNationalityMode(): void {
+    const isOther = this.form.get('nationality')?.value === '__other__';
+    const otherCtrl = this.form.get('nationalityOther');
+    const cityOtherCtrl = this.form.get('cityOther');
+
+    if (isOther) {
+      otherCtrl?.setValidators(Validators.required);
+      cityOtherCtrl?.setValidators(Validators.required);
+      this.cities.set([]);
+      this.form.get('city')?.disable({ emitEvent: false });
+    } else {
+      otherCtrl?.clearValidators();
+      otherCtrl?.setValue('', { emitEvent: false });
+      cityOtherCtrl?.clearValidators();
+      cityOtherCtrl?.setValue('', { emitEvent: false });
+      this.refreshCities(this.form.get('nationality')?.value ?? '');
+    }
+    otherCtrl?.updateValueAndValidity({ emitEvent: false });
+    cityOtherCtrl?.updateValueAndValidity({ emitEvent: false });
   }
 
   // Age groups are birth-year based (2007 → 2019) — years listed newest-birth-year-first
@@ -427,7 +466,9 @@ export class PlayerFormComponent implements OnInit {
     position: ['', Validators.required],
     preferredFoot: ['', Validators.required],
     nationality: ['', Validators.required],
+    nationalityOther: [''],
     city: ['', Validators.required],
+    cityOther: [''],
     address: ['', Validators.required],
     phoneNumber: ['', [Validators.required, Validators.pattern(/^01[0125][0-9]{8}$/)]],
     height: [null as number | null],
@@ -437,7 +478,7 @@ export class PlayerFormComponent implements OnInit {
 
   ngOnInit(): void {
     // City starts locked until a country is chosen
-    this.refreshCities(this.form.get('nationality')?.value ?? '');
+    this.syncNationalityMode();
 
     // Team starts locked until a birth date resolves to an age group
     this.form.get('team')?.disable({ emitEvent: false });
@@ -454,18 +495,27 @@ export class PlayerFormComponent implements OnInit {
       this.playerService.getOne(this.playerId).subscribe(res => {
         const p = (res.data as any)?.player ?? (res.data as any)?.document;
         if (p) {
+          // جنسية اللاعب متسجلة أصلاً بقيمة مش موجودة في القايمة الحالية (اتضافت
+          // زمان قبل الفيتشر، أو دولة نادرة) → نعرضها كـ"غير موجودة" بالقيمة
+          // المحفوظة جاهزة في الحقل الحر، مش نضيّعها
+          const knownCountry = COUNTRIES.some(c => c.en === p.nationality);
           // Load the country's regions first so the saved city can be selected
-          this.refreshCities(p.nationality ?? '');
+          this.refreshCities(knownCountry ? (p.nationality ?? '') : '');
           // team comes back populated as an object ({_id,...}) — the select needs just the id.
           // No team but a free-text teamName → select shows the "other" option with the name filled in.
           const teamId = typeof p.team === 'object' && p.team ? p.team._id : (p.team ?? '');
           const dob = p.dateOfBirth?.split('T')[0] ?? '';
           this.form.patchValue({
             ...p,
+            nationality: knownCountry ? p.nationality : (p.nationality ? '__other__' : ''),
+            nationalityOther: knownCountry ? '' : (p.nationality ?? ''),
+            city: knownCountry ? p.city : '',
+            cityOther: knownCountry ? '' : (p.city ?? ''),
             team: teamId || (p.teamName ? '__other__' : ''),
             teamName: p.teamName ?? '',
             dateOfBirth: dob,
           });
+          this.syncNationalityMode();
           // One-time — populates the day/month/year selects from the loaded value.
           // Not wired to valueChanges: commitDob() below writes intermediate '' values
           // while the user is still mid-pick, and re-deriving from THOSE would wipe out
@@ -504,6 +554,15 @@ export class PlayerFormComponent implements OnInit {
       payload.teamName = null;
       if (!payload.team) payload.team = null;
     }
+
+    // "غير موجودة" — الدولة والمحافظة نص حر. الحقلين المساعدين واجهة بس ومش
+    // موجودين في موديل اللاعب، فمش بيتبعتوا للسيرفر.
+    if (payload.nationality === '__other__') {
+      payload.nationality = (payload.nationalityOther ?? '').trim();
+      payload.city = (payload.cityOther ?? '').trim();
+    }
+    delete payload.nationalityOther;
+    delete payload.cityOther;
 
     const req$ = this.isEdit()
       ? this.playerService.update(this.playerId, payload)
