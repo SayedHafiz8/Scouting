@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+
+  <!-- Grass base -->
+  <rect width="1200" height="800" fill="#15803d"/>
+
+  <!-- Alternating mowing stripes -->
+  <rect x="0"    y="0" width="120" height="800" fill="#166534"/>
+  <rect x="240"  y="0" width="120" height="800" fill="#166534"/>
+  <rect x="480"  y="0" width="120" height="800" fill="#166534"/>
+  <rect x="720"  y="0" width="120" height="800" fill="#166534"/>
+  <rect x="960"  y="0" width="120" height="800" fill="#166534"/>
+  <rect x="1080" y="0" width="120" height="800" fill="#166534"/>
+
+  <!-- White pitch markings -->
+  <g opacity="0.85" fill="none" stroke="white" stroke-width="3" stroke-linecap="round">
+
+    <!-- Pitch boundary (1050×680 centered in 1200×800) -->
+    <rect x="75" y="60" width="1050" height="680"/>
+
+    <!-- Halfway line -->
+    <line x1="600" y1="60" x2="600" y2="740"/>
+
+    <!-- Center circle (r=92 ≈ 9.15m) -->
+    <circle cx="600" cy="400" r="92"/>
+
+    <!-- ── Left side ── -->
+    <!-- Penalty area (165×402) -->
+    <rect x="75" y="199" width="165" height="402"/>
+    <!-- Goal area (55×182) -->
+    <rect x="75" y="309" width="55" height="182"/>
+    <!-- Penalty arc (outside box) -->
+    <path d="M 240 326 A 92 92 0 0 1 240 474"/>
+
+    <!-- ── Right side ── -->
+    <!-- Penalty area -->
+    <rect x="960" y="199" width="165" height="402"/>
+    <!-- Goal area -->
+    <rect x="1070" y="309" width="55" height="182"/>
+    <!-- Penalty arc -->
+    <path d="M 960 326 A 92 92 0 0 0 960 474"/>
+
+    <!-- Corner arcs (r=10) -->
+    <path d="M 75  70  A 10 10 0 0 1 85  60"/>
+    <path d="M 1115 60  A 10 10 0 0 1 1125 70"/>
+    <path d="M 75  730 A 10 10 0 0 0 85  740"/>
+    <path d="M 1125 730 A 10 10 0 0 1 1115 740"/>
+  </g>
+
+  <!-- Spots -->
+  <g fill="white" opacity="0.85">
+    <circle cx="600"  cy="400" r="4"/>
+    <circle cx="185"  cy="400" r="4"/>
+    <circle cx="1015" cy="400" r="4"/>
+  </g>
+
+  <!-- Goals (subtle highlight) -->
+  <g fill="rgba(255,255,255,0.07)" stroke="white" stroke-width="2" opacity="0.65">
+    <rect x="51"   y="355" width="24" height="90"/>
+    <rect x="1125" y="355" width="24" height="90"/>
+  </g>
+
+</svg>

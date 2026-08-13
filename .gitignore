@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+config.env
+.DS_Store
+Thumbs.db
+*.log
+.vscode/settings.local.json
+# Claude Code session settings — machine-local, never commit
+.claude/

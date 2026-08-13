@@ -1,0 +1,282 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1 and Job 2 run in parallel and are both required (blocking).
+# Job 3 (E2E) only starts if both pass, but is continue-on-error: true so
+# a flaky or incomplete E2E setup never blocks a PR merge.
+# ─────────────────────────────────────────────────────────────────────────────
+
+jobs:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 1 — Backend unit tests
+  # Runs vitest with mongodb-memory-server (fully self-contained).
+  # No service containers, no GitHub secrets, no config.env required.
+  # ═══════════════════════════════════════════════════════════════════════════
+  backend:
+    name: Backend — vitest (94 tests)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: Backend/package-lock.json
+
+      # mongodb-memory-server downloads a real MongoDB binary (~80 MB) on first run.
+      # Cache it keyed to the lockfile so re-downloads only happen when the package
+      # version changes, not on every push.
+      - name: Cache mongodb-memory-server binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mms-${{ runner.os }}-${{ hashFiles('Backend/package-lock.json') }}
+          restore-keys: mms-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: Backend
+
+      - name: Run tests
+        run: npm test          # vitest run — exits with code 1 on failure
+        working-directory: Backend
+
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 2 — Frontend build + Karma/Jasmine unit tests
+  # ubuntu-latest has Google Chrome pre-installed; no separate install needed.
+  # We pass --watch=false and --browsers=ChromeHeadless as CLI flags rather
+  # than baking them into the "test" script, so local `ng test` is unchanged.
+  # ═══════════════════════════════════════════════════════════════════════════
+  frontend:
+    name: Frontend — build + karma (49 tests)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      # Verify the production bundle compiles cleanly before running tests.
+      # A build failure here catches import errors, missing modules, and TS
+      # errors that unit tests alone might not surface.
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+
+      - name: Test (ChromeHeadless)
+        run: npx ng test --watch=false --browsers=ChromeHeadless
+        working-directory: frontend
+
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 3 — Playwright E2E
+  #
+  # continue-on-error: true — this job is NON-BLOCKING for PRs right now.
+  # Reason: The E2E suite needs a live backend + frontend + seeded credentials.
+  # The individual pieces are all correct, but this is the first CI run of
+  # this full-stack setup. One iteration on a real runner is needed to confirm
+  # timings (ng build, backend startup) and that seeding works end-to-end
+  # before making it a required check.
+  #
+  # To make it required: validate a green run, then delete `continue-on-error`.
+  #
+  # What this job needs from GitHub (add as repo secrets if you want real
+  # values; the placeholders below are safe for a test database):
+  #   — No secrets needed for this CI database (uses fresh mongo container).
+  #   — If you later point E2E at a staging DB, add CONNECTION_STRING as a secret.
+  # ═══════════════════════════════════════════════════════════════════════════
+  e2e:
+    name: E2E — Playwright
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]   # only runs when both unit-test jobs pass
+    # continue-on-error removed: E2E is now a required blocking check (green since 9c8176e)
+
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        # GitHub Actions waits for the container to be healthy before starting
+        # any job steps, so we don't need a manual wait-for-MongoDB step.
+        options: >-
+          --health-cmd "mongosh --eval 'quit()'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # ── Backend runtime (replaces config.env, which is git-ignored) ────────
+      # NODE_ENV=test so app.js raises rate-limit max from 15→10000, allowing
+      # the per-test UI logins + API logins + retries without hitting the limiter.
+      # It also suppresses morgan request logs, keeping CI output clean.
+      NODE_ENV: test
+      PORT: 3000
+      CONNECTION_STRING: mongodb://localhost:27017/talent-radar-e2e
+      CLIENT_URL: http://localhost:4200
+
+      # JWT secrets: these are test-only values for an ephemeral CI database.
+      # They never touch production; replace with ${{ secrets.* }} if you
+      # ever point this job at a shared/staging database.
+      JWT_SECRET_KEY: ci-jwt-secret-not-for-production-minimum-32-chars
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-for-production-min-32-chars
+      JWT_EXPIRE_TIME: 30m
+      JWT_REFRESH_EXPIRE_TIME: 7d
+
+      # seedAdmin() in server.js creates this account on first startup.
+      # E2E_ADMIN_* must match so the Playwright tests can log in as admin.
+      ADMIN_NAME: E2E Admin
+      ADMIN_EMAIL: admin@e2e.test
+      ADMIN_PASSWORD: AdminSeed2026    # alphanumeric; passes loginValidate (notEmpty only)
+
+      # Cloudinary and email are not exercised by these E2E tests (no media
+      # upload, no forgot-password flow). Placeholders prevent startup crashes
+      # in cloudinary.js and nodemailer without wasting real credentials.
+      CLOUDINARY_CLOUD_NAME: ci-placeholder
+      CLOUDINARY_API_KEY: "000000000000"
+      CLOUDINARY_API_SECRET: ci-placeholder
+      EMAIL_USER: ci@placeholder.test
+      EMAIL_PASS: ci-placeholder
+
+      # ── Playwright test credentials ─────────────────────────────────────────
+      E2E_API_URL: http://localhost:3000/api/v1
+      E2E_COACH_EMAIL: coach@e2e.test
+      E2E_COACH_PASSWORD: CoachPass1234   # passes singupValidate (upper+lower+digit, ≥8)
+      E2E_ADMIN_EMAIL: admin@e2e.test
+      E2E_ADMIN_PASSWORD: AdminSeed2026
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: |
+            Backend/package-lock.json
+            frontend/package-lock.json
+            e2e/package-lock.json
+
+      - name: Install backend deps
+        run: npm ci
+        working-directory: Backend
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Install e2e deps
+        run: npm ci
+        working-directory: e2e
+
+      # Install Playwright's own Chromium build + its system-level deps
+      # (libatk, libgdk, libX11, etc.). The --with-deps flag handles apt installs.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: e2e
+
+      # Build the Angular app once. We serve the output statically (faster and
+      # more predictable than `ng serve`, which compiles on the fly).
+      # outputPath in angular.json is "dist/frontend"; the application builder
+      # (Angular 17+) places browser assets under dist/frontend/browser/.
+      #
+      # --configuration=ci swaps environment.ts → environment.ci.ts so the
+      # bundle calls the backend at http://localhost:3000 directly (the static
+      # `serve` on :4200 has no reverse proxy, unlike real nginx production).
+      - name: Build frontend
+        run: npx ng build --configuration=ci
+        working-directory: frontend
+
+      # Start the Express backend in the background.
+      # config.env is absent in CI — the job-level env block above supplies all
+      # required vars. dotenv.config() will fail silently (file not found) and
+      # the process.env values take over.
+      - name: Start backend
+        run: node server.js &
+        working-directory: Backend
+
+      # Serve the Angular build statically on port 4200.
+      # `serve -s` (SPA mode) rewrites all 404s to index.html so Angular's
+      # client-side router handles deep links correctly.
+      - name: Serve frontend
+        run: npx serve@14 -s dist/frontend/browser -l 4200 &
+        working-directory: frontend
+
+      # Poll until the backend health-check returns 200.
+      # The health endpoint is unauthenticated: GET /api/v1/health → { status: 'ok' }
+      - name: Wait for backend
+        run: |
+          echo "Waiting for backend on :3000..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/v1/health > /dev/null; then
+              echo "✅  Backend ready (attempt $i)"
+              break
+            fi
+            echo "  attempt $i — retrying in 2s"
+            sleep 2
+          done
+
+      # Poll until the frontend is serving HTML on port 4200.
+      - name: Wait for frontend
+        run: |
+          echo "Waiting for frontend on :4200..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:4200 > /dev/null; then
+              echo "✅  Frontend ready (attempt $i)"
+              break
+            fi
+            echo "  attempt $i — retrying in 3s"
+            sleep 3
+          done
+
+      # Create the test coach account via the admin API.
+      # Signup is disabled in this app — coaches are created by admins only.
+      # seed.js: logs in as admin → POST /api/v1/users with bearer token.
+      # Idempotent: exits 0 if the coach already exists (safe for CI retries).
+      - name: Seed test coach
+        run: node seed.js
+        working-directory: e2e
+
+      # Seed age groups (U9–U19, ages 8–18). The player model's pre-save hook
+      # requires a matching AgeGroup or it throws — a fresh CI DB has none.
+      # The script connects straight to the mongo container via CONNECTION_STRING
+      # (from the job env; config.env is absent on CI) and is idempotent.
+      - name: Seed age groups
+        run: node seeds/seedAgeGroups.js
+        working-directory: Backend
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        working-directory: e2e
+
+      # Always upload traces and screenshots so failures are diagnosable
+      # even when the job is non-blocking and gets marked as "passed with warnings".
+      - name: Upload Playwright results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+          retention-days: 7
