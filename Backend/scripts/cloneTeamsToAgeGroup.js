@@ -7,9 +7,10 @@ dotenv.config({ path: "./config.env" });
 
 // Safe by default: runs as a DRY RUN unless --apply is passed.
 //
-//   node scripts/cloneTeamsToAgeGroup.js                          # dry run
-//   node scripts/cloneTeamsToAgeGroup.js --apply                  # actually creates teams
-//   node scripts/cloneTeamsToAgeGroup.js --from 2007 --to 2009 --apply   # override the default years
+//   node scripts/cloneTeamsToAgeGroup.js                                        # dry run
+//   node scripts/cloneTeamsToAgeGroup.js --apply                                # actually creates teams
+//   node scripts/cloneTeamsToAgeGroup.js --from 2007 --to 2009 --apply          # override the default years
+//   node scripts/cloneTeamsToAgeGroup.js --to 2011 --exclude "القناة" --apply   # skip specific team name(s)
 const APPLY = process.argv.includes("--apply");
 
 const argValue = (flag, fallback) => {
@@ -18,6 +19,14 @@ const argValue = (flag, fallback) => {
 };
 const FROM_YEAR = argValue("--from", 2007);
 const TO_YEAR = argValue("--to", 2009);
+
+// --exclude بياخد اسم واحد أو أكتر مفصولين بفاصلة: --exclude "القناة,الجونة"
+const excludeIndex = process.argv.indexOf("--exclude");
+const EXCLUDE_NAMES = new Set(
+    excludeIndex !== -1
+        ? process.argv[excludeIndex + 1].split(",").map((n) => n.trim())
+        : []
+);
 
 async function run() {
     await mongoose.connect(process.env.CONNECTION_STRING);
@@ -47,11 +56,21 @@ async function run() {
     }
 
     console.log(`Found ${sourceTeams.length} team(s) under ${fromGroup.name}:\n`);
+    if (EXCLUDE_NAMES.size) {
+        console.log(`Excluding: ${[...EXCLUDE_NAMES].join(", ")}\n`);
+    }
 
     let toCreate = 0;
     let toSkip = 0;
+    let toExclude = 0;
 
     for (const team of sourceTeams) {
+        if (EXCLUDE_NAMES.has(team.name)) {
+            console.log(`🚫 "${team.name}" — excluded, not cloning`);
+            toExclude++;
+            continue;
+        }
+
         // نفس الـunique index بتاع الموديل: {name, ageGroup, league} — بنفحصه هنا
         // مقدماً عشان نطبع تقرير واضح، مش عشان نعتمد عليه بس وقت الكتابة
         const existing = await Team.findOne({
@@ -81,7 +100,7 @@ async function run() {
     }
 
     console.log(`\n${APPLY ? "🎉 Done." : "🎉 Dry run complete — pass --apply to execute this plan."}`);
-    console.log(`   ${toCreate} team(s) ${APPLY ? "created" : "would be created"}, ${toSkip} already existed and were skipped.`);
+    console.log(`   ${toCreate} team(s) ${APPLY ? "created" : "would be created"}, ${toSkip} already existed and were skipped, ${toExclude} excluded.`);
 
     await mongoose.disconnect();
 }
