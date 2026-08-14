@@ -8,7 +8,7 @@ import { environment } from '../../../../environments/environment';
 import { ToastService } from '../../../core/services/toast.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { AgeGroup } from '../../../core/models/age-group.model';
-import { ApiResponse } from '../../../core/models/api-response.model';
+import { ApiResponse, Pagination } from '../../../core/models/api-response.model';
 import { Team } from '../../../core/models/team.model';
 import { User } from '../../../core/models/user.model';
 import { SeasonMatch, SeasonMatchPayload, SeasonMatchReport, SeasonMatchMedia, SeasonMatchLeague } from '../../../core/models/season-match.model';
@@ -168,7 +168,7 @@ function currentSeason(): string {
               <p class="text-xs mt-0.5" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.SUBTITLE' | translate }}</p>
             </div>
             <div class="flex items-center gap-2">
-              <select [(ngModel)]="seasonFilter" (ngModelChange)="loadMatches()" class="form-input text-sm !w-auto">
+              <select [(ngModel)]="seasonFilter" (ngModelChange)="onSeasonFilterChange()" class="form-input text-sm !w-auto">
                 <option value="">{{ 'SEASON_MATCHES.ALL_SEASONS' | translate }}</option>
                 @for (s of filterSeasonOptions(); track s) {
                   <option [value]="s">{{ s }}</option>
@@ -462,6 +462,30 @@ function currentSeason(): string {
                 </tbody>
               </table>
             </div>
+
+            @if (matchesPagination() && matchesPagination()!.numberOfPages > 1) {
+              <div class="flex items-center justify-between pt-4">
+                <p class="text-sm" style="color:var(--text-muted)">
+                  {{ 'SEASON_MATCHES.PAGE_OF' | translate:{ current: matchesPagination()!.currentPage, total: matchesPagination()!.numberOfPages } }}
+                </p>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="btn btn-secondary btn-sm" [disabled]="matchesPage() === 1"
+                          (click)="changeMatchesPage(matchesPage() - 1)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <polyline points="15 18 9 12 15 6"/>
+                    </svg>
+                    {{ 'SEASON_MATCHES.PREV' | translate }}
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" [disabled]="matchesPage() === matchesPagination()!.numberOfPages"
+                          (click)="changeMatchesPage(matchesPage() + 1)">
+                    {{ 'SEASON_MATCHES.NEXT' | translate }}
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            }
           }
         </section>
       }
@@ -575,6 +599,9 @@ export class AgeGroupDetailComponent implements OnInit {
 
   readonly matches = signal<SeasonMatch[]>([]);
   readonly matchesLoading = signal(true);
+  readonly matchesPagination = signal<Pagination | null>(null);
+  readonly matchesPage = signal(1);
+  private static readonly MATCHES_PAGE_SIZE = 20;
   readonly showMatchForm = signal(false);
   readonly matchFormSubmitted = signal(false);
   // server-side validation errors keyed by field path (e.g. "homeTeam"); '_form' holds whole-form errors (e.g. duplicate fixture)
@@ -631,6 +658,7 @@ export class AgeGroupDetailComponent implements OnInit {
     this.cancelTeamForm();
     this.cancelMatchForm();
     this.expandedMatchId.set(null);
+    this.matchesPage.set(1);
     this.loadTeams();
     this.loadMatches();
     this.loadAllSeasons();
@@ -644,13 +672,32 @@ export class AgeGroupDetailComponent implements OnInit {
 
   loadMatches(): void {
     this.matchesLoading.set(true);
-    this.seasonMatchService.getAll({ ageGroup: this.ageGroupId, league: this.selectedLeague(), season: this.seasonFilter || undefined }).subscribe({
+    this.seasonMatchService.getAll({
+      ageGroup: this.ageGroupId,
+      league: this.selectedLeague(),
+      season: this.seasonFilter || undefined,
+      page: this.matchesPage(),
+      limit: AgeGroupDetailComponent.MATCHES_PAGE_SIZE,
+    }).subscribe({
       next: (res) => {
         this.matches.set(res.data?.documents ?? []);
+        this.matchesPagination.set(res.pagination ?? null);
         this.matchesLoading.set(false);
       },
       error: () => this.matchesLoading.set(false),
     });
+  }
+
+  // فلتر الموسم بيتغيّر → نرجع لأول صفحة، وإلا ممكن نقف على صفحة متبقاش موجودة
+  // لو النتايج بقت أقل من عدد صفحات الفلتر السابق
+  onSeasonFilterChange(): void {
+    this.matchesPage.set(1);
+    this.loadMatches();
+  }
+
+  changeMatchesPage(page: number): void {
+    this.matchesPage.set(page);
+    this.loadMatches();
   }
 
   // فتحت من غير فلتر موسم، فبتفضل بتعكس كل المواسم المستخدمة لحد دلوقتي — لكن مقصورة على الدوري الحالي

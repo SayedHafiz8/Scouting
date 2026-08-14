@@ -97,4 +97,6 @@ export interface SeasonMatchFilters {
   sort?: string;
   'matchDate[gte]'?: string;
   'matchDate[lte]'?: string;
+  page?: number;
+  limit?: number;
 }

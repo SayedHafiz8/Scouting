@@ -16,7 +16,8 @@
     "sync-indexes": "node scripts/syncAllIndexes.js",
     "backfill-search-tokens": "node scripts/backfillSearchTokens.js",
     "seed:loadtest": "node scripts/seedLoadTest.js",
-    "explain": "node scripts/explainQueries.js"
+    "explain": "node scripts/explainQueries.js",
+    "clone-teams": "node scripts/cloneTeamsToAgeGroup.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
