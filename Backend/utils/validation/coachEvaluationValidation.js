@@ -4,6 +4,7 @@ import validatorMiddleware from "../../middlewares/validatorMiddleware.js";
 import User from "../../models/userModel.js";
 import CoachEvaluation from "../../models/coachEvaluationModel.js";
 import { EVALUATION_METRIC_PATHS } from "../coachEvaluationCriteria.js";
+import { ROLES } from "../../constants/roles.js";
 
 // معيار مطلوب (للـ create) — من 1 لـ 10
 const requiredRating = (path) =>
@@ -46,7 +47,7 @@ const coachExists = body("coach")
     .custom(async (val) => {
         const user = await User.findById(val);
         if (!user) throw new Error("Coach not found");
-        if (user.role !== "coach") throw new Error("This user is not a coach");
+        if (user.role !== ROLES.COACH) throw new Error("This user is not a coach");
         return true;
     });
 

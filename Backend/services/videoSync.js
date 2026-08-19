@@ -6,6 +6,7 @@ import {
     emitCoachDashboardUpdate,
     emitObserverDashboardUpdate,
 } from "../controllers/dashboardController.js";
+import { ROLES } from "../constants/roles.js";
 
 // Bunny Stream numeric status codes
 // 0 Created · 1 Uploaded · 2 Processing · 3 Transcoding · 4 Finished · 5 Error · 6 UploadFailed
@@ -14,7 +15,7 @@ const BUNNY_ERROR = new Set([5, 6]);
 
 const emitUploaderDashboard = async (uploadedBy) => {
     const uploader = await User.findById(uploadedBy).select("role");
-    if (uploader?.role === "observer") emitObserverDashboardUpdate(uploadedBy);
+    if (uploader?.role === ROLES.OBSERVER) emitObserverDashboardUpdate(uploadedBy);
     else emitCoachDashboardUpdate(uploadedBy);
 };
 

@@ -10,6 +10,7 @@ import VideoUploadCounter from "../models/videoUploadCounterModel.js";
 import { bunnyConfig, createStreamVideo, deleteStreamVideo } from "../config/bunny.js";
 import AppError from "../utils/appError.js";
 import ApiFeature from "../utils/apiFeatures.js";
+import { ROLES } from "../constants/roles.js";
 import {
     tusUploadEnvelope,
     streamHlsUrl,
@@ -123,7 +124,7 @@ export const uploadMedia = asyncHandler(async (req, res, next) => {
         });
 
         // عدد الميديا فى الداشبورد بتاع الرافع (كوتش أو أوبزيرفر) بيتحدث لايف
-        if (req.user.role === "observer") {
+        if (req.user.role === ROLES.OBSERVER) {
             emitObserverDashboardUpdate(req.user._id);
         } else {
             emitCoachDashboardUpdate(req.user._id);
@@ -141,7 +142,7 @@ export const uploadMedia = asyncHandler(async (req, res, next) => {
 // @desc    List media for a player — coach & observer see only what THEY uploaded; admin sees all
 export const getAll = asyncHandler(async (req, res, next) => {
     const baseFilter = { player: req.params.playerId };
-    if (req.user.role !== "admin") {
+    if (req.user.role !== ROLES.ADMIN) {
         baseFilter.uploadedBy = req.user._id;
     }
 
@@ -204,7 +205,7 @@ export const reviewMedia = asyncHandler(async (req, res, next) => {
 
     // عشان "عدد المباريات الى تم حضورها" في الداش بورد يتحدث لحظيًا من غير ما اليوزر يعمل ريفريش
     const uploader = await User.findById(media.uploadedBy).select("role");
-    if (uploader?.role === "observer") {
+    if (uploader?.role === ROLES.OBSERVER) {
         emitObserverDashboardUpdate(media.uploadedBy);
     } else {
         emitCoachDashboardUpdate(media.uploadedBy);

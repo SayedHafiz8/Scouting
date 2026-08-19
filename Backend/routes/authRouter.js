@@ -258,11 +258,98 @@
  *                       $ref: '#/components/schemas/User'
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
+ *
+ * /auth/vaultPassword/verify:
+ *   post:
+ *     summary: Re-verify the admin's own login password to obtain a short-lived vault token (admin only)
+ *     description: >
+ *       The vault token (15 minutes) is required as the X-Vault-Token header on
+ *       ID-card endpoints (C3). Repeated wrong passwords lock the vault
+ *       temporarily via vaultFailedAttempts/vaultLockedUntil on the user document.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password: { type: string, format: password }
+ *     responses:
+ *       200:
+ *         description: Vault token issued
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string, example: success }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     vaultToken: { type: string }
+ *                     expiresIn: { type: integer, description: Seconds until the token expires }
+ *       400: { $ref: '#/components/responses/ValidationError' }
+ *       401:
+ *         description: Incorrect password
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       423:
+ *         description: Too many failed attempts — temporarily locked
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *
+ * /auth/setup-admin:
+ *   post:
+ *     summary: One-time bootstrap — promote an existing account to admin (no auth required, gated by a setup key)
+ *     description: >
+ *       Refuses if any admin account already exists (active or deactivated) or
+ *       if the setup key doesn't match ADMIN_SETUP_KEY. Intended for initial
+ *       deployment only — the normal path is the seedAdmin() bootstrap in
+ *       server.js using ADMIN_* env vars.
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, setupKey]
+ *             properties:
+ *               email:    { type: string, format: email, description: Email of an existing account to promote }
+ *               setupKey: { type: string }
+ *     responses:
+ *       200:
+ *         description: Admin setup complete
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:  { type: string, example: success }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user: { $ref: '#/components/schemas/User' }
+ *       400: { $ref: '#/components/responses/ValidationError' }
+ *       403:
+ *         description: Invalid setup key, or an admin already exists
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       404: { $ref: '#/components/responses/NotFound' }
  */
 import express from "express";
 import { allowedTo, changeLoggedUserPass, forgotPassword, login, logout, protect, refreshToken, resetPassword, setupAdmin, signup, updateLoggedUser, verifyResetPassword, verifyVaultPassword } from "../controllers/authController.js";
 import { singupValidate, loginValidate, updateLoggedUserVal, verifyVaultPasswordValidate, forgotPasswordValidate, verifyResetCodeValidate, resetPasswordValidate, setupAdminValidate } from "../utils/validation/authValidation.js";
 import { changeUserPassword } from "../utils/validation/userValidation.js";
+import { ROLES } from "../constants/roles.js";
 
 
 const authRouter = express.Router({mergeParams: true});
@@ -295,7 +382,7 @@ authRouter.route('/updateLoggedUser')
             .patch(protect, updateLoggedUserVal, updateLoggedUser);
 
 authRouter.route('/vaultPassword/verify')
-            .post(protect, allowedTo('admin'), verifyVaultPasswordValidate, verifyVaultPassword);
+            .post(protect, allowedTo(ROLES.ADMIN), verifyVaultPasswordValidate, verifyVaultPassword);
 
 authRouter.post('/setup-admin', setupAdminValidate, setupAdmin);
 

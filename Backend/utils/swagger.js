@@ -1,4 +1,5 @@
 import swaggerJsDoc from "swagger-jsdoc";
+import { ROLE_VALUES } from "../constants/roles.js";
 
 const options = {
   definition: {
@@ -25,6 +26,7 @@ const options = {
       { name: "Media",     description: "Player media uploads" },
       { name: "Dashboard", description: "Aggregated statistics" },
       { name: "AgeGroups", description: "Age group reference data" },
+      { name: "Teams",     description: "Teams registered under an age group" },
     ],
 
     components: {
@@ -33,6 +35,12 @@ const options = {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
+        },
+        vaultToken: {
+          type: "apiKey",
+          in: "header",
+          name: "X-Vault-Token",
+          description: "15-minute token obtained via POST /auth/vaultPassword/verify — required to read ID-card vault endpoints (C3)",
         },
       },
 
@@ -55,7 +63,7 @@ const options = {
             _id:           { type: "string" },
             name:          { type: "string" },
             email:         { type: "string", format: "email" },
-            role:          { type: "string", enum: ["admin", "coach", "observer"] },
+            role:          { type: "string", enum: ROLE_VALUES },
             phoneNumber:   { type: "string" },
             profileImg:    { type: "string" },
             address:       { type: "string" },
@@ -64,6 +72,18 @@ const options = {
             deactivatedAt: { type: "string", format: "date-time", nullable: true },
             createdAt:     { type: "string", format: "date-time" },
             updatedAt:     { type: "string", format: "date-time" },
+          },
+        },
+
+        Team: {
+          type: "object",
+          properties: {
+            _id:      { type: "string" },
+            name:     { type: "string" },
+            ageGroup: { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/AgeGroup" }] },
+            league:   { type: "string", enum: ["premier", "professional"] },
+            clubName: { type: "string" },
+            active:   { type: "boolean" },
           },
         },
 
@@ -214,6 +234,16 @@ const options = {
               },
             },
           ],
+        },
+
+        ObserverDashboard: {
+          type: "object",
+          properties: {
+            totalPlayersObserved: { type: "integer" },
+            totalReports:         { type: "integer" },
+            totalMedia:           { type: "integer" },
+            totalMatches:         { type: "integer" },
+          },
         },
 
         ReportStatistics: {

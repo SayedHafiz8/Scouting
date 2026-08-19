@@ -13,6 +13,7 @@ import { updating } from "../services/services.js";
 import { buildKey, uploadMediaImage, deleteMediaImage } from "../services/imageStorage.js";
 import { deleteMediaBytes } from "./playerMediaController.js";
 import { resolveImageUrl } from "../utils/mediaUrl.js";
+import { ROLES } from "../constants/roles.js";
 import { sendNotificationToUser, sendNotificationToAdmins } from "../socket/handlers/notification.js";
 import {
     emitAdminDashboardUpdate,
@@ -51,18 +52,18 @@ export const getCountsByAgeGroup = asyncHandler(async (req, res, next) => {
     const match = {};
 
     // coach-scoping: coaches only count their own players
-    if (req.user.role === "coach") {
+    if (req.user.role === ROLES.COACH) {
         match.coach = new mongoose.Types.ObjectId(req.user._id);
     }
 
     // observer-scoping: observers only count players assigned to them
-    if (req.user.role === "observer") {
+    if (req.user.role === ROLES.OBSERVER) {
         match.observers = new mongoose.Types.ObjectId(req.user._id);
     }
 
     // admin browsing a specific coach's or observer's players (?coach=id / ?observer=id) —
     // بدون ده كان بيرجع عدّ كل اللاعبين مش بتوع الكوتش/الأوبزيرفر المطلوب بس
-    if (req.user.role === "admin") {
+    if (req.user.role === ROLES.ADMIN) {
         const { coach, observer } = req.query;
         if (coach && mongoose.isValidObjectId(coach)) {
             match.coach = new mongoose.Types.ObjectId(coach);
@@ -76,7 +77,7 @@ export const getCountsByAgeGroup = asyncHandler(async (req, res, next) => {
     const status = req.query?.status ?? req.body?.status;
     if (status) {
         // للكوتش: اللاعب "observed" بيظهرله كأنه "pending"، فالعدّ بالـ pending يشمل الاتنين
-        if (req.user.role === "coach" && status === "pending") {
+        if (req.user.role === ROLES.COACH && status === "pending") {
             match.status = { $in: ["pending", "observed"] };
         } else {
             match.status = status;
@@ -132,10 +133,10 @@ const PLAYER_FILTERS = [
 // @route   GET api/v1/players
 // @access  private
 export const getAll = asyncHandler(async (req, res, next) => {
-    const isCoach = req.user.role === "coach";
+    const isCoach = req.user.role === ROLES.COACH;
 
     const queryParams = { ...req.query };
-    if (req.user.role !== "admin") {
+    if (req.user.role !== ROLES.ADMIN) {
         PLAYER_ADMIN_ONLY_LENSES.forEach((k) => delete queryParams[k]);
     }
 
@@ -194,7 +195,7 @@ export const getAll = asyncHandler(async (req, res, next) => {
 
     let documents = await features.query;
     if (isCoach) documents = documents.map(maskObservedForCoach);
-    else if (req.user.role === "observer") documents = documents.map(maskCoachForObserver);
+    else if (req.user.role === ROLES.OBSERVER) documents = documents.map(maskCoachForObserver);
 
     res.status(200).json({
         status: "success",
@@ -218,8 +219,8 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
     }
 
     let out = document;
-    if (req.user.role === "coach") out = maskObservedForCoach(document);
-    else if (req.user.role === "observer") out = maskCoachForObserver(document);
+    if (req.user.role === ROLES.COACH) out = maskObservedForCoach(document);
+    else if (req.user.role === ROLES.OBSERVER) out = maskCoachForObserver(document);
 
     res.status(200).json({
         status: "success",
@@ -264,7 +265,7 @@ export const update = updating(Player);
 // بتتأكد إن كل الـ ids المبعوتة فعلاً ليوزرز دورهم "observer"
 const validateObserverIds = async (ids) => {
     const uniqueIds = [...new Set(ids.map(String))];
-    const observerUsers = await User.find({ _id: { $in: uniqueIds }, role: "observer" }).select("_id");
+    const observerUsers = await User.find({ _id: { $in: uniqueIds }, role: ROLES.OBSERVER }).select("_id");
     if (observerUsers.length !== uniqueIds.length) return null;
     return uniqueIds;
 };
@@ -393,7 +394,7 @@ export const assignPlayerCoach = asyncHandler(async (req, res, next) => {
     const { coach: coachId } = req.body;
 
     // لازم يكون يوزر نشط بدور coach — مش أي ObjectId
-    const coachUser = await User.findOne({ _id: coachId, role: "coach" }).select("_id");
+    const coachUser = await User.findOne({ _id: coachId, role: ROLES.COACH }).select("_id");
     if (!coachUser) {
         return next(new AppError("The selected coach is not a valid active coach", 400));
     }
@@ -449,7 +450,7 @@ export const uploadProfileImg = asyncHandler(async (req, res, next) => {
     }
     // §9 — لاعب يتيم (بلا كوتش) مالوش مالك: 403 للكوتش، مش 500 من .toString() على null
     if (
-        req.user.role === "coach" &&
+        req.user.role === ROLES.COACH &&
         (!existing.coach || existing.coach.toString() !== req.user._id.toString())
     ) {
         if (req.file?.path) await fs.promises.unlink(req.file.path).catch(() => {});

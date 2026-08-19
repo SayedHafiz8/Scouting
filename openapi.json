@@ -41,6 +41,10 @@
       "description": "Age group reference data"
     },
     {
+      "name": "Teams",
+      "description": "Teams registered under an age group"
+    },
+    {
       "name": "SeasonMatches",
       "description": "Per-age-group season match schedule"
     },
@@ -59,6 +63,12 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "vaultToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Vault-Token",
+        "description": "15-minute token obtained via POST /auth/vaultPassword/verify — required to read ID-card vault endpoints (C3)"
       }
     },
     "schemas": {
@@ -127,6 +137,40 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "Team": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ageGroup": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/AgeGroup"
+              }
+            ]
+          },
+          "league": {
+            "type": "string",
+            "enum": [
+              "premier",
+              "professional"
+            ]
+          },
+          "clubName": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
           }
         }
       },
@@ -561,6 +605,23 @@
             }
           }
         ]
+      },
+      "ObserverDashboard": {
+        "type": "object",
+        "properties": {
+          "totalPlayersObserved": {
+            "type": "integer"
+          },
+          "totalReports": {
+            "type": "integer"
+          },
+          "totalMedia": {
+            "type": "integer"
+          },
+          "totalMatches": {
+            "type": "integer"
+          }
+        }
       },
       "ReportStatistics": {
         "type": "object",
@@ -1177,6 +1238,691 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/users/{id}/changePassword": {
+      "patch": {
+        "summary": "Change a user's password (admin only)",
+        "tags": [
+          "Users"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "password"
+                ],
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "format": "password"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/users/{id}/force": {
+      "delete": {
+        "summary": "Permanently delete a (previously deactivated) user (admin only)",
+        "tags": [
+          "Users"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User permanently deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/users/{id}/profileImg": {
+      "patch": {
+        "summary": "Upload/replace a user's profile image (admin only)",
+        "tags": [
+          "Users"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "profileImg"
+                ],
+                "properties": {
+                  "profileImg": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile image updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "document": {
+                          "$ref": "#/components/schemas/User"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/users/{id}/idCardImg/front": {
+      "patch": {
+        "summary": "Upload/replace the front side of a user's national ID card (admin only)",
+        "tags": [
+          "Users"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "idCardFrontImg"
+                ],
+                "properties": {
+                  "idCardFrontImg": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Front ID-card image uploaded (no URL/path is ever returned — C3)"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/users/{id}/idCardImg/back": {
+      "patch": {
+        "summary": "Upload/replace the back side of a user's national ID card (admin only)",
+        "tags": [
+          "Users"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "idCardBackImg"
+                ],
+                "properties": {
+                  "idCardBackImg": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Back ID-card image uploaded (no URL/path is ever returned — C3)"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/users/{id}/idCardImg": {
+      "get": {
+        "summary": "Report which ID-card sides exist (admin + vault token — never returns a URL or path, C3)",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": [],
+            "vaultToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Presence flags for each ID-card side",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "front": {
+                          "type": "boolean"
+                        },
+                        "back": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/users/{id}/idcard/{side}": {
+      "get": {
+        "summary": "Stream a national ID-card side's raw bytes through the backend (admin + vault token — vault Storage zone has no CDN, no URL is ever exposed, C3)",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": [],
+            "vaultToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "side",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "front",
+                "back"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw image bytes (Cache-Control - no-store, access is audit-logged)",
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/teams": {
+      "get": {
+        "summary": "List teams (optionally scoped to an age group via the nested /ages/{id}/teams mount)",
+        "tags": [
+          "Teams"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ageGroup",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by age group id (implicit when called via /ages/{id}/teams)"
+          },
+          {
+            "in": "query",
+            "name": "league",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "premier",
+                "professional"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of teams",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "documents": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Team"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a team (admin only)",
+        "tags": [
+          "Teams"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "clubName"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "clubName": {
+                    "type": "string"
+                  },
+                  "league": {
+                    "type": "string",
+                    "enum": [
+                      "premier",
+                      "professional"
+                    ],
+                    "default": "premier"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Team created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "document": {
+                          "$ref": "#/components/schemas/Team"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/teams/{id}": {
+      "get": {
+        "summary": "Get a specific team by id",
+        "tags": [
+          "Teams"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Team found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "document": {
+                          "$ref": "#/components/schemas/Team"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a team (admin only)",
+        "tags": [
+          "Teams"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "clubName": {
+                    "type": "string"
+                  },
+                  "league": {
+                    "type": "string",
+                    "enum": [
+                      "premier",
+                      "professional"
+                    ]
+                  },
+                  "active": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Team updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "document": {
+                          "$ref": "#/components/schemas/Team"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a team (admin only)",
+        "tags": [
+          "Teams"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Team deleted"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -2467,6 +3213,267 @@
         }
       }
     },
+    "/players/counts": {
+      "get": {
+        "summary": "Player counts grouped by age group (coach sees own; admin sees all, or a specific coach/observer via query)",
+        "tags": [
+          "Players"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "selected",
+                "rejected",
+                "observed"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "coach",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Admin only — count a specific coach's players"
+          },
+          {
+            "in": "query",
+            "name": "observer",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Admin only — count a specific observer's players"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Counts grouped by age group id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "counts": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "integer"
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/players/reports/average-ratings": {
+      "get": {
+        "summary": "Average overall rating across scouting reports for a set of players",
+        "tags": [
+          "Reports"
+        ],
+        "responses": {
+          "200": {
+            "description": "Map of player id to average rating",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/players/{id}/observers": {
+      "patch": {
+        "summary": "Add/remove assigned observers for a player without touching status (admin only)",
+        "tags": [
+          "Players"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "observers"
+                ],
+                "properties": {
+                  "observers": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Observers updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "document": {
+                          "$ref": "#/components/schemas/Player"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/players/{id}/profileImg": {
+      "patch": {
+        "summary": "Upload/replace a player's profile image (coach or admin)",
+        "tags": [
+          "Players"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "profileImg"
+                ],
+                "properties": {
+                  "profileImg": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile image updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "document": {
+                          "$ref": "#/components/schemas/Player"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/players/{playerId}/media": {
       "get": {
         "summary": "List all media files for a player",
@@ -2676,6 +3683,49 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/players/{playerId}/media/video/{mediaId}/upload-envelope": {
+      "post": {
+        "summary": "Re-issue a TUS upload envelope for a still-processing video (resume after an interrupted upload) — coach/observer, uploader only",
+        "tags": [
+          "Media"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playerId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mediaId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New TUS upload envelope for the same Bunny Stream video"
+          },
+          "400": {
+            "description": "The video is not awaiting upload (already ready/failed, or not a video)"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -2923,6 +3973,54 @@
           },
           "400": {
             "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/players/{playerId}/media/{id}/download": {
+      "get": {
+        "summary": "Download the 720p MP4 for a video (admin only)",
+        "tags": [
+          "Media"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playerId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Video file bytes",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -3333,6 +4431,89 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/CoachDashboard"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/dashboard/observer": {
+      "get": {
+        "summary": "Get the logged-in observer's dashboard statistics",
+        "tags": [
+          "Dashboard"
+        ],
+        "responses": {
+          "200": {
+            "description": "Observer dashboard data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ObserverDashboard"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/dashboard/admin/observer/{observerId}": {
+      "get": {
+        "summary": "Get dashboard statistics for a specific observer (admin only)",
+        "tags": [
+          "Dashboard"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "observerId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Observer dashboard data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ObserverDashboard"
                     }
                   }
                 }
@@ -4058,6 +5239,169 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/auth/vaultPassword/verify": {
+      "post": {
+        "summary": "Re-verify the admin's own login password to obtain a short-lived vault token (admin only)",
+        "description": "The vault token (15 minutes) is required as the X-Vault-Token header on ID-card endpoints (C3). Repeated wrong passwords lock the vault temporarily via vaultFailedAttempts/vaultLockedUntil on the user document.\n",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "password"
+                ],
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "format": "password"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vault token issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "vaultToken": {
+                          "type": "string"
+                        },
+                        "expiresIn": {
+                          "type": "integer",
+                          "description": "Seconds until the token expires"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "description": "Incorrect password",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "423": {
+            "description": "Too many failed attempts — temporarily locked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/setup-admin": {
+      "post": {
+        "summary": "One-time bootstrap — promote an existing account to admin (no auth required, gated by a setup key)",
+        "description": "Refuses if any admin account already exists (active or deactivated) or if the setup key doesn't match ADMIN_SETUP_KEY. Intended for initial deployment only — the normal path is the seedAdmin() bootstrap in server.js using ADMIN_* env vars.\n",
+        "tags": [
+          "Auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "setupKey"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Email of an existing account to promote"
+                  },
+                  "setupKey": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Admin setup complete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "user": {
+                          "$ref": "#/components/schemas/User"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "403": {
+            "description": "Invalid setup key, or an admin already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }

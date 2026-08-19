@@ -1,3 +1,5 @@
+import { ROLES } from "../constants/roles.js";
+
 // query params اللي بتستهلكها مراحل تانية (pagination/sort/fields/search) — أبداً مش فلاتر
 const RESERVED_QUERY_KEYS = ['page', 'limit', 'sort', 'fields', 'keyword'];
 
@@ -82,7 +84,7 @@ class ApiFeature {
     buildOwnerScope(ownerFields){
         if (!ownerFields) return {}; // داتا مرجعية مشتركة — مفيش سكوب ملكية أصلاً
         if (!this.user) return { ...MATCH_NOTHING }; // قائمة مملوكة على راوت من غير protect
-        if (this.user.role === "admin") return {};
+        if (this.user.role === ROLES.ADMIN) return {};
 
         const field = ownerFields[this.user.role];
         if (!field) return { ...MATCH_NOTHING }; // دور مش معرّف في الماب — يشوف صفر

@@ -10,6 +10,7 @@ import ApiFeature from "../utils/apiFeatures.js";
 import AppError from "../utils/appError.js";
 import { sendNotificationToUser } from "../socket/handlers/notification.js";
 import { EVALUATION_CRITERIA } from "../utils/observerEvaluationCriteria.js";
+import { ROLES } from "../constants/roles.js";
 
 const populate = [
     { path: "observer", select: "name email" },
@@ -79,7 +80,7 @@ export const create = asyncHandler(async (req, res, next) => {
 export const getAll = asyncHandler(async (req, res, next) => {
     const baseFilter = {};
 
-    if (req.user.role !== "admin") {
+    if (req.user.role !== ROLES.ADMIN) {
         // الكشاف يشوف تقييماته المنشورة بس
         baseFilter.observer = req.user._id;
         baseFilter.status = "published";
@@ -125,7 +126,7 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
         return next(new AppError(`No evaluation for this id: ${req.params.id}`, 404));
     }
 
-    if (req.user.role !== "admin") {
+    if (req.user.role !== ROLES.ADMIN) {
         const ownPublished =
             document.observer._id.equals(req.user._id) && document.status === "published";
         if (!ownPublished) {
@@ -243,7 +244,7 @@ export const deleting = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/observerEvaluations/summary
 // @access  Private - admin (?observer=) & observer (own)
 export const getSummary = asyncHandler(async (req, res, next) => {
-    const observerId = req.user.role === "admin" ? req.query.observer : req.user._id;
+    const observerId = req.user.role === ROLES.ADMIN ? req.query.observer : req.user._id;
     if (!observerId) {
         return next(new AppError("observer query param is required", 400));
     }

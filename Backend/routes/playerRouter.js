@@ -321,6 +321,134 @@
  *         $ref: '#/components/responses/Forbidden'
  *       404:
  *         $ref: '#/components/responses/NotFound'
+ *
+ * /players/counts:
+ *   get:
+ *     summary: Player counts grouped by age group (coach sees own; admin sees all, or a specific coach/observer via query)
+ *     tags: [Players]
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, selected, rejected, observed] }
+ *       - in: query
+ *         name: coach
+ *         schema: { type: string }
+ *         description: Admin only — count a specific coach's players
+ *       - in: query
+ *         name: observer
+ *         schema: { type: string }
+ *         description: Admin only — count a specific observer's players
+ *     responses:
+ *       200:
+ *         description: Counts grouped by age group id
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string, example: success }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     counts:
+ *                       type: object
+ *                       additionalProperties: { type: integer }
+ *                     total: { type: integer }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *
+ * /players/reports/average-ratings:
+ *   get:
+ *     summary: Average overall rating across scouting reports for a set of players
+ *     tags: [Reports]
+ *     responses:
+ *       200:
+ *         description: Map of player id to average rating
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string, example: success }
+ *                 data:
+ *                   type: object
+ *                   additionalProperties: { type: number }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *
+ * /players/{id}/observers:
+ *   patch:
+ *     summary: Add/remove assigned observers for a player without touching status (admin only)
+ *     tags: [Players]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [observers]
+ *             properties:
+ *               observers:
+ *                 type: array
+ *                 items: { type: string }
+ *     responses:
+ *       200:
+ *         description: Observers updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string, example: success }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     document: { $ref: '#/components/schemas/Player' }
+ *       400: { $ref: '#/components/responses/ValidationError' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       404: { $ref: '#/components/responses/NotFound' }
+ *
+ * /players/{id}/profileImg:
+ *   patch:
+ *     summary: Upload/replace a player's profile image (coach or admin)
+ *     tags: [Players]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [profileImg]
+ *             properties:
+ *               profileImg:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Profile image updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string, example: success }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     document: { $ref: '#/components/schemas/Player' }
+ *       400: { $ref: '#/components/responses/ValidationError' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       403: { $ref: '#/components/responses/Forbidden' }
+ *       404: { $ref: '#/components/responses/NotFound' }
  */
 import express from "express";
 import { getAll, create, getSpecific, deleting, update, setUserIdToBody, updatePlayerStatus, updatePlayerObservers, assignPlayerCoach, uploadProfileImg, getCountsByAgeGroup } from "../controllers/playerController.js";
@@ -331,44 +459,45 @@ import upload from "../middlewares/uploadMiddleware.js";
 import scoutingRouter from "./scoutingReportRouter.js";
 import mediaRouter from "./playerMediaRouter.js";
 import { getAverageRatingsForPlayers } from "../controllers/scoutingReportController.js";
+import { ROLES } from "../constants/roles.js";
 
 // (mergeParams) using for access parameters on other routers
 const playerRouter = express.Router({mergeParams: true});
 
 // لازم يتحط قبل '/:playerId/reports' عشان "reports" متتاخدش كـ playerId
 playerRouter.route('/reports/average-ratings')
-            .get(protect, allowedTo("coach", "admin", "observer"), getAverageRatingsForPlayers);
+            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), getAverageRatingsForPlayers);
 
 playerRouter.use('/:playerId/reports', scoutingRouter);
 playerRouter.use('/:playerId/media', mediaRouter)
 
 playerRouter.route('/')
-            .get(protect, allowedTo("coach", "admin", "observer"),getAllValidate ,getAll)
-            .post(protect,allowedTo("coach"),setUserIdToBody, createValidate,create)
+            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER),getAllValidate ,getAll)
+            .post(protect,allowedTo(ROLES.COACH),setUserIdToBody, createValidate,create)
 
 // Counts per age group — must be declared before '/:id' so "counts" isn't treated as an id
 playerRouter.route('/counts')
-            .get(protect, allowedTo("coach", "admin", "observer"), getCountsByAgeGroup)
+            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), getCountsByAgeGroup)
 
 
 playerRouter.route('/:id')
-            .get(protect, allowedTo("coach", "admin", "observer"), checkPlayerOwnership, getSpecificValidate, getSpecific)
-            .patch(protect, allowedTo("coach"), checkPlayerOwnership, updateValidate, update)
-            .delete(protect, allowedTo("admin"), deleteValidate, deleting)
+            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), checkPlayerOwnership, getSpecificValidate, getSpecific)
+            .patch(protect, allowedTo(ROLES.COACH), checkPlayerOwnership, updateValidate, update)
+            .delete(protect, allowedTo(ROLES.ADMIN), deleteValidate, deleting)
 
 playerRouter.route('/:id/status')
-            .patch(protect,allowedTo('admin'), updatePlayerStatusValidator, updatePlayerStatus)
+            .patch(protect,allowedTo(ROLES.ADMIN), updatePlayerStatusValidator, updatePlayerStatus)
 
 // إضافة/إلغاء أوبزيرفرز من غير ما نلمس الـ status — بيسمح للأدمن يلغي أوبزيرفر معين بس
 playerRouter.route('/:id/observers')
-            .patch(protect, allowedTo('admin'), updatePlayerObserversValidator, updatePlayerObservers)
+            .patch(protect, allowedTo(ROLES.ADMIN), updatePlayerObserversValidator, updatePlayerObservers)
 
 // §9 — تعيين/نقل الكوتش المالك. المخرج الوحيد للاعب اللي كوتشه اتمسح نهائياً،
 // وأدمن-فقط لأنه نقل ملكية لبيانات لاعب قاصر
 playerRouter.route('/:id/coach')
-            .patch(protect, allowedTo('admin'), assignPlayerCoachValidator, assignPlayerCoach)
+            .patch(protect, allowedTo(ROLES.ADMIN), assignPlayerCoachValidator, assignPlayerCoach)
 
 playerRouter.route('/:id/profileImg')
-            .patch(protect, allowedTo('coach', 'admin'), upload.single('profileImg'), uploadProfileImg)
+            .patch(protect, allowedTo(ROLES.COACH, ROLES.ADMIN), upload.single('profileImg'), uploadProfileImg)
 
 export default playerRouter;

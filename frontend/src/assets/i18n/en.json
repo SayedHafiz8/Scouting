@@ -791,5 +791,10 @@
     "DETAIL": {
       "VIEW_PLAYERS": "View Assigned Players"
     }
+  },
+  "UNAUTHORIZED": {
+    "TITLE": "Access not authorized",
+    "MESSAGE": "Your account doesn't have permission to view this page.",
+    "LOGOUT": "Sign out"
   }
 }

@@ -1,5 +1,6 @@
 import { getIO, getConnectedUsers } from "../index.js";
 import User from "../../models/userModel.js";
+import { ROLES } from "../../constants/roles.js";
 
 // ✅ بعت notification لـ user معين
 export const sendNotificationToUser = (userId, notification) => {
@@ -34,7 +35,7 @@ export const getConnectedAdminIds = async () => {
 
     // lean() أسرع لأننا محتاجين _id بس بدون Mongoose document overhead
     const admins = await User
-        .find({ role: "admin" })
+        .find({ role: ROLES.ADMIN })
         .select("_id")
         .lean();
 

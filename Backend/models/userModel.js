@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import { resolveImageUrl } from "../utils/mediaUrl.js";
+import { ROLE_VALUES, ROLES } from "../constants/roles.js";
 
 const userSchema = new mongoose.Schema({
     name: {
@@ -20,8 +21,8 @@ const userSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['coach', 'admin', 'observer'],
-        default: 'coach'
+        enum: ROLE_VALUES,
+        default: ROLES.COACH
     },
     profileImg: {
         type: String

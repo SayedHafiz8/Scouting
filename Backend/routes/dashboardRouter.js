@@ -105,6 +105,58 @@
  *         $ref: '#/components/responses/Forbidden'
  *       404:
  *         $ref: '#/components/responses/NotFound'
+ *
+ * /dashboard/observer:
+ *   get:
+ *     summary: Get the logged-in observer's dashboard statistics
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: Observer dashboard data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   $ref: '#/components/schemas/ObserverDashboard'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *
+ * /dashboard/admin/observer/{observerId}:
+ *   get:
+ *     summary: Get dashboard statistics for a specific observer (admin only)
+ *     tags: [Dashboard]
+ *     parameters:
+ *       - in: path
+ *         name: observerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Observer dashboard data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   $ref: '#/components/schemas/ObserverDashboard'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 import express from "express";
 import {
@@ -115,6 +167,7 @@ import {
 } from "../controllers/dashboardController.js";
 import { protect, allowedTo } from "../controllers/authController.js";
 import { coachIdValidator, observerIdValidator } from "../utils/validation/dashboardvalidation.js";
+import { ROLES } from "../constants/roles.js";
 
 const dashboardRouter = express.Router();
 
@@ -123,28 +176,28 @@ dashboardRouter.use(protect);
 // ✅ الكوتش يشوف داشبورد بتاعه
 dashboardRouter.get(
     "/coach",
-    allowedTo("coach"),
+    allowedTo(ROLES.COACH),
     getCoachDashboard
 );
 
 // ✅ الأدمن يشوف الداشبورد العام
 dashboardRouter.get(
     "/admin",
-    allowedTo("admin"),
+    allowedTo(ROLES.ADMIN),
     adminDashboard
 );
 
 // ✅ الأدمن يشوف إحصائيات كل الكباتن مرة واحدة (بدل ريكويست لكل كوتش) — لازم قبل /admin/:coachId
 dashboardRouter.get(
     "/admin/coaches-stats",
-    allowedTo("admin"),
+    allowedTo(ROLES.ADMIN),
     getAllCoachesStats
 );
 
 // ✅ الأدمن يشوف داشبورد كوتش معين
 dashboardRouter.get(
     "/admin/:coachId",
-    allowedTo("admin"),
+    allowedTo(ROLES.ADMIN),
     coachIdValidator,
     getCoachDashboard
 );
@@ -152,14 +205,14 @@ dashboardRouter.get(
 // ✅ الأوبزيرفر يشوف داشبورد بتاعه
 dashboardRouter.get(
     "/observer",
-    allowedTo("observer"),
+    allowedTo(ROLES.OBSERVER),
     getObserverDashboard
 );
 
 // ✅ الأدمن يشوف داشبورد أوبزيرفر معين
 dashboardRouter.get(
     "/admin/observer/:observerId",
-    allowedTo("admin"),
+    allowedTo(ROLES.ADMIN),
     observerIdValidator,
     getObserverDashboard
 );

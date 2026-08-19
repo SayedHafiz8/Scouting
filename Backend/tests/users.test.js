@@ -142,6 +142,62 @@ describe('POST /api/v1/users', () => {
 
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
+
+  // ── US3 (Role Foundation Hardening) — FR-013/FR-014: role validation ──────
+  it('returns 400 for an invalid role value (FR-013)', async () => {
+    const { token } = await createAdmin();
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Bad Role',
+        email: 'badrole@test.com',
+        password: TEST_PASSWORD,
+        passwordConfirm: TEST_PASSWORD,
+        phoneNumber: '01033334444',
+        role: 'proScout',
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a valid role value', async () => {
+    const { token } = await createAdmin();
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Valid Observer',
+        email: 'validobserver@test.com',
+        password: TEST_PASSWORD,
+        passwordConfirm: TEST_PASSWORD,
+        phoneNumber: '01033334444',
+        role: 'observer',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.document.role).toBe('observer');
+  });
+
+  it('omitting role still applies the existing default (FR-014)', async () => {
+    const { token } = await createAdmin();
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Default Role',
+        email: 'defaultrole@test.com',
+        password: TEST_PASSWORD,
+        passwordConfirm: TEST_PASSWORD,
+        phoneNumber: '01033334444',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.document.role).toBe('coach');
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

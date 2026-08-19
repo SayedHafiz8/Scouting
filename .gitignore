@@ -8,3 +8,5 @@ Thumbs.db
 .vscode/settings.local.json
 # Claude Code session settings — machine-local, never commit
 .claude/
+
+.claude/

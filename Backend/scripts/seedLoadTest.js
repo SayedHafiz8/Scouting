@@ -52,6 +52,7 @@ import PlayerMedia from "../models/playerMediaModel.js";
 import SeasonMatch from "../models/seasonMatchModel.js";
 import CoachEvaluation from "../models/coachEvaluationModel.js";
 import ObserverEvaluation from "../models/observerEvaluationModel.js";
+import { ROLES } from "../constants/roles.js";
 
 const SEED_MARKER = "loadtest";
 const MARK = { __seed: SEED_MARKER };
@@ -198,7 +199,7 @@ async function seed() {
         email: `lt_coach_${i + 1}@loadtest.local`,
         password: fakeHash,
         phoneNumber: phone(),
-        role: "coach",
+        role: ROLES.COACH,
         active: true,
         createdAt: now,
         updatedAt: now,
@@ -210,7 +211,7 @@ async function seed() {
         email: `lt_observer_${i + 1}@loadtest.local`,
         password: fakeHash,
         phoneNumber: phone(),
-        role: "observer",
+        role: ROLES.OBSERVER,
         active: true,
         createdAt: now,
         updatedAt: now,
@@ -222,7 +223,7 @@ async function seed() {
         email: "lt_admin@loadtest.local",
         password: fakeHash,
         phoneNumber: phone(),
-        role: "admin",
+        role: ROLES.ADMIN,
         active: true,
         createdAt: now,
         updatedAt: now,

@@ -133,6 +133,7 @@ import {
     getSummary,
 } from "../controllers/observerEvaluationController.js";
 import { protect, allowedTo } from "../controllers/authController.js";
+import { ROLES } from "../constants/roles.js";
 import {
     createValidate,
     updateValidate,
@@ -149,20 +150,20 @@ router.use(protect);
 
 router
     .route("/")
-    .get(allowedTo("admin", "observer"), getAllValidate, getAll)
-    .post(allowedTo("admin"), createValidate, create);
+    .get(allowedTo(ROLES.ADMIN, ROLES.OBSERVER), getAllValidate, getAll)
+    .post(allowedTo(ROLES.ADMIN), createValidate, create);
 
 // لازم قبل /:id
-router.get("/summary", allowedTo("admin", "observer"), summaryValidate, getSummary);
+router.get("/summary", allowedTo(ROLES.ADMIN, ROLES.OBSERVER), summaryValidate, getSummary);
 
-router.patch("/:id/publish", allowedTo("admin"), idParamValidate, publish);
-router.patch("/:id/archive", allowedTo("admin"), idParamValidate, archive);
-router.patch("/:id/refresh-stats", allowedTo("admin"), idParamValidate, refreshStats);
+router.patch("/:id/publish", allowedTo(ROLES.ADMIN), idParamValidate, publish);
+router.patch("/:id/archive", allowedTo(ROLES.ADMIN), idParamValidate, archive);
+router.patch("/:id/refresh-stats", allowedTo(ROLES.ADMIN), idParamValidate, refreshStats);
 
 router
     .route("/:id")
-    .get(allowedTo("admin", "observer"), getSpecificValidate, getSpecific)
-    .patch(allowedTo("admin"), updateValidate, update)
-    .delete(allowedTo("admin"), deleteValidate, deleting);
+    .get(allowedTo(ROLES.ADMIN, ROLES.OBSERVER), getSpecificValidate, getSpecific)
+    .patch(allowedTo(ROLES.ADMIN), updateValidate, update)
+    .delete(allowedTo(ROLES.ADMIN), deleteValidate, deleting);
 
 export default router;

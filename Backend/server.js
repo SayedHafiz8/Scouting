@@ -55,19 +55,20 @@ import { startCleanupJob } from "./socket/handlers/cleanupDeactivated.js";
 import { startVideoReconcile } from "./socket/handlers/videoReconcile.js";
 import { startMediaRetention } from "./socket/handlers/mediaRetention.js";
 import User from "./models/userModel.js";
+import { ROLES } from "./constants/roles.js";
 
 
 const port = process.env.PORT;
 
 const seedAdmin = async () => {
-    const exists = await User.findOne({ role: "admin" }).setOptions({ bypassFilter: true });
+    const exists = await User.findOne({ role: ROLES.ADMIN }).setOptions({ bypassFilter: true });
     if (exists) return;
 
     await User.create({
         name:     process.env.ADMIN_NAME,
         email:    process.env.ADMIN_EMAIL,
         password: process.env.ADMIN_PASSWORD,
-        role:     "admin",
+        role:     ROLES.ADMIN,
     });
     console.log(`✅ Default admin created → ${process.env.ADMIN_EMAIL}`);
 };

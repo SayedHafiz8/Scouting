@@ -3,6 +3,7 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { roleGuard } from '../../core/auth/role.guard';
+import { RoleLandingService } from '../../core/services/role-landing.service';
 
 export const dashboardRoutes: Routes = [
   {
@@ -34,10 +35,8 @@ export const dashboardRoutes: Routes = [
     path: '',
     canActivate: [() => {
       const role = inject(AuthService).currentUser()?.role;
-      const target = role === 'admin' ? '/dashboard/admin'
-        : role === 'observer' ? '/dashboard/observer'
-        : '/dashboard/coach';
-      return inject(Router).createUrlTree([target]);
+      const target = inject(RoleLandingService).landingFor(role);
+      return inject(Router).createUrlTree(target);
     }],
     children: [],
   },

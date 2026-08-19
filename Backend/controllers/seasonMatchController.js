@@ -5,6 +5,7 @@ import Player from "../models/playedModel.js";
 import AppError from "../utils/appError.js";
 import { creating, gettingAll, updating, deleteOne } from "../services/services.js";
 import { decorateMedia } from "./playerMediaController.js";
+import { ROLES } from "../constants/roles.js";
 
 // createdBy بيتحط من السيرفر (creating بيعمل req.body[field] = req.user._id)
 export const create = creating(SeasonMatch, "createdBy");
@@ -22,7 +23,7 @@ const SEASON_MATCH_FILTERS = ["ageGroup", "season", "league", "status", "attende
 // أوبزيرفر بيشوف بس مباريات فرق اللاعبين اللي الأدمن حطّه يتابعهم (Player.observers) —
 // مش كل جدول المباريات زي الكوتش/الأدمن. لو مفيش لاعب متحدد ليه فريق أصلاً، يشوف صفر مباريات.
 async function seasonMatchBaseFilterFor(req) {
-    if (req.user.role !== "observer") return {};
+    if (req.user.role !== ROLES.OBSERVER) return {};
 
     const teamIds = (await Player.find({ observers: req.user._id }).distinct("team")).filter(Boolean);
     return teamIds.length
@@ -48,7 +49,7 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
     // نفس نمط الـ ownership المستخدم في scoutingReportController.getAll (coach = الكاتب)
     // و playerMediaController.getAll (uploadedBy = الرافع). الفلترة جوه الكويري نفسها
     // (populate match) عشان بيانات غيره متخرجش من الداتابيز أصلاً.
-    const isAdmin = req.user.role === "admin";
+    const isAdmin = req.user.role === ROLES.ADMIN;
     const reportsMatch = isAdmin ? undefined : { coach: req.user._id };
     const mediaMatch = isAdmin ? undefined : { uploadedBy: req.user._id };
 
@@ -101,7 +102,7 @@ export const updateMatchStatus = asyncHandler(async (req, res, next) => {
     // نتيجة المباراة (status: completed) لازم تتسجل يوم المباراة نفسه بس — مش قبله ولا بعده
     // بأيام، عشان النتيجة تتسجل وهي لسه فريش من الحاضرين فعلاً، مش بأثر رجعي. الأدمن مستثنى
     // (تصحيح/إدارة، مش الكشاف/الأوبزيرفر اللي المفروض حاضر المباراة فعليًا).
-    if (status === "completed" && req.user.role !== "admin") {
+    if (status === "completed" && req.user.role !== ROLES.ADMIN) {
         const match = await SeasonMatch.findById(req.params.id).select("matchDate").setOptions({ skipPopulate: true });
         if (!match) {
             return next(new AppError(`No document for this Id: ${req.params.id}`, 404));

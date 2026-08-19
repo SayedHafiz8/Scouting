@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 
 import validatorMiddleware from "../../middlewares/validatorMiddleware.js";
 import User from "../../models/userModel.js";
+import { ROLE_VALUES } from "../../constants/roles.js";
 
 
 export const getSpecificValidate = [
@@ -51,10 +52,14 @@ export const createValidate = [
             return true;
         }),
 
-
+    // FR-013 — كان بيتقبل زي ما هو ويعتمد على enum مونجوس بس (رسالة عامة، مش بشكل
+    // رد الفاليديشن الموحّد في المشروع). .optional() لازمة لـ FR-014: غياب الحقل
+    // لازم يفضل ياخد الافتراضي القائم في المخطط بلا أي تغيير.
+    check('role').optional()
+        .isIn(ROLE_VALUES).withMessage(`role must be one of: ${ROLE_VALUES.join(', ')}`),
 
     validatorMiddleware
-    
+
 ];
 
 export const changeUserPassword = [
@@ -92,6 +97,8 @@ export const updateValidate = [
         .isLength({ min: 3 }).withMessage("The address is too short"),
     check('birthDate').optional()
         .isISO8601().withMessage("Invalid birth date"),
+    check('role').optional()
+        .isIn(ROLE_VALUES).withMessage(`role must be one of: ${ROLE_VALUES.join(', ')}`),
     validatorMiddleware
 ];
 

@@ -63,4 +63,16 @@ describe('roleGuard', () => {
     // null user → role undefined → fallback redirect
     expect(result).not.toBeTrue();
   });
+
+  it('redirects an unknown role to /unauthorized instead of guessing a dashboard (FR-007)', async () => {
+    const unknownRoleUser = { ...coachUser, role: 'not-a-real-role' } as unknown as User;
+    const result = await runRoleGuard(makeAuthSpy(unknownRoleUser), ['admin']);
+    expect(result).not.toBeTrue();
+    expect(result.toString()).toBe('/unauthorized');
+  });
+
+  it('redirects a null user (no role at all) to /unauthorized', async () => {
+    const result = await runRoleGuard(makeAuthSpy(null), ['admin']);
+    expect(result.toString()).toBe('/unauthorized');
+  });
 });

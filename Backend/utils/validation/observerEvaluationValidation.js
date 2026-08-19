@@ -4,6 +4,7 @@ import validatorMiddleware from "../../middlewares/validatorMiddleware.js";
 import User from "../../models/userModel.js";
 import ObserverEvaluation from "../../models/observerEvaluationModel.js";
 import { EVALUATION_METRIC_PATHS } from "../observerEvaluationCriteria.js";
+import { ROLES } from "../../constants/roles.js";
 
 // معيار مطلوب (للـ create) — من 1 لـ 10
 const requiredRating = (path) =>
@@ -46,7 +47,7 @@ const observerExists = body("observer")
     .custom(async (val) => {
         const user = await User.findById(val);
         if (!user) throw new Error("Observer not found");
-        if (user.role !== "observer") throw new Error("This user is not an observer");
+        if (user.role !== ROLES.OBSERVER) throw new Error("This user is not an observer");
         return true;
     });
 

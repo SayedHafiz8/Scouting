@@ -5,6 +5,7 @@ import validatorMiddleware from "../../middlewares/validatorMiddleware.js";
 import Player from "../../models/playedModel.js";
 import Team from "../../models/teamModel.js";
 import SeasonMatch from "../../models/seasonMatchModel.js";
+import { ROLES } from "../../constants/roles.js";
 
 const technicalFields = ["passing", "dribbling", "shooting", "ballControl"];
 const physicalFields = ["speed", "stamina", "strength", "agility"];
@@ -186,7 +187,7 @@ export const updateValidate = [
 // @route   GET /api/v1/players/:playerId/reports
 export const getAllValidate = [
     // بس الأدمن هو اللي بيستخدم الفلتر ده (يشوف تقارير الكشافين أو الأوبزيرفرز بس)
-    query("authorRole").optional().isIn(["coach", "observer"]).withMessage("Invalid authorRole"),
+    query("authorRole").optional().isIn([ROLES.COACH, ROLES.OBSERVER]).withMessage("Invalid authorRole"),
     validatorMiddleware,
 ];
 

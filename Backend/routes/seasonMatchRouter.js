@@ -21,6 +21,7 @@ import {
 } from "../utils/validation/seasonMatchValidation.js";
 import { protect, allowedTo } from "../controllers/authController.js";
 import { checkSeasonMatchAttendee } from "../middlewares/ownership.js";
+import { ROLES } from "../constants/roles.js";
 
 /**
  * @swagger
@@ -190,21 +191,21 @@ import { checkSeasonMatchAttendee } from "../middlewares/ownership.js";
 const seasonMatchRouter = express.Router();
 
 seasonMatchRouter.route('/')
-    .get(protect, allowedTo("coach", "admin", "observer"), getAllValidate, getAll)
-    .post(protect, allowedTo("admin"), createValidate, create);
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), getAllValidate, getAll)
+    .post(protect, allowedTo(ROLES.ADMIN), createValidate, create);
 
 seasonMatchRouter.route('/:id')
-    .get(protect, allowedTo("coach", "admin", "observer"), getSpecificValidate, getSpecific)
-    .patch(protect, allowedTo("admin"), updateValidate, setUpdatedBy, update)
-    .delete(protect, allowedTo("admin"), deleteValidate, deleting);
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), getSpecificValidate, getSpecific)
+    .patch(protect, allowedTo(ROLES.ADMIN), updateValidate, setUpdatedBy, update)
+    .delete(protect, allowedTo(ROLES.ADMIN), deleteValidate, deleting);
 
 // الكوتش أو الأوبزيرفر الحاضر (attendee) أو الأدمن بس — منفصلة عن التعديل العام، بتغيّر status/result بس
 seasonMatchRouter.route('/:id/status')
-    .patch(protect, allowedTo("coach", "observer", "admin"), checkSeasonMatchAttendee, updateStatusValidate, updateMatchStatus);
+    .patch(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.ADMIN), checkSeasonMatchAttendee, updateStatusValidate, updateMatchStatus);
 
 // self-service — الكشاف نفسه بيسجّل/يلغي حضوره للمباراة
 seasonMatchRouter.route('/:id/attend')
-    .post(protect, allowedTo("coach", "observer"), attendMatch)
-    .delete(protect, allowedTo("coach", "observer"), unattendMatch);
+    .post(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER), attendMatch)
+    .delete(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER), unattendMatch);
 
 export default seasonMatchRouter;

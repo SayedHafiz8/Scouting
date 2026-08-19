@@ -101,6 +101,7 @@ import { create, getAll, getSpecific } from "../controllers/agesController.js";
 import { getAgeValidator, createValidator, deleteValidator, updateValidator } from "../utils/validation/agesValidation.js";
 import { protect, allowedTo } from "../controllers/authController.js";
 import teamRouter from "./teamRouter.js";
+import { ROLES } from "../constants/roles.js";
 
 const ageRouter = express.Router();
 
@@ -108,7 +109,7 @@ const ageRouter = express.Router();
 ageRouter.use('/:id/teams', teamRouter);
 
 ageRouter.route('/')
-            .post(protect, allowedTo("admin"), createValidator, create)
+            .post(protect, allowedTo(ROLES.ADMIN), createValidator, create)
             .get(getAll)
 
 

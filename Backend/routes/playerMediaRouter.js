@@ -133,6 +133,33 @@
  *       403:
  *         $ref: '#/components/responses/Forbidden'
  *
+ * /players/{playerId}/media/video/{mediaId}/upload-envelope:
+ *   post:
+ *     summary: Re-issue a TUS upload envelope for a still-processing video (resume after an interrupted upload) — coach/observer, uploader only
+ *     tags: [Media]
+ *     parameters:
+ *       - in: path
+ *         name: playerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: mediaId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: New TUS upload envelope for the same Bunny Stream video
+ *       400:
+ *         description: The video is not awaiting upload (already ready/failed, or not a video)
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *
  * /players/{playerId}/media/upload-eligibility:
  *   get:
  *     summary: Preview the video-upload gate for this player without creating anything — lets the UI show whether upload is freeform (title/description required) or will auto-link to a match.
@@ -284,6 +311,36 @@
  *         $ref: '#/components/responses/Forbidden'
  *       404:
  *         $ref: '#/components/responses/NotFound'
+ *
+ * /players/{playerId}/media/{id}/download:
+ *   get:
+ *     summary: Download the 720p MP4 for a video (admin only)
+ *     tags: [Media]
+ *     parameters:
+ *       - in: path
+ *         name: playerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Video file bytes
+ *         content:
+ *           video/mp4:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  */
 import express from "express";
 
@@ -303,6 +360,7 @@ import { protect, allowedTo } from "../controllers/authController.js";
 import { checkPlayerOwnership, checkMediaOwnership } from "../middlewares/ownership.js";
 import { videoCreateLimiter } from "../middlewares/rateLimiters.js";
 import upload from "../middlewares/uploadMiddleware.js";
+import { ROLES } from "../constants/roles.js";
 import {
     mediaIdValidator,
     uploadMediaValidator,
@@ -318,7 +376,7 @@ mediaRouter
     .route("/video")
     .post(
         protect,
-        allowedTo("coach", "observer"),
+        allowedTo(ROLES.COACH, ROLES.OBSERVER),
         checkPlayerOwnership,
         videoCreateLimiter,
         createVideoValidator,
@@ -330,7 +388,7 @@ mediaRouter
     .route("/upload-eligibility")
     .get(
         protect,
-        allowedTo("coach", "observer"),
+        allowedTo(ROLES.COACH, ROLES.OBSERVER),
         checkPlayerOwnership,
         getUploadEligibilityValidator,
         getUploadEligibility
@@ -341,7 +399,7 @@ mediaRouter
     .route("/video/:mediaId/upload-envelope")
     .post(
         protect,
-        allowedTo("coach", "observer"),
+        allowedTo(ROLES.COACH, ROLES.OBSERVER),
         checkPlayerOwnership,
         videoCreateLimiter,
         reissueEnvelope
@@ -349,10 +407,10 @@ mediaRouter
 
 mediaRouter
     .route("/")
-    .get(protect, allowedTo("coach", "admin", "observer"), checkPlayerOwnership, getAll)
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), checkPlayerOwnership, getAll)
     .post(
         protect,
-        allowedTo("coach", "observer"),
+        allowedTo(ROLES.COACH, ROLES.OBSERVER),
         checkPlayerOwnership,
         upload.single("file"),
         uploadMediaValidator,
@@ -361,17 +419,17 @@ mediaRouter
 
 mediaRouter
     .route("/:id")
-    .get(protect, allowedTo("coach", "admin", "observer"), mediaIdValidator, checkMediaOwnership, getSpecific)
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), mediaIdValidator, checkMediaOwnership, getSpecific)
     // Delete is admin-only — coaches/observers can upload but not remove media (F5/F7d restriction)
-    .delete(protect, allowedTo("admin"), mediaIdValidator, checkMediaOwnership, deleteMedia);
+    .delete(protect, allowedTo(ROLES.ADMIN), mediaIdValidator, checkMediaOwnership, deleteMedia);
 
 // Download the 720p MP4 (backend-proxied attachment — F7d) — admin-only
 mediaRouter
     .route("/:id/download")
-    .get(protect, allowedTo("admin"), mediaIdValidator, checkMediaOwnership, downloadVideo);
+    .get(protect, allowedTo(ROLES.ADMIN), mediaIdValidator, checkMediaOwnership, downloadVideo);
 
 mediaRouter
     .route("/:id/review")
-    .patch(protect, allowedTo("admin"), reviewMediaValidator, reviewMedia);
+    .patch(protect, allowedTo(ROLES.ADMIN), reviewMediaValidator, reviewMedia);
 
 export default mediaRouter;

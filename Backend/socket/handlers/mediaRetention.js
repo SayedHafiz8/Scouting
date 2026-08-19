@@ -8,6 +8,7 @@ import {
     emitCoachDashboardUpdate,
     emitObserverDashboardUpdate,
 } from "../../controllers/dashboardController.js";
+import { ROLES } from "../../constants/roles.js";
 
 // ============================================================================
 // §8 — media retention + A2 orphan cleanup. Runs daily.
@@ -33,7 +34,7 @@ const emitUploader = async (uploaderIds) => {
     if (ids.length === 0) return;
     const users = await User.find({ _id: { $in: ids } }).select("role");
     for (const u of users) {
-        if (u.role === "observer") emitObserverDashboardUpdate(u._id);
+        if (u.role === ROLES.OBSERVER) emitObserverDashboardUpdate(u._id);
         else emitCoachDashboardUpdate(u._id);
     }
 };

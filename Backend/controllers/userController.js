@@ -5,6 +5,7 @@ import fs from "fs";
 
 import User from "../models/userModel.js";
 import IdCardAccessLog from "../models/idCardAccessLogModel.js";
+import { ROLES } from "../constants/roles.js";
 import { creating, deleteOne, gettingAll, restoring, softDelete, updating } from "../services/services.js";
 import {
     buildKey,
@@ -228,7 +229,7 @@ export const restore = asyncHandler(async (req, res, next) => {
 // @route   GET api/v1/users/deactivated
 // @access  admin
 export const getDeactivated = asyncHandler(async (req, res, next) => {
-    const coaches = await User.find({ active: false, role: "coach" })
+    const coaches = await User.find({ active: false, role: ROLES.COACH })
         .setOptions({ bypassFilter: true })
         .select("name email phoneNumber profileImg deactivatedAt")
         .sort({ deactivatedAt: 1 });

@@ -10,6 +10,7 @@ import ApiFeature from "../utils/apiFeatures.js";
 import AppError from "../utils/appError.js";
 import { sendNotificationToUser } from "../socket/handlers/notification.js";
 import { EVALUATION_CRITERIA } from "../utils/coachEvaluationCriteria.js";
+import { ROLES } from "../constants/roles.js";
 
 const populate = [
     { path: "coach", select: "name email" },
@@ -124,7 +125,7 @@ export const create = asyncHandler(async (req, res, next) => {
 export const getAll = asyncHandler(async (req, res, next) => {
     const baseFilter = {};
 
-    if (req.user.role !== "admin") {
+    if (req.user.role !== ROLES.ADMIN) {
         // الكشاف يشوف تقييماته المنشورة بس
         baseFilter.coach = req.user._id;
         baseFilter.status = "published";
@@ -153,7 +154,7 @@ export const getAll = asyncHandler(async (req, res, next) => {
 
     let documents = await features.query.populate(populate);
 
-    if (req.user.role === "admin") {
+    if (req.user.role === ROLES.ADMIN) {
         documents = await filterBlindReviewList(documents, req.user._id);
     }
 
@@ -174,7 +175,7 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
         return next(new AppError(`No evaluation for this id: ${req.params.id}`, 404));
     }
 
-    if (req.user.role !== "admin") {
+    if (req.user.role !== ROLES.ADMIN) {
         const ownPublished =
             document.coach._id.equals(req.user._id) && document.status === "published";
         if (!ownPublished) {
@@ -310,7 +311,7 @@ export const deleting = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/coachEvaluations/summary
 // @access  Private - admin (?coach=) & coach (own)
 export const getSummary = asyncHandler(async (req, res, next) => {
-    const coachId = req.user.role === "admin" ? req.query.coach : req.user._id;
+    const coachId = req.user.role === ROLES.ADMIN ? req.query.coach : req.user._id;
     if (!coachId) {
         return next(new AppError("coach query param is required", 400));
     }

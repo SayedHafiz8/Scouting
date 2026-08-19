@@ -1,6 +1,7 @@
 import { param } from "express-validator";
 import validatorMiddleware from "../../middlewares/validatorMiddleware.js";
 import User from "../../models/userModel.js";
+import { ROLES } from "../../constants/roles.js";
 
 export const coachIdValidator = [
     param("coachId")
@@ -9,7 +10,7 @@ export const coachIdValidator = [
         .custom(async (val) => {
             const coach = await User.findById(val);
             if (!coach) throw new Error("Coach not found");
-            if (coach.role !== "coach") throw new Error("This user is not a coach");
+            if (coach.role !== ROLES.COACH) throw new Error("This user is not a coach");
             return true;
         }),
     validatorMiddleware,
@@ -22,7 +23,7 @@ export const observerIdValidator = [
         .custom(async (val) => {
             const observer = await User.findById(val);
             if (!observer) throw new Error("Observer not found");
-            if (observer.role !== "observer") throw new Error("This user is not an observer");
+            if (observer.role !== ROLES.OBSERVER) throw new Error("This user is not an observer");
             return true;
         }),
     validatorMiddleware,

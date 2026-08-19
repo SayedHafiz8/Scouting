@@ -11,6 +11,7 @@ import {
     getConnectedAdminIds,
 } from "../socket/handlers/notification.js";
 import { getConnectedUsers } from "../socket/index.js";
+import { ROLES } from "../constants/roles.js";
 
 // ============================
 // §11 — كاش TTL في الذاكرة لداشبورد الأدمن
@@ -97,8 +98,8 @@ const computeAdminDashboardData = async () => {
         Player.estimatedDocumentCount(),
         ScoutingReport.estimatedDocumentCount(),
         PlayerMedia.estimatedDocumentCount(),
-        User.countDocuments({ role: "coach" }),
-        User.countDocuments({ role: "observer" }),
+        User.countDocuments({ role: ROLES.COACH }),
+        User.countDocuments({ role: ROLES.OBSERVER }),
         // عدد كل المباريات اللي اتلعبت فعلاً (تاريخها النهاردة أو قبل كده) على مستوى الموقع كله
         SeasonMatch.countDocuments({
             matchDate: { $lte: new Date(new Date().setHours(23, 59, 59, 999)) },
@@ -245,7 +246,7 @@ const getObserverDashboardData = async (observerId) => {
 // ============================
 export const getCoachDashboard = asyncHandler(async (req, res, next) => {
     const coachId =
-        req.user.role === "admin"
+        req.user.role === ROLES.ADMIN
             ? req.params.coachId  // ✅ الأدمن بيمرر coachId في الـ params
             : req.user._id;       // ✅ الكوتش بياخد id بتاعه تلقائي
 
@@ -263,7 +264,7 @@ export const getCoachDashboard = asyncHandler(async (req, res, next) => {
 // ============================
 export const getObserverDashboard = asyncHandler(async (req, res, next) => {
     const observerId =
-        req.user.role === "admin"
+        req.user.role === ROLES.ADMIN
             ? req.params.observerId
             : req.user._id;
 

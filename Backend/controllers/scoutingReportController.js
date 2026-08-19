@@ -9,6 +9,7 @@ import ApiFeature from "../utils/apiFeatures.js";
 import { deleteOne, gettingSpecific, updating } from "../services/services.js";
 import { emitCoachDashboardUpdate, emitObserverDashboardUpdate } from "./dashboardController.js";
 import AppError from "../utils/appError.js";
+import { ROLES } from "../constants/roles.js";
 
 const reportPopulate = [
     { path: "coach", select: "name email role" },
@@ -116,7 +117,7 @@ export const create = asyncHandler(async (req, res, next) => {
     const document = await ScoutingReport.findById(created._id).populate(reportPopulate);
 
     // عدد التقارير فى الداشبورد بتاع الكاتب (كوتش أو أوبزيرفر) بيتحدث لايف
-    if (req.user.role === "observer") {
+    if (req.user.role === ROLES.OBSERVER) {
         emitObserverDashboardUpdate(req.user._id);
     } else {
         emitCoachDashboardUpdate(req.user._id);
@@ -134,7 +135,7 @@ export const create = asyncHandler(async (req, res, next) => {
 export const getAll = asyncHandler(async (req, res, next) => {
     // نطاق التقارير = تقارير اللاعب ده — وغير الأدمن يشوف تقاريره هو بس (coach = الكاتب)
     const baseFilter = { player: req.params.playerId };
-    if (req.user.role !== "admin") {
+    if (req.user.role !== ROLES.ADMIN) {
         baseFilter.coach = req.user._id;
     } else if (req.query.authorRole) {
         // الأدمن بس يقدر يفلتر يشوف تقارير الكشافين بس أو الأوبزيرفرز بس
@@ -154,16 +155,16 @@ export const getAll = asyncHandler(async (req, res, next) => {
 
     // للأدمن بس: عدد ريبورتات الكوتشات مقابل الأوبزيرفرز على اللاعب ده (مستقل عن فلتر authorRole الحالي، عشان يبان في شكل الأيقونتين مع بعض)
     let authorCounts;
-    if (req.user.role === "admin") {
+    if (req.user.role === ROLES.ADMIN) {
         const roleAgg = await ScoutingReport.aggregate([
             { $match: { player: new mongoose.Types.ObjectId(req.params.playerId) } },
             { $lookup: { from: "users", localField: "coach", foreignField: "_id", as: "author" } },
             { $unwind: "$author" },
             { $group: { _id: "$author.role", count: { $sum: 1 } } },
         ]);
-        authorCounts = { coach: 0, observer: 0 };
+        authorCounts = { [ROLES.COACH]: 0, [ROLES.OBSERVER]: 0 };
         roleAgg.forEach((r) => {
-            if (r._id === "coach" || r._id === "observer") authorCounts[r._id] = r.count;
+            if (r._id === ROLES.COACH || r._id === ROLES.OBSERVER) authorCounts[r._id] = r.count;
         });
     }
 
@@ -199,7 +200,7 @@ export const getPlayerStatistics = asyncHandler(async (req, res, next) => {
 
     // نفس منطق النطاق: غير الأدمن يشوف إحصائيات تقاريره هو بس
     const match = { player: new mongoose.Types.ObjectId(playerId) };
-    if (req.user.role !== "admin") {
+    if (req.user.role !== ROLES.ADMIN) {
         match.coach = new mongoose.Types.ObjectId(req.user._id);
     }
 
@@ -290,7 +291,7 @@ export const getAverageRatingsForPlayers = asyncHandler(async (req, res, next) =
 
     // نفس منطق النطاق زي getPlayerStatistics: غير الأدمن يشوف متوسط تقاريره هو بس
     const match = { player: { $in: ids } };
-    if (req.user.role !== "admin") {
+    if (req.user.role !== ROLES.ADMIN) {
         match.coach = new mongoose.Types.ObjectId(req.user._id);
     }
 

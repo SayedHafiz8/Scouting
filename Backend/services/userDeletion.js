@@ -5,6 +5,7 @@ import ObserverEvaluation from "../models/observerEvaluationModel.js";
 import PlayerMedia from "../models/playerMediaModel.js";
 import SeasonMatch from "../models/seasonMatchModel.js";
 import { deleteMediaImage, deleteVaultImage } from "./imageStorage.js";
+import { ROLES } from "../constants/roles.js";
 
 // ============================================================================
 // §9 — retention عند الحذف النهائي لليوزر.
@@ -95,17 +96,17 @@ export const detachUserReferences = async (user) => {
     let evaluationsDeleted = 0;
     let evaluationsOrphaned = 0;
 
-    if (user.role === "coach") {
+    if (user.role === ROLES.COACH) {
         const res = await CoachEvaluation.deleteMany({ coach: userId });
         evaluationsDeleted = res.deletedCount ?? 0;
     }
 
-    if (user.role === "observer") {
+    if (user.role === ROLES.OBSERVER) {
         const res = await ObserverEvaluation.deleteMany({ observer: userId });
         evaluationsDeleted = res.deletedCount ?? 0;
     }
 
-    if (user.role === "admin") {
+    if (user.role === ROLES.ADMIN) {
         // الـunique indexes على الاتنين بقت partial على evaluator عشان أدمنين
         // قيّموا نفس الشخص في نفس الشهر مايتصادموش بعد التصفير — التفاصيل في
         // التعليق فوق الـindex في كل موديل

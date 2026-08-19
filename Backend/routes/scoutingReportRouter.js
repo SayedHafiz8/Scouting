@@ -259,26 +259,27 @@ import { create, deleting, getAll, getSpecific, setPlayerToBody, resolveSeasonMa
 import { protect, allowedTo } from "../controllers/authController.js";
 import { checkPlayerOwnership, checkReportOwnership } from "../middlewares/ownership.js";
 import { createValidate, deleteValidate, getAllValidate, getSpecificValidate, updateValidate, statisticsValidate } from "../utils/validation/scoutingValidation.js";
+import { ROLES } from "../constants/roles.js";
 
 // mergeParams علشان يشتغل كـ nested route تحت /players/:id/scouting-reports
 const scoutingRouter = express.Router({ mergeParams: true });
 
 scoutingRouter
     .route("/")
-    .get(protect, allowedTo("coach", "admin", "observer"), checkPlayerOwnership, getAllValidate, getAll)
-    .post(protect, allowedTo("coach", "observer"), checkPlayerOwnership, resolveMatchTypeFields, createValidate, setPlayerToBody, resolveSeasonMatchToBody, create);
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), checkPlayerOwnership, getAllValidate, getAll)
+    .post(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER), checkPlayerOwnership, resolveMatchTypeFields, createValidate, setPlayerToBody, resolveSeasonMatchToBody, create);
 
 
 scoutingRouter
     .route("/statistics")
-    .get(protect, allowedTo("coach", "admin", "observer"), checkPlayerOwnership, statisticsValidate, getPlayerStatistics);
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), checkPlayerOwnership, statisticsValidate, getPlayerStatistics);
 
 
 scoutingRouter
     .route("/:id")
-    .get(protect, allowedTo("coach", "admin", "observer"),checkReportOwnership, getSpecificValidate,getSpecific)
-    .patch(protect, allowedTo("coach", "observer"), checkReportOwnership,updateValidate, resolveSeasonMatchToBody, update)
-    .delete(protect, allowedTo("admin"),deleteValidate, deleting);
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER),checkReportOwnership, getSpecificValidate,getSpecific)
+    .patch(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER), checkReportOwnership,updateValidate, resolveSeasonMatchToBody, update)
+    .delete(protect, allowedTo(ROLES.ADMIN),deleteValidate, deleting);
 
 
 

@@ -57,5 +57,12 @@ export const routes: Routes = [
     path: 'auth',
     loadChildren: () => import('./features/auth/auth.routes').then(m => m.authRoutes),
   },
+  {
+    // خارج authGuard/ShellComponent عمداً — الوجهة الافتراضية لأي رول بلا وجهة
+    // معرّفة (RoleLandingService)، ولا يجوز حراستها بـ roleGuard (FR-008: انتهاء
+    // بلا إعادة توجيه إضافية).
+    path: 'unauthorized',
+    loadComponent: () => import('./features/unauthorized/unauthorized.component').then(m => m.UnauthorizedComponent),
+  },
   { path: '**', redirectTo: 'dashboard' },
 ];

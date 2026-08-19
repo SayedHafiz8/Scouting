@@ -295,6 +295,531 @@ export interface paths {
         };
         trace?: never;
     };
+    "/users/{id}/changePassword": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change a user's password (admin only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: password */
+                        password: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Password changed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["ValidationError"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
+    "/users/{id}/force": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Permanently delete a (previously deactivated) user (admin only) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description User permanently deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/profileImg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Upload/replace a user's profile image (admin only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        profileImg: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Profile image updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                document?: components["schemas"]["User"];
+                            };
+                        };
+                    };
+                };
+                400: components["responses"]["ValidationError"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
+    "/users/{id}/idCardImg/front": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Upload/replace the front side of a user's national ID card (admin only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        idCardFrontImg: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Front ID-card image uploaded (no URL/path is ever returned — C3) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["ValidationError"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
+    "/users/{id}/idCardImg/back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Upload/replace the back side of a user's national ID card (admin only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        idCardBackImg: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Back ID-card image uploaded (no URL/path is ever returned — C3) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["ValidationError"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
+    "/users/{id}/idCardImg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report which ID-card sides exist (admin + vault token — never returns a URL or path, C3) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Presence flags for each ID-card side */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                front?: boolean;
+                                back?: boolean;
+                            };
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/idcard/{side}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream a national ID-card side's raw bytes through the backend (admin + vault token — vault Storage zone has no CDN, no URL is ever exposed, C3) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    side: "front" | "back";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Raw image bytes (Cache-Control - no-store, access is audit-logged) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/*": string;
+                    };
+                };
+                400: components["responses"]["ValidationError"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List teams (optionally scoped to an age group via the nested /ages/{id}/teams mount) */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Filter by age group id (implicit when called via /ages/{id}/teams) */
+                    ageGroup?: string;
+                    league?: "premier" | "professional";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of teams */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            count?: number;
+                            data?: {
+                                documents?: components["schemas"]["Team"][];
+                            };
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        /** Create a team (admin only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        clubName: string;
+                        /**
+                         * @default premier
+                         * @enum {string}
+                         */
+                        league?: "premier" | "professional";
+                    };
+                };
+            };
+            responses: {
+                /** @description Team created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                document?: components["schemas"]["Team"];
+                            };
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teams/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a specific team by id */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Team found */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                document?: components["schemas"]["Team"];
+                            };
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete a team (admin only) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Team deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update a team (admin only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        clubName?: string;
+                        /** @enum {string} */
+                        league?: "premier" | "professional";
+                        active?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Team updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                document?: components["schemas"]["Team"];
+                            };
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
     "/seasonMatches": {
         parameters: {
             query?: never;
@@ -1158,6 +1683,210 @@ export interface paths {
         };
         trace?: never;
     };
+    "/players/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Player counts grouped by age group (coach sees own; admin sees all, or a specific coach/observer via query) */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "pending" | "selected" | "rejected" | "observed";
+                    /** @description Admin only — count a specific coach's players */
+                    coach?: string;
+                    /** @description Admin only — count a specific observer's players */
+                    observer?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Counts grouped by age group id */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                counts?: {
+                                    [key: string]: number;
+                                };
+                                total?: number;
+                            };
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/players/reports/average-ratings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Average overall rating across scouting reports for a set of players */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Map of player id to average rating */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                [key: string]: number;
+                            };
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/players/{id}/observers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Add/remove assigned observers for a player without touching status (admin only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        observers: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Observers updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                document?: components["schemas"]["Player"];
+                            };
+                        };
+                    };
+                };
+                400: components["responses"]["ValidationError"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
+    "/players/{id}/profileImg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Upload/replace a player's profile image (coach or admin) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        profileImg: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Profile image updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                document?: components["schemas"]["Player"];
+                            };
+                        };
+                    };
+                };
+                400: components["responses"]["ValidationError"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
     "/players/{playerId}/media": {
         parameters: {
             query?: never;
@@ -1300,6 +2029,53 @@ export interface paths {
                 };
                 401: components["responses"]["Unauthorized"];
                 403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/players/{playerId}/media/video/{mediaId}/upload-envelope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-issue a TUS upload envelope for a still-processing video (resume after an interrupted upload) — coach/observer, uploader only */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    playerId: string;
+                    mediaId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description New TUS upload envelope for the same Bunny Stream video */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The video is not awaiting upload (already ready/failed, or not a video) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
             };
         };
         delete?: never;
@@ -1482,6 +2258,48 @@ export interface paths {
                 404: components["responses"]["NotFound"];
             };
         };
+        trace?: never;
+    };
+    "/players/{playerId}/media/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the 720p MP4 for a video (admin only) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    playerId: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Video file bytes */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "video/mp4": string;
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/observerEvaluations": {
@@ -1926,6 +2744,93 @@ export interface paths {
                             /** @example success */
                             status?: string;
                             data?: components["schemas"]["CoachDashboard"];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard/observer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the logged-in observer's dashboard statistics */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Observer dashboard data */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: components["schemas"]["ObserverDashboard"];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard/admin/observer/{observerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get dashboard statistics for a specific observer (admin only) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    observerId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Observer dashboard data */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: components["schemas"]["ObserverDashboard"];
                         };
                     };
                 };
@@ -2647,6 +3552,148 @@ export interface paths {
         };
         trace?: never;
     };
+    "/auth/vaultPassword/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-verify the admin's own login password to obtain a short-lived vault token (admin only)
+         * @description The vault token (15 minutes) is required as the X-Vault-Token header on ID-card endpoints (C3). Repeated wrong passwords lock the vault temporarily via vaultFailedAttempts/vaultLockedUntil on the user document.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: password */
+                        password: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Vault token issued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                vaultToken?: string;
+                                /** @description Seconds until the token expires */
+                                expiresIn?: number;
+                            };
+                        };
+                    };
+                };
+                400: components["responses"]["ValidationError"];
+                /** @description Incorrect password */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                /** @description Too many failed attempts — temporarily locked */
+                423: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/setup-admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * One-time bootstrap — promote an existing account to admin (no auth required, gated by a setup key)
+         * @description Refuses if any admin account already exists (active or deactivated) or if the setup key doesn't match ADMIN_SETUP_KEY. Intended for initial deployment only — the normal path is the seedAdmin() bootstrap in server.js using ADMIN_* env vars.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: email
+                         * @description Email of an existing account to promote
+                         */
+                        email: string;
+                        setupKey: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Admin setup complete */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            message?: string;
+                            data?: {
+                                user?: components["schemas"]["User"];
+                            };
+                        };
+                    };
+                };
+                400: components["responses"]["ValidationError"];
+                /** @description Invalid setup key, or an admin already exists */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ages": {
         parameters: {
             query?: never;
@@ -2804,6 +3851,15 @@ export interface components {
             /** Format: date-time */
             updatedAt?: string;
         };
+        Team: {
+            _id?: string;
+            name?: string;
+            ageGroup?: string | components["schemas"]["AgeGroup"];
+            /** @enum {string} */
+            league?: "premier" | "professional";
+            clubName?: string;
+            active?: boolean;
+        };
         Player: {
             _id?: string;
             name?: string;
@@ -2936,6 +3992,12 @@ export interface components {
             totalCoaches?: number;
             totalMatchesPlayed?: number;
             topCoaches?: components["schemas"]["TopCoach"][];
+        };
+        ObserverDashboard: {
+            totalPlayersObserved?: number;
+            totalReports?: number;
+            totalMedia?: number;
+            totalMatches?: number;
         };
         ReportStatistics: {
             totalReports?: number;

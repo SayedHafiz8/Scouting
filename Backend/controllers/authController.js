@@ -6,6 +6,7 @@ import crypto from "crypto";
 import AppError from "../utils/appError.js";
 import User from "../models/userModel.js";
 import sendEmail from "../utils/sendEmail.js";
+import { ROLES } from "../constants/roles.js";
 
 // ============================
 // helpers
@@ -63,7 +64,7 @@ export const signup = asyncHandler(async (req, res, next) => {
         name: req.body.name,
         email: req.body.email,
         password: req.body.password,
-        role: "coach",
+        role: ROLES.COACH,
     });
 
     await sendTokenResponse(res, user, 201);
@@ -358,7 +359,7 @@ export const updateLoggedUser = asyncHandler(async (req, res, next) => {
     };
     // الإيميل والعنوان مقفولين على غير الأدمن — بيتغيروا بس عن طريق الأدمن من صفحات
     // إدارة اليوزرز، مش من صفحة "الملف الشخصي" الذاتية. رقم الموبايل يقدر أي حد يعدله عادي.
-    if (req.user.role === "admin") {
+    if (req.user.role === ROLES.ADMIN) {
         updates.email = req.body.email;
         updates.address = req.body.address;
     }
@@ -431,7 +432,7 @@ export const setupAdmin = asyncHandler(async (req, res, next) => {
     }
 
     // منع التنفيذ لو في أدمن موجود بالفعل (نشط أو متوقف)
-    const existingAdmin = await User.findOne({ role: "admin" }).setOptions({ bypassFilter: true });
+    const existingAdmin = await User.findOne({ role: ROLES.ADMIN }).setOptions({ bypassFilter: true });
     if (existingAdmin) {
         return next(new AppError("An admin account already exists.", 403));
     }
@@ -442,7 +443,7 @@ export const setupAdmin = asyncHandler(async (req, res, next) => {
 
     const user = await User.findOneAndUpdate(
         { email },
-        { role: "admin" },
+        { role: ROLES.ADMIN },
         { returnDocument: "after", runValidators: true }
     ).setOptions({ bypassFilter: true });
 

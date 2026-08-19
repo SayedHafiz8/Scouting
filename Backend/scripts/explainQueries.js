@@ -35,6 +35,7 @@ import ScoutingReport from "../models/scoutingReportModel.js";
 import PlayerMedia from "../models/playerMediaModel.js";
 import SeasonMatch from "../models/seasonMatchModel.js";
 import CoachEvaluation from "../models/coachEvaluationModel.js";
+import { ROLES } from "../constants/roles.js";
 
 assertSafeTarget({ scriptName: "explainQueries.js" });
 const URI = SEED_TARGET_URI;
@@ -146,8 +147,8 @@ async function run() {
     const oid = (v) => new mongoose.Types.ObjectId(v);
 
     // نجيب معرّفات حقيقية من الداتا المزروعة عشان الفلاتر تبقى انتقائية بجد
-    const coach = await User.findOne({ role: "coach" }).select("_id").lean();
-    const observer = await User.findOne({ role: "observer" }).select("_id").lean();
+    const coach = await User.findOne({ role: ROLES.COACH }).select("_id").lean();
+    const observer = await User.findOne({ role: ROLES.OBSERVER }).select("_id").lean();
     const group = await AgeGroup.findOne({}).select("_id").lean();
     const player = await Player.findOne({}).select("_id").lean();
     const observedPlayer = await Player.findOne({ status: "observed" }).select("_id observers").lean();
@@ -361,7 +362,7 @@ async function run() {
     // ── 10. unbounded endpoint — userController.js:223 ──────────────────────
     await explainFind(
         "users • getDeactivated (NO pagination)  [userController.js:223]",
-        User, { active: false, role: "coach" }, { sort: { deactivatedAt: 1 }, limit: 0 }
+        User, { active: false, role: ROLES.COACH }, { sort: { deactivatedAt: 1 }, limit: 0 }
     );
 
     if (observedPlayer) {
