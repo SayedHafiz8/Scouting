@@ -101,6 +101,24 @@ const playerSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'User',
 },
+    // Stage 2 — مين أنشأ اللاعب أصلاً. مش بديل لـcoach: الملكية بتفضل في coach،
+    // ودي نسبة إنشاء بتتقري في فرع واحد بس من سكوب proScout — اللاعب اللي لسه
+    // متربطش بفريق (team: null). لاعب ليه فريق، النطاق بيتحدد من دوري الفريق
+    // وبس، مهما كان مين أنشأه.
+    //
+    // مش required عن قصد (نفس منطق coach فوق): المستندات اللي اتعملت قبل
+    // الحقل ده مالهاش قيمة، وservices.updating بيشغّل runValidators:true —
+    // فlو خليناه required كان أي تعديل على لاعب قديم هيفشل لحد ما الـbackfill
+    // يخلص، يعني كل تعديل مربوط بترتيب الميجريشن. scripts/backfillPlayerCreatedBy.js
+    // بيملاه من coach، واللاعب اليتيم (بلا كوتش) بيتساب فاضي — مالوش منشئ حقيقي،
+    // والقيمة الغايبة بتتصرف زي null بالظبط في استعلام النطاق.
+    //
+    // بيتحط من السيرفر بس (playerController.create)، وlockField("createdBy") في
+    // playerValidation بيمنع أي قيمة جاية من العميل في الإنشاء والتعديل.
+    createdBy: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User',
+    },
     // §11 — كلمات البحث المطبّعة (lowercase) المشتقة من name + city.
     //
     // ليه حقل مشتق أصلاً: الـ$regex الـcase-insensitive (i) مابيستخدمش حدود
@@ -203,6 +221,11 @@ playerSchema.index({ observers: 1, ageGroup: 1 });
 playerSchema.index({ createdAt: 1 });           // dailySummary: $match createdAt > lastSentAt
 // الربط العكسي Team.players (foreignField: team) — بس للاعبين المربوطين فعلاً بفريق
 playerSchema.index({ team: 1 }, { sparse: true });
+// Stage 2 — الفرع التاني من سكوب proScout: { team: null, createdBy: <userId> }.
+// الـindex اللي فوقه (team_1 الـsparse) **مايقدرش** يخدم الفرع ده: الـsparse بيستبعد
+// المستندات اللي team فيها null، ودي بالظبط المجموعة اللي الفرع بيختارها. فمحتاجين
+// index غير sparse على الاتنين مع بعض.
+playerSchema.index({ team: 1, createdBy: 1 });
 
 
 

@@ -10,6 +10,7 @@ import { deleteOne, gettingSpecific, updating } from "../services/services.js";
 import { emitCoachDashboardUpdate, emitObserverDashboardUpdate } from "./dashboardController.js";
 import AppError from "../utils/appError.js";
 import { ROLES } from "../constants/roles.js";
+import { playerScopeFor } from "../services/scope.js";
 
 const reportPopulate = [
     { path: "coach", select: "name email role" },
@@ -289,8 +290,25 @@ export const getAverageRatingsForPlayers = asyncHandler(async (req, res, next) =
         return res.status(200).json({ status: "success", data: { averages: {} } });
     }
 
+    // Stage 2 — تضييق قائمة الـids للاعبين داخل نطاق الـproScout قبل ما الـpipeline
+    // تشتغل. الـendpoint دي كانت **مسكوبة بالفعل** لغير الأدمن (السطر تحت) لكن على
+    // المحور الغلط: ملكية التقرير، مش دوري اللاعب. يعني كانت بتقبل أي قائمة ids
+    // وبترد على أسئلة عن لاعبين ممكن السائل مالوش حق يعرف بوجودهم أصلاً.
+    //
+    // التضييقين بيتقاطعوا ومابيستبدلوش بعض: التقييد على ملكية التقرير تحت بيفضل
+    // شغال كما هو. إسقاطه كان هيبقى **توسيع** — وكان هيخلّي الـproScout الرول
+    // الوحيد غير الأدمن اللي بيقرا تقارير غيره (research R7).
+    let scopedIds = ids;
+    const playerScope = await playerScopeFor(req);
+    if (Object.keys(playerScope).length) {
+        scopedIds = await Player.find({ $and: [{ _id: { $in: ids } }, playerScope] }).distinct("_id");
+        if (!scopedIds.length) {
+            return res.status(200).json({ status: "success", data: { averages: {} } });
+        }
+    }
+
     // نفس منطق النطاق زي getPlayerStatistics: غير الأدمن يشوف متوسط تقاريره هو بس
-    const match = { player: { $in: ids } };
+    const match = { player: { $in: scopedIds } };
     if (req.user.role !== ROLES.ADMIN) {
         match.coach = new mongoose.Types.ObjectId(req.user._id);
     }

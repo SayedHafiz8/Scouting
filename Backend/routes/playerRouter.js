@@ -466,28 +466,33 @@ const playerRouter = express.Router({mergeParams: true});
 
 // لازم يتحط قبل '/:playerId/reports' عشان "reports" متتاخدش كـ playerId
 playerRouter.route('/reports/average-ratings')
-            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), getAverageRatingsForPlayers);
+            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), getAverageRatingsForPlayers);
 
 playerRouter.use('/:playerId/reports', scoutingRouter);
 playerRouter.use('/:playerId/media', mediaRouter)
 
-// proScout المضاف هنا فقط من الأربعة list endpoints المرشحة — لأن getAll هي الوحيدة
-// اللي بتعدّي على ApiFeature.filter/ownerFields (طبقة النطاق المركزية)، فغيابه من
-// ownerFields بيرجّعله MATCH_NOTHING فعلاً بدل ما يترفض من بوابة الرول. counts/
-// average-ratings/seasonMatches عندهم منطق if/else لكل رول بيرجع {} (بدون فلتر) لأي
-// رول مش معدود صراحةً — إضافة proScout هناك كانت هتسرّب بيانات، فاتسابوا 403 لحد
-// ما ينتقلوا لطبقة النطاق المركزية (Stage 2 أو تصليح منفصل).
+// Stage 2 — تأجيل المرحلة 1 اتحلّ. الوضع القديم: proScout كان مضاف لـgetAll بس،
+// لأنها الوحيدة اللي بتعدّي على ApiFeature/ownerFields فبترجّع MATCH_NOTHING فعلاً؛
+// counts وaverage-ratings وseasonMatches كانوا 403 لأن فروعهم بترجع {} (بدون فلتر)
+// لأي رول مش معدود، يعني فتحهم كان هيسرّب مش يرجّع صفر.
+//
+// اللي اتعمل: النطاق اتنقل لطبقة مركزية واحدة (services/scope.js) بيقرا منها
+// getAll (base filter) وgetCountsByAgeGroup ($match) وgetAverageRatingsForPlayers
+// (تضييق الـids) وcheckPlayerOwnership (نفس الفلتر على مستند واحد). دلوقتي بس
+// اتفتحت الحدود دي — الترتيب ده شرط أمني: فتح الحد قبل السكوب كان بيكشف الكولكشن
+// كله. تصحيح: average-ratings مكانتش غير مفلترة أصلاً، كانت مسكوبة على محور
+// ملكية التقرير (محور غلط) — راجع specs/003-proscout-data-scope/research.md R6.
 playerRouter.route('/')
             .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),getAllValidate ,getAll)
             .post(protect,allowedTo(ROLES.COACH),setUserIdToBody, createValidate,create)
 
 // Counts per age group — must be declared before '/:id' so "counts" isn't treated as an id
 playerRouter.route('/counts')
-            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), getCountsByAgeGroup)
+            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), getCountsByAgeGroup)
 
 
 playerRouter.route('/:id')
-            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), checkPlayerOwnership, getSpecificValidate, getSpecific)
+            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, getSpecificValidate, getSpecific)
             .patch(protect, allowedTo(ROLES.COACH), checkPlayerOwnership, updateValidate, update)
             .delete(protect, allowedTo(ROLES.ADMIN), deleteValidate, deleting)
 

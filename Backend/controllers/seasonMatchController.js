@@ -6,6 +6,7 @@ import AppError from "../utils/appError.js";
 import { creating, gettingAll, updating, deleteOne } from "../services/services.js";
 import { decorateMedia } from "./playerMediaController.js";
 import { ROLES } from "../constants/roles.js";
+import { seasonMatchScopeFor } from "../services/scope.js";
 
 // createdBy بيتحط من السيرفر (creating بيعمل req.body[field] = req.user._id)
 export const create = creating(SeasonMatch, "createdBy");
@@ -20,15 +21,35 @@ export const setUpdatedBy = (req, res, next) => {
 // attendees مطلوب لـ ?attendees=<id> (الكشاف بيفلتر الماتشات اللي حضّرها بس).
 const SEASON_MATCH_FILTERS = ["ageGroup", "season", "league", "status", "attendees", "matchDate"];
 
+// سكوب المباريات لكل رول — switch صريح بدل الـif القديم (Principle II).
+//
 // أوبزيرفر بيشوف بس مباريات فرق اللاعبين اللي الأدمن حطّه يتابعهم (Player.observers) —
 // مش كل جدول المباريات زي الكوتش/الأدمن. لو مفيش لاعب متحدد ليه فريق أصلاً، يشوف صفر مباريات.
+// الفرع ده محمي دستورياً (Principle III) ومحفوظ كما هو حرفياً.
 async function seasonMatchBaseFilterFor(req) {
-    if (req.user.role !== ROLES.OBSERVER) return {};
+    switch (req.user.role) {
+        case ROLES.ADMIN:
+        case ROLES.COACH:
+            return {};
 
-    const teamIds = (await Player.find({ observers: req.user._id }).distinct("team")).filter(Boolean);
-    return teamIds.length
-        ? { $or: [{ homeTeam: { $in: teamIds } }, { awayTeam: { $in: teamIds } }] }
-        : { _id: { $in: [] } };
+        case ROLES.OBSERVER: {
+            const teamIds = (await Player.find({ observers: req.user._id }).distinct("team")).filter(Boolean);
+            return teamIds.length
+                ? { $or: [{ homeTeam: { $in: teamIds } }, { awayTeam: { $in: teamIds } }] }
+                : { _id: { $in: [] } };
+        }
+
+        // Stage 2 — دوري المحترفين بس. بيرجع ملفوف في $and من الطبقة المركزية:
+        // `league` مُدرج في SEASON_MATCH_FILTERS تحت، فنطاق غير ملفوف كان
+        // بيتكتب فوقه بـ?league=premier ويرجّع الدوري التاني كامل (research R12).
+        case ROLES.PRO_SCOUT:
+            return seasonMatchScopeFor(req);
+
+        // Deny by default (Principle II) — كان بيرجع {} (كل المباريات) لأي رول
+        // مش معدود، يعني رول جديد يتضاف للـenum كان بيشوف الجدول كله بالصدفة.
+        default:
+            return { _id: { $in: [] } };
+    }
 }
 
 // @desc    Get all season matches (filter by ageGroup/season/status)

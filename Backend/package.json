@@ -15,6 +15,7 @@
     "dump-spec": "node scripts/dump-spec.js",
     "sync-indexes": "node scripts/syncAllIndexes.js",
     "backfill-search-tokens": "node scripts/backfillSearchTokens.js",
+    "backfill-player-createdby": "node scripts/backfillPlayerCreatedBy.js",
     "seed:loadtest": "node scripts/seedLoadTest.js",
     "explain": "node scripts/explainQueries.js",
     "clone-teams": "node scripts/cloneTeamsToAgeGroup.js"

@@ -20,7 +20,7 @@ import {
     updateStatusValidate,
 } from "../utils/validation/seasonMatchValidation.js";
 import { protect, allowedTo } from "../controllers/authController.js";
-import { checkSeasonMatchAttendee } from "../middlewares/ownership.js";
+import { checkSeasonMatchAttendee, checkSeasonMatchScope } from "../middlewares/ownership.js";
 import { ROLES } from "../constants/roles.js";
 
 /**
@@ -190,12 +190,16 @@ import { ROLES } from "../constants/roles.js";
  */
 const seasonMatchRouter = express.Router();
 
+// Stage 2 — proScout اتفتحله الحدّان دول بعد ما seasonMatchBaseFilterFor بقى
+// switch صريح بيرجّع { league: "professional" } ملفوف في $and من الطبقة المركزية.
+// قبل كده كان بيرجع {} لأي رول مش معدود، يعني فتح الحد كان بيسرّب الجدول كله.
+// مسار /:id محتاج checkSeasonMatchScope كمان لأن الـbaseFilterFn بيحكم القوايم بس.
 seasonMatchRouter.route('/')
-    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), getAllValidate, getAll)
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), getAllValidate, getAll)
     .post(protect, allowedTo(ROLES.ADMIN), createValidate, create);
 
 seasonMatchRouter.route('/:id')
-    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), getSpecificValidate, getSpecific)
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), getSpecificValidate, checkSeasonMatchScope, getSpecific)
     .patch(protect, allowedTo(ROLES.ADMIN), updateValidate, setUpdatedBy, update)
     .delete(protect, allowedTo(ROLES.ADMIN), deleteValidate, deleting);
 
