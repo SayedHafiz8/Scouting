@@ -156,7 +156,7 @@ describe('POST /api/v1/users', () => {
         password: TEST_PASSWORD,
         passwordConfirm: TEST_PASSWORD,
         phoneNumber: '01033334444',
-        role: 'proScout',
+        role: 'notARealRole',
       });
 
     expect(res.status).toBe(400);
@@ -179,6 +179,26 @@ describe('POST /api/v1/users', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.document.role).toBe('observer');
+  });
+
+  // ── Stage 1 (ProScout Role Definition) — spec FR-001/FR-002 ────────────────
+  it('admin can create a user with role proScout', async () => {
+    const { token } = await createAdmin();
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Valid Pro Scout',
+        email: 'validproscout@test.com',
+        password: TEST_PASSWORD,
+        passwordConfirm: TEST_PASSWORD,
+        phoneNumber: '01033334444',
+        role: 'proScout',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.document.role).toBe('proScout');
   });
 
   it('omitting role still applies the existing default (FR-014)', async () => {

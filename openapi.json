@@ -106,7 +106,8 @@
             "enum": [
               "admin",
               "coach",
-              "observer"
+              "observer",
+              "proScout"
             ]
           },
           "phoneNumber": {
