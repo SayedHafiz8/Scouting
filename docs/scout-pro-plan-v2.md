@@ -138,6 +138,18 @@
 
 **أخطر مرحلة. راجعها سطر بسطر.**
 
+**ملاحظة صريحة (وارثة من المرحلة 1):** `GET /players/counts` و
+`GET /players/reports/average-ratings` و `GET /seasonMatches` اتسابوا **403** عمداً
+في المرحلة 1 — مش `MATCH_NOTHING` زي `GET /players`. السبب: فروعهم الحالية
+(`getCountsByAgeGroup`, `getAverageRatingsForPlayers`, `seasonMatchBaseFilterFor`)
+بترجع استعلام **غير مفلتر** (`{}` = كل البيانات) لأي رول مش معدود فيهم صراحةً،
+مش `MATCH_NOTHING`. فتحهم لـ `proScout` عبر `allowedTo` من غير سكوب فعلي كان
+هيسرّب كل بيانات العدّادات/المباريات، مش يرجّع صفر. **المرحلة 2 لازم تضيف
+الثلاثة دول لطبقة السكوب المركزية (`ownerFields` لو أمكن، أو `baseFilterFn` زي
+`seasonMatchBaseFilterFor` تحت) قبل ما تفتحهم من `allowedTo` لـ `proScout` — فتح
+الـ`allowedTo` من غير السكوب أولاً هو بالظبط الثغرة اللي المرحلة 1 تجنّبتها
+عمداً.**
+
 ```
 /speckit-specify
 
