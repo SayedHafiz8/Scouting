@@ -471,8 +471,14 @@ playerRouter.route('/reports/average-ratings')
 playerRouter.use('/:playerId/reports', scoutingRouter);
 playerRouter.use('/:playerId/media', mediaRouter)
 
+// proScout المضاف هنا فقط من الأربعة list endpoints المرشحة — لأن getAll هي الوحيدة
+// اللي بتعدّي على ApiFeature.filter/ownerFields (طبقة النطاق المركزية)، فغيابه من
+// ownerFields بيرجّعله MATCH_NOTHING فعلاً بدل ما يترفض من بوابة الرول. counts/
+// average-ratings/seasonMatches عندهم منطق if/else لكل رول بيرجع {} (بدون فلتر) لأي
+// رول مش معدود صراحةً — إضافة proScout هناك كانت هتسرّب بيانات، فاتسابوا 403 لحد
+// ما ينتقلوا لطبقة النطاق المركزية (Stage 2 أو تصليح منفصل).
 playerRouter.route('/')
-            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER),getAllValidate ,getAll)
+            .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),getAllValidate ,getAll)
             .post(protect,allowedTo(ROLES.COACH),setUserIdToBody, createValidate,create)
 
 // Counts per age group — must be declared before '/:id' so "counts" isn't treated as an id

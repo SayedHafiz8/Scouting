@@ -3837,7 +3837,7 @@ export interface components {
             /** Format: email */
             email?: string;
             /** @enum {string} */
-            role?: "admin" | "coach" | "observer";
+            role?: "admin" | "coach" | "observer" | "proScout";
             phoneNumber?: string;
             profileImg?: string;
             address?: string;

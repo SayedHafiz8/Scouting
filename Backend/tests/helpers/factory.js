@@ -95,6 +95,28 @@ export async function createObserver(overrides = {}) {
   };
 }
 
+// ── Create a proScout user and return token ───────────────────────────────────
+export async function createProScout(overrides = {}) {
+  const email = overrides.email ?? `proscout_${Date.now()}@test.com`;
+  const proScout = await User.create({
+    name: 'Test Pro Scout',
+    email,
+    password: TEST_PASSWORD,
+    role: 'proScout',
+    ...overrides,
+  });
+
+  const res = await request(app)
+    .post('/api/v1/auth/login')
+    .send({ email: proScout.email, password: TEST_PASSWORD });
+
+  return {
+    user: proScout,
+    token: res.body.data?.accessToken,
+    cookie: res.headers['set-cookie'],
+  };
+}
+
 // ── Create a Team directly in the DB (requires an AgeGroup id) ────────────────
 export async function createTeam(ageGroupId, overrides = {}) {
   return Team.create({

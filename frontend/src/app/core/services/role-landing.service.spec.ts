@@ -25,6 +25,13 @@ describe('RoleLandingService', () => {
     expect(service.landingFor('not-a-real-role' as any)).toEqual(['/unauthorized']);
   });
 
+  // Stage 1 (ProScout Role Definition) — spec FR-006/SC-005: the role is
+  // intentionally not given a dashboard in this stage, so it must fall into the
+  // same default branch as any other unrecognized role.
+  it('returns /unauthorized for proScout (no dashboard defined for it yet)', () => {
+    expect(service.landingFor('proScout' as any)).toEqual(['/unauthorized']);
+  });
+
   it('returns /unauthorized when role is undefined', () => {
     expect(service.landingFor(undefined)).toEqual(['/unauthorized']);
   });

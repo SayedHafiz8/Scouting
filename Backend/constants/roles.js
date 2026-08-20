@@ -12,6 +12,7 @@ export const ROLES = {
     ADMIN: 'admin',
     COACH: 'coach',
     OBSERVER: 'observer',
+    PRO_SCOUT: 'proScout',
 };
 
 export const ROLE_VALUES = Object.values(ROLES);
