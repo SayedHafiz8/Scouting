@@ -4,6 +4,26 @@ import { check, body, query, param } from "express-validator";
 import validatorMiddleware from "../../middlewares/validatorMiddleware.js";
 import Team from "../../models/teamModel.js";
 import Player from "../../models/playedModel.js";
+import { teamScopeFor } from "../../services/scope.js";
+
+// Stage 2 — نفس نقطة الحقيقة اللي checkTeamScope (middlewares/ownership.js)
+// بيستخدمها. من غيره كان فيه تحقق تاني (Team.findById خام) بيرجع "الفريق موجود"
+// لأي team id — بما فيها فريق برّه نطاق proScout — يعني ?team=<premier id> على
+// GET /players كان بيرجع 200 (فارغة) بينما ?team=<id وهمي> بيرجع 400. الفرق ده
+// كان oracle: بيسرّب وجود/عدم وجود team id برّه النطاق حتى لو proScout مايقدرش
+// يفتح /teams/<premier id> مباشرة (403 من checkTeamScope). دلوقتي نفس فحص
+// teamScopeFor بيتطبّق هنا، فأي فريق برّه النطاق بيترفض بنفس الرسالة زي أي id
+// وهمي — مفيش تفرقة قابلة للملاحظة.
+//
+// لغير proScout: teamScopeFor بترجع {} فالسلوك زي ما هو بالظبط (Principle III).
+const teamExistsInScope = (val, { req }) =>
+    teamScopeFor(req).then((scope) =>
+        Team.exists({ _id: val, ...scope }).then((exists) => {
+            if (!exists) {
+                return Promise.reject(new Error(`No team for this id: ${val}`));
+            }
+        })
+    );
 
 
 
@@ -25,13 +45,7 @@ export const getAllValidate = [
     check('team')
         .optional()
         .isMongoId().withMessage('Invalid Team Id')
-        .custom((val) =>
-            Team.findById(val).then((team) => {
-                if(!team){
-                    return Promise.reject(new Error(`No team for this id: ${val}`))
-                }
-            })
-        ),
+        .custom(teamExistsInScope),
         query("keyword")
         .optional()
         .isString()
@@ -83,13 +97,7 @@ export const createValidate = [
     check('team')
         .optional({ nullable: true })
         .isMongoId().withMessage('Invalid Team Id')
-        .custom((val) =>
-            Team.findById(val).then((team) => {
-                if (!team) {
-                    return Promise.reject(new Error(`No team for this id: ${val}`));
-                }
-            })
-        ),
+        .custom(teamExistsInScope),
     check('teamName')
         .optional({ nullable: true })
         .isString().withMessage('teamName must be text')
@@ -110,6 +118,8 @@ export const createValidate = [
     lockField("observers"),
     lockField("profileImg"),
     lockField("ageGroup"),
+    // Stage 2 — createdBy بيتحط من التوكن في playerController.create زي coach.
+    lockField("createdBy"),
     validatorMiddleware
 
 ];
@@ -139,13 +149,7 @@ export const updateValidate = [
     check('team')
         .optional({ nullable: true })
         .isMongoId().withMessage('Invalid Team Id')
-        .custom((val) =>
-            Team.findById(val).then((team) => {
-                if (!team) {
-                    return Promise.reject(new Error(`No team for this id: ${val}`));
-                }
-            })
-        ),
+        .custom(teamExistsInScope),
     check('teamName')
         .optional({ nullable: true })
         .isString().withMessage('teamName must be text')
@@ -163,6 +167,9 @@ export const updateValidate = [
     lockField("observers"),
     lockField("profileImg"),
     lockField("ageGroup"),
+    // Stage 2 — من غير القفل ده أي كوتش يقدر يعيد كتابة نسبة إنشاء أي لاعب
+    // يملكه عن طريق PATCH /players/:id (services.updating بيمرّر req.body كما هو).
+    lockField("createdBy"),
     validatorMiddleware
 ];
 

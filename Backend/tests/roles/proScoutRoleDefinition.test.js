@@ -60,42 +60,54 @@ describe('proScout — 403 on role-gated routes it is not listed for (US3, FR-00
     expect(res.status).toBe(403);
   });
 
-  // /players/counts, /players/reports/average-ratings, and GET /seasonMatches are
-  // deliberately NOT added to allowedTo for proScout in this stage — unlike GET
-  // /players, they scope access via ad-hoc per-role if/else branches rather than the
-  // central ApiFeature/ownerFields layer, and fall through to an UNFILTERED query
-  // ({} — all documents) for any role they don't explicitly branch on. Granting
-  // proScout access here before that scoping is centralized would leak all players'
-  // counts / all season matches, not return an empty result. They stay 403 until a
-  // stage does that scoping work properly (Stage 2, or a dedicated fix).
-  it('GET /players/counts (not yet centrally scoped) → 403', async () => {
+  // ── Stage 1 deferral: RESOLVED in Stage 2 ──────────────────────────────────
+  // Stage 1 kept /players/counts, /players/reports/average-ratings and
+  // GET /seasonMatches at 403 because none of them scoped through the central
+  // layer — each branched per-role in an if/else and fell through for any role it
+  // did not name. Stage 2 moved all three onto services/scope.js, so the gates are
+  // now open and the results are scoped; see specs/003-proscout-data-scope/.
+  //
+  // Correction to Stage 1's stated reason: only TWO of the three fell through to a
+  // genuinely UNFILTERED query ({} — every document). getCountsByAgeGroup and
+  // seasonMatchBaseFilterFor did; getAverageRatingsForPlayers did NOT — it already
+  // restricted every non-admin to their own authored reports, so it was scoped, just
+  // on the wrong axis (report authorship, not player league). The ordering rule
+  // (scope first, then open the gate) was load-bearing for two and belt-and-braces
+  // for the third. See research.md R6.
+  //
+  // Scoped behavior itself is covered in tests/roles/proScoutDataScope.test.js;
+  // these two only assert the gate is no longer closed.
+  it('GET /players/counts → reachable and scoped (Stage-2 gate opened)', async () => {
     const { token } = await createProScout();
 
     const res = await request(app)
       .get('/api/v1/players/counts')
       .set('Authorization', `Bearer ${token}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.data.total).toBe(0); // no professional-league data seeded here
   });
 
-  it('GET /players/reports/average-ratings (not yet centrally scoped) → 403', async () => {
+  it('GET /players/reports/average-ratings → reachable and scoped (Stage-2 gate opened)', async () => {
     const { token } = await createProScout();
 
     const res = await request(app)
       .get('/api/v1/players/reports/average-ratings')
       .set('Authorization', `Bearer ${token}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.data.averages).toEqual({});
   });
 
-  it('GET /seasonMatches (not yet centrally scoped) → 403', async () => {
+  it('GET /seasonMatches → reachable and scoped (Stage-2 gate opened)', async () => {
     const { token } = await createProScout();
 
     const res = await request(app)
       .get('/api/v1/seasonMatches')
       .set('Authorization', `Bearer ${token}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(0); // no professional-league matches seeded here
   });
 
   it('POST /players (coach-only) → 403', async () => {
@@ -121,8 +133,17 @@ describe('proScout — 403 on role-gated routes it is not listed for (US3, FR-00
   });
 });
 
-describe('proScout — GET /teams accepted known exception (US3, FR-009, contract C6)', () => {
-  it('returns 200 with the (unscoped) team list — documented pre-existing gap, closed in Stage 2', async () => {
+// Stage-1 contract C6 — CLOSED by Stage 2.
+// (Note the two numbering schemes: "C6" here is a Stage-1 spec contract item, not
+// a Constitution constraint — those run C-1…C-5.)
+//
+// Stage 1 recorded GET /teams as a known exception: it carries protect but no
+// allowedTo, so any authenticated role saw every team, unscoped. Stage 2 adds a
+// league base filter to gettingAll(Team, …) and a checkTeamScope guard on
+// /teams/:id, so the role now sees professional-league teams only.
+// Scoped behavior is covered in tests/roles/proScoutDataScope.test.js.
+describe('proScout — GET /teams is now league-scoped (US3, FR-005, Stage-1 contract C6 closed)', () => {
+  it('returns 200, and the list is scoped rather than the full team table', async () => {
     const { token } = await createProScout();
 
     const res = await request(app)
@@ -130,5 +151,8 @@ describe('proScout — GET /teams accepted known exception (US3, FR-009, contrac
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
+    // no professional-league teams seeded here → scoped list is empty, whereas
+    // before Stage 2 this returned every team in the database
+    expect(res.body.data.documents).toEqual([]);
   });
 });

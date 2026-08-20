@@ -6,12 +6,17 @@ import Player from "../models/playedModel.js";
 import ScoutingReport from "../models/scoutingReportModel.js";
 import PlayerMedia from "../models/playerMediaModel.js";
 import SeasonMatch from "../models/seasonMatchModel.js";
+import Team from "../models/teamModel.js";
 import AppError from "../utils/appError.js";
 import { ROLES } from "../constants/roles.js";
+import { professionalTeamIds, seasonMatchScopeFor, teamScopeFor } from "../services/scope.js";
+import { logScopeDenial } from "../utils/accessLog.js";
 
 export const checkPlayerOwnership = asyncHandler(async (req, res, next) => {
     const id = req.params.playerId ?? req.params.id;
-    const player = await Player.findById(id).select("coach observers");
+    // team وcreatedBy مضافين للـselect عشان فرع proScout تحت يقارن في الذاكرة
+    // (code-review high fix #4) بدل ما يعمل استعلام تاني على نفس المستند.
+    const player = await Player.findById(id).select("coach observers team createdBy");
 
     if (!player) {
         return next(new AppError("Player not found", 404));
@@ -37,6 +42,24 @@ export const checkPlayerOwnership = asyncHandler(async (req, res, next) => {
         // بيشدّ العزل مش بيرخّيه: من غيره الـ.toString() على null كان هيرمي 500 بدل 403.
         // الأدمن بس هو اللي بيشوفه (بيرجع من فوق) لحد ما يعيّنله كوتش جديد.
         if (!player.coach || player.coach.toString() !== req.user._id.toString()) {
+            return next(new AppError("You are not allowed to access this player's data", 403));
+        }
+        return next();
+    }
+
+    // Stage 2 — proScout: نفس منطق playerScopeFor بالظبط، لكن مقارَن في الذاكرة
+    // مش باستعلام تاني. code-review high fix #4: المستند أصلاً اتجاب فوق في
+    // findById، فاستدعاء Player.exists({...}) هنا كان round-trip تاني للداتابيز
+    // لنفس المستند بعينه — professionalTeamIds(req) بترجع الـids ذات الكاش على
+    // req (نفس القيمة اللي playerScopeFor كانت هتحسبها)، فالمقارنة بتبقى محلية.
+    if (req.user.role === ROLES.PRO_SCOUT) {
+        const teamIds = await professionalTeamIds(req);
+        const inScope =
+            (player.team && teamIds.some((t) => t.equals(player.team))) ||
+            (!player.team && player.createdBy && player.createdBy.equals(req.user._id));
+
+        if (!inScope) {
+            logScopeDenial({ req, resource: "player", resourceId: id });
             return next(new AppError("You are not allowed to access this player's data", 403));
         }
         return next();
@@ -68,6 +91,14 @@ export const checkReportOwnership = asyncHandler(async (req, res, next) => {
         return next();
     }
 
+    // Stage 2 — proScout. مسارات التقارير لسه مقفولة من allowedTo لحد المرحلة 4،
+    // فالفرع ده مش قابل للوصول عبر HTTP دلوقتي. موجود عشان فتح الحد في المرحلة 4
+    // يبقى سطر واحد من غير تفكير أمني متأجّل — الدرس المسجّل من المرحلة 1.
+    if (req.user.role === ROLES.PRO_SCOUT) {
+        logScopeDenial({ req, resource: "scoutingReport", resourceId: req.params.id });
+        return next(new AppError("You are not allowed to access this report", 403));
+    }
+
     // Deny by default — رول غير معدود صراحةً.
     return next(new AppError("You are not allowed to access this report", 403));
 });
@@ -92,6 +123,15 @@ export const checkMediaOwnership = asyncHandler(async (req, res, next) => {
             return next(new AppError("This media does not belong to this player", 403));
         }
         return next();
+    }
+
+    // Stage 2 — proScout صراحةً. القيد C-2 بيسمّي الدالة دي بالتحديد: المقارنة
+    // فوق على uploadedBy من غير فحص رول، فأي رول غير معدود كان هيشوف الميديا
+    // اللي رفعها هو — بالمصادفة مش بالتصميم. مسارات الميديا مقفولة من allowedTo
+    // لحد المرحلة 4، والفرع ده بيخلي المنع تصميم صريح قبل ما الحد يتفتح.
+    if (req.user.role === ROLES.PRO_SCOUT) {
+        logScopeDenial({ req, resource: "playerMedia", resourceId: req.params.id });
+        return next(new AppError("You are not allowed to access this media", 403));
     }
 
     // Deny by default (FR-002) — رول غير معدود صراحةً يُرفَض هنا حتى لو كانت قيمة
@@ -121,6 +161,92 @@ export const checkSeasonMatchAttendee = asyncHandler(async (req, res, next) => {
         return next();
     }
 
+    // Stage 2 — proScout. مسارات الحضور لسه مقفولة من allowedTo لحد المرحلة 6،
+    // فالفرع ده مش قابل للوصول عبر HTTP دلوقتي — موجود عشان لما الحد يتفتح
+    // يبقى الفحص الأمني معمول بالفعل مش مؤجّل.
+    //
+    // **الفحصين الاتنين مطلوبين مع بعض**: عضوية attendees وحدها **مش** فحص دوري.
+    // من غير فحص النطاق، أول ما المرحلة 6 تفتح الحد، proScout اتضاف لـattendees
+    // بتاعة مباراة في الدوري الممتاز (بأي طريقة) هيعدّي. النطاق هو اللي بيبقى
+    // حامل الحمل ساعتها.
+    //
+    // skipPopulate: exists() بتنفّذ كـfindOne فبتشغّل pre(/^find/) بتاع
+    // seasonMatchModel اللي بيعمل populate رباعي — نفس السبب اللي الفحص فوق
+    // مستخدم عشانه setOptions({ skipPopulate: true }).
+    //
+    // الحضور نفسه مرفوض دلوقتي بغض النظر — المرحلة 2 قراءة بس.
+    if (req.user.role === ROLES.PRO_SCOUT) {
+        const inScope = await SeasonMatch.exists({
+            _id: req.params.id,
+            ...(await seasonMatchScopeFor(req)),
+        }).setOptions({ skipPopulate: true });
+
+        if (!inScope) {
+            logScopeDenial({ req, resource: "seasonMatch", resourceId: req.params.id });
+        }
+        return next(new AppError("You are not assigned to attend this match", 403));
+    }
+
     // Deny by default — رول غير معدود صراحةً.
     return next(new AppError("You are not assigned to attend this match", 403));
+});
+
+// Stage 2 — حارس النطاق لـGET /seasonMatches/:id. القائمة محكومة بـbaseFilterFn،
+// لكن ApiFeature/gettingAll مابيحكموش مسارات /:id — فمن غير الحارس ده أي مباراة
+// خارج الدوري بتبقى قابلة للقراءة بالـID المباشر (Principle IV).
+//
+// بنمرّر نفس أوبجكت النطاق بتاع القائمة لـexists — نفس مبدأ checkPlayerOwnership:
+// تعريف واحد، فمستحيل ينحرف نطاق القائمة عن نطاق الوصول المباشر (FR-011).
+export const checkSeasonMatchScope = asyncHandler(async (req, res, next) => {
+    if (req.user.role === ROLES.ADMIN) {
+        return next();
+    }
+
+    if (req.user.role === ROLES.PRO_SCOUT) {
+        const inScope = await SeasonMatch.exists({
+            _id: req.params.id,
+            ...(await seasonMatchScopeFor(req)),
+        }).setOptions({ skipPopulate: true });
+
+        if (!inScope) {
+            logScopeDenial({ req, resource: "seasonMatch", resourceId: req.params.id });
+            return next(new AppError("You are not allowed to access this match", 403));
+        }
+        return next();
+    }
+
+    // الكوتش والأوبزيرفر: السلوك القائم كما هو بالظبط — الحارس ده مابيضيفش عليهم
+    // أي قيد جديد (Principle III). سكوب الأوبزيرفر على القوائم موجود في
+    // seasonMatchBaseFilterFor ومالوش علاقة بالمسار ده.
+    return next();
+});
+
+// Stage 2 — حارس النطاق لـGET /teams/:id (Constraint C-3).
+//
+// ليه حارس مش تعديل في الكنترولر: getSpecific بتاع الفرق هو
+// gettingSpecific(Team) — findById عريان من غير أي hook للنطاق. تعديل الفاكتوري
+// العامة كان هيمس موارد تانية بتستخدمها، والمبدأ IV بيطلب إن رفض مسارات /:id
+// ييجي من الطبقة دي أصلاً.
+//
+// لاحظ اللاتماثل المقصود مع professionalTeamIds في services/scope.js: هناك
+// الـop بيبقى distinct فبيتخطّى hook الحذف الناعم (الفرق المحترفة المعطّلة
+// بتفضل في نطاق **اللاعبين** عشان لاعبيها مايختفوش)، وهنا exists بتنفّذ
+// كـfindOne فالـhook بيشتغل والفرق المعطّلة بتتستبعد — زي كل الرولات التانية.
+export const checkTeamScope = asyncHandler(async (req, res, next) => {
+    if (req.user.role !== ROLES.PRO_SCOUT) {
+        // C-3: القراءات المفتوحة تبقى مفتوحة — admin/coach/observer سلوكهم
+        // مطابق تماماً لما كان قبل المرحلة دي.
+        return next();
+    }
+
+    const inScope = await Team.exists({
+        _id: req.params.id,
+        ...(await teamScopeFor(req)),
+    });
+
+    if (!inScope) {
+        logScopeDenial({ req, resource: "team", resourceId: req.params.id });
+        return next(new AppError("You are not allowed to access this team", 403));
+    }
+    return next();
 });

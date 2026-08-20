@@ -2,6 +2,7 @@ import express from "express";
 import { getAll, create, getSpecific, deleting, update, setAgeIdToBody } from "../controllers/teamsController.js";
 import { createValidate, deleteValidate, getAllValidate, getSpecificValidate, updateValidate } from "../utils/validation/teamValidation.js";
 import { protect, allowedTo } from "../controllers/authController.js";
+import { checkTeamScope } from "../middlewares/ownership.js";
 import { ROLES } from "../constants/roles.js";
 // (mergeParams) using for access parameters on other routers
 const teamRouter = express.Router({mergeParams: true});
@@ -162,7 +163,7 @@ teamRouter.route('/')
  *       404: { $ref: '#/components/responses/NotFound' }
  */
 teamRouter.route('/:id')
-            .get(protect, getSpecificValidate, getSpecific)
+            .get(protect, getSpecificValidate, checkTeamScope, getSpecific)
             .patch(protect, allowedTo(ROLES.ADMIN), updateValidate, update)
             .delete(protect, allowedTo(ROLES.ADMIN), deleteValidate, deleting)
 

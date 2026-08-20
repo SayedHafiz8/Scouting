@@ -86,8 +86,25 @@ class ApiFeature {
         if (!this.user) return { ...MATCH_NOTHING }; // قائمة مملوكة على راوت من غير protect
         if (this.user.role === ROLES.ADMIN) return {};
 
+        // Stage 2 — التفرقة بين "الدور مش موجود في الماب" و"موجود بقيمة null".
+        //
+        // غايب  → MATCH_NOTHING زي ما كان بالظبط. ده هو ضمان المنع-بالافتراض
+        //          (Principle II) وماتمسّش: أي رول جديد يتضاف للـenum من غير ما
+        //          حد يفكّر في نطاقه بيشوف صفر.
+        // null   → إعلان صريح إن الدور ده متسكوب من **طبقة تانية** (baseFilterFn
+        //          أو فلتر أساسي في الكنترولر)، فمفيش سكوب ملكية يتحط هنا.
+        //          محتاجينه لأن سكوب proScout شكله $or مركّب على حقلين، وده مش
+        //          قابل للتعبير بـ{ [field]: user._id }.
+        //
+        // ليه لازم يكون {} مش MATCH_NOTHING: الاتنين بيتدمجوا بـAND، و
+        // MATCH_NOTHING ∧ أي حاجة = صفر دايماً. يعني سيبان الدور غايب "كطبقة
+        // حماية إضافية" مع سكوب أساسي مش دفاع في العمق — هو منع كامل ونهائي
+        // للـendpoint. (الافتراض ده كان مكتوب في research R1 وطلع غلط عند التنفيذ.)
+        const hasRole = Object.prototype.hasOwnProperty.call(ownerFields, this.user.role);
+        if (!hasRole) return { ...MATCH_NOTHING }; // دور مش معرّف في الماب — يشوف صفر
+
         const field = ownerFields[this.user.role];
-        if (!field) return { ...MATCH_NOTHING }; // دور مش معرّف في الماب — يشوف صفر
+        if (!field) return {}; // معرّف صراحةً كـnull — النطاق جاي من الطبقة الأساسية
 
         return { [field]: this.user._id };
     }

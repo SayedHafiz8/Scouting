@@ -14,6 +14,7 @@ import { buildKey, uploadMediaImage, deleteMediaImage } from "../services/imageS
 import { deleteMediaBytes } from "./playerMediaController.js";
 import { resolveImageUrl } from "../utils/mediaUrl.js";
 import { ROLES } from "../constants/roles.js";
+import { playerScopeFor, MATCH_NOTHING } from "../services/scope.js";
 import { sendNotificationToUser, sendNotificationToAdmins } from "../socket/handlers/notification.js";
 import {
     emitAdminDashboardUpdate,
@@ -34,6 +35,9 @@ export const setUserIdToBody = (req, res, next) => {
 // @access  private
 export const create = asyncHandler(async (req, res, next) => {
     req.body.coach = req.user._id;
+    // Stage 2 — نسبة الإنشاء. الإسناد بيحصل بعد استلام الـbody، فأي قيمة بعتها
+    // العميل بتتكتب فوقها هنا (وlockField("createdBy") بيرفضها قبل كده أصلاً).
+    req.body.createdBy = req.user._id;
 
     const player = await Player.create(req.body);
 
@@ -51,41 +55,80 @@ export const create = asyncHandler(async (req, res, next) => {
 export const getCountsByAgeGroup = asyncHandler(async (req, res, next) => {
     const match = {};
 
-    // coach-scoping: coaches only count their own players
-    if (req.user.role === ROLES.COACH) {
-        match.coach = new mongoose.Types.ObjectId(req.user._id);
+    // Stage 2 — منع-بالافتراض صريح (code-review high، نفس تصليح
+    // seasonMatchBaseFilterFor). لو الرول مش من الأربعة المعدودين هنا، match
+    // تفضل {} ونطاق proScout برضه {} لغير proScout — يعني endpoint جديد لرول
+    // خامس مستقبلي كان هيعدّ كل لاعبين الداتابيز بالصدفة، مش صفر. الـswitch ده
+    // بيحوّل السكوت الضمني لرفض صريح.
+    switch (req.user.role) {
+        case ROLES.COACH:
+            // coach-scoping: coaches only count their own players
+            match.coach = new mongoose.Types.ObjectId(req.user._id);
+            break;
+
+        case ROLES.OBSERVER:
+            // observer-scoping: observers only count players assigned to them
+            match.observers = new mongoose.Types.ObjectId(req.user._id);
+            break;
+
+        case ROLES.ADMIN: {
+            // admin browsing a specific coach's or observer's players (?coach=id / ?observer=id) —
+            // بدون ده كان بيرجع عدّ كل اللاعبين مش بتوع الكوتش/الأوبزيرفر المطلوب بس
+            const { coach, observer } = req.query;
+            if (coach && mongoose.isValidObjectId(coach)) {
+                match.coach = new mongoose.Types.ObjectId(coach);
+            }
+            if (observer && mongoose.isValidObjectId(observer)) {
+                match.observers = new mongoose.Types.ObjectId(observer);
+            }
+            break;
+        }
+
+        case ROLES.PRO_SCOUT:
+            // النطاق بيتحط تحت من playerScopeFor — مفيش حاجة تتحط في match هنا.
+            break;
+
+        default:
+            // code-review high fix #3 — {...MATCH_NOTHING} مش Object.assign(match,
+            // MATCH_NOTHING): التاني بينسخ *مرجع* لنفس أوبجكت الـsentinel المشترك
+            // (match._id يبقى نفس أوبجكت MATCH_NOTHING._id)، فأي تعديل مستقبلي في
+            // مكان تاني بيلمس match._id بصمت بيسمّم الـsentinel لكل الطلبات
+            // الجاية. الـspread بيطابق نفس القاعدة المتبعة في apiFeatures.js.
+            Object.assign(match, { ...MATCH_NOTHING });
     }
 
-    // observer-scoping: observers only count players assigned to them
-    if (req.user.role === ROLES.OBSERVER) {
-        match.observers = new mongoose.Types.ObjectId(req.user._id);
-    }
-
-    // admin browsing a specific coach's or observer's players (?coach=id / ?observer=id) —
-    // بدون ده كان بيرجع عدّ كل اللاعبين مش بتوع الكوتش/الأوبزيرفر المطلوب بس
-    if (req.user.role === ROLES.ADMIN) {
-        const { coach, observer } = req.query;
-        if (coach && mongoose.isValidObjectId(coach)) {
-            match.coach = new mongoose.Types.ObjectId(coach);
-        }
-        if (observer && mongoose.isValidObjectId(observer)) {
-            match.observers = new mongoose.Types.ObjectId(observer);
-        }
-    }
+    // للكوتش وproScout: اللاعب "observed" بيظهرله كأنه "pending" (FR-014).
+    const masksObservedAsPending = req.user.role === ROLES.COACH || req.user.role === ROLES.PRO_SCOUT;
 
     // optional status filter (GET → comes as a query param)
     const status = req.query?.status ?? req.body?.status;
     if (status) {
-        // للكوتش: اللاعب "observed" بيظهرله كأنه "pending"، فالعدّ بالـ pending يشمل الاتنين
-        if (req.user.role === ROLES.COACH && status === "pending") {
+        // code-review high fix #1 — status=observed مايتنفّذش حرفياً لرول مقنّع.
+        // القناع بيقول "محدش شايف إن اللاعب ده observed"؛ لو سمحنا للفلتر يعدّي
+        // كان بيكشف بالظبط مين هما اللاعبين المتابَعين فعلياً حتى لو العرض نفسه
+        // بيقول "pending" — تسريب عن طريق الفلتر مش العرض. بنتجاهل القيمة (زي
+        // معاملة PLAYER_ADMIN_ONLY_LENSES فوق) بدل ما تتنفّذ أو نرجّع خطأ.
+        if (masksObservedAsPending && status === "observed") {
+            // تجاهل — لا يوجد فلتر status يتطبّق أصلاً
+        } else if (masksObservedAsPending && status === "pending") {
+            // فالعدّ بالـpending يشمل الاتنين — نفس التوسيع اللي في getAll فوق.
             match.status = { $in: ["pending", "observed"] };
         } else {
             match.status = status;
         }
     }
 
+    // Stage 2 — proScout: النطاق من الطبقة المركزية.
+    //
+    // الدمج بـ$and مش spread: الـspread ممكن يتصادم بصمت لو فلتر مستقبلي جاب
+    // مفتاح team أو $or على المستوى الأعلى. $and مايقدرش يتصادم.
+    // ملاحظة: $match مابيعملش cast زي find، فالنطاق لازم يحمل ObjectId حقيقي —
+    // مضمون من scope.js ومُختبَر في proScoutDataScope.test.js.
+    const scope = await playerScopeFor(req);
+    const finalMatch = Object.keys(scope).length ? { $and: [scope, match] } : match;
+
     const rows = await Player.aggregate([
-        { $match: match },
+        { $match: finalMatch },
         { $group: { _id: "$ageGroup", count: { $sum: 1 } } },
     ]);
 
@@ -102,10 +145,17 @@ export const getCountsByAgeGroup = asyncHandler(async (req, res, next) => {
     });
 });
 
-// الكوتش مبيعرفش مفهوم "المتابعة" — اللاعب المتابَع بيظهرله كأنه "pending"
-// وبنخفي عنه حقل الأوبزيرفرز خالص.
+// /code-review high، fix #3 — toJSON مش toObject.
+//
+// playedModel.js عامل playerSchema.set("toJSON", { transform: ... }) عشان
+// يوقّع profileImg (Bunny CDN) — الترانسفورم ده بيتشغّل تلقائياً لو الاستجابة
+// فيها مستند mongoose حقيقي (res.json() بينده JSON.stringify اللي بيستدعي
+// toJSON() بنفسه). المشكلة إن toObject() **مابيشغّلش** hook الـtoJSON خالص —
+// الاتنين مستقلين في mongoose إلا لو اتظبطوا صراحةً مع بعض. يعني أي مستند
+// اتعدّى على القناع ده كان بيرجع profileImg كـkey تخزين خام (زي
+// "players/abc.webp") بدل URL موقّع، لغير الأدمن (اللي مابيعديش على القناع).
 const maskObservedForCoach = (doc) => {
-    const o = doc.toObject ? doc.toObject() : doc;
+    const o = doc.toJSON ? doc.toJSON() : doc;
     if (o.status === "observed") o.status = "pending";
     delete o.observers;
     return o;
@@ -113,7 +163,7 @@ const maskObservedForCoach = (doc) => {
 
 // الأوبزيرفر مبيشوفش مين الكوتش بتاع اللاعب — الأدمن بس اللي يقدر يشوف ده.
 const maskCoachForObserver = (doc) => {
-    const o = doc.toObject ? doc.toObject() : doc;
+    const o = doc.toJSON ? doc.toJSON() : doc;
     delete o.coach;
     return o;
 };
@@ -134,16 +184,31 @@ const PLAYER_FILTERS = [
 // @access  private
 export const getAll = asyncHandler(async (req, res, next) => {
     const isCoach = req.user.role === ROLES.COACH;
+    // /code-review high، fix #2 — proScout عنده نفس قناع maskObservedForCoach
+    // (FR-014: observed → pending، observers مخفي)، فلازم ياخد نفس توسيع
+    // "pending" اللي بيشمل observed برضه — من غيره ?status=pending كان بيرجع
+    // صفر لأي proScout واللاعب المتابَع لسه بيتعرض له كـ"pending" في القايمة
+    // من غير فلتر (تناقض بين ما بيتعرض وما بيتفلتر بيه).
+    const masksObservedAsPending = isCoach || req.user.role === ROLES.PRO_SCOUT;
 
     const queryParams = { ...req.query };
     if (req.user.role !== ROLES.ADMIN) {
         PLAYER_ADMIN_ONLY_LENSES.forEach((k) => delete queryParams[k]);
     }
 
-    // للكوتش: فلترة بالـ pending لازم تشمل اللاعبين المتابَعين (observed) كمان
-    let coachPendingOverride = false;
-    if (isCoach && queryParams.status === "pending") {
-        coachPendingOverride = true;
+    // code-review high fix #1 — status=observed مايتنفّذش حرفياً لرول مقنّع
+    // (نفس السبب في getCountsByAgeGroup فوق): القناع بيقول محدش شايف إن اللاعب
+    // observed، فلو الفلتر ده عدّى كان بيكشف بالظبط مين هما اللاعبين المتابَعين
+    // عن طريق النتيجة نفسها، حتى لو كل عنصر فيها بيتعرض كـ"pending". بنتجاهل
+    // القيمة بدل ما تتنفّذ حرفياً.
+    if (masksObservedAsPending && queryParams.status === "observed") {
+        delete queryParams.status;
+    }
+
+    // للكوتش وproScout: فلترة بالـ pending لازم تشمل اللاعبين المتابَعين (observed) كمان
+    let pendingIncludesObserved = false;
+    if (masksObservedAsPending && queryParams.status === "pending") {
+        pendingIncludesObserved = true;
         delete queryParams.status;
     }
 
@@ -167,8 +232,17 @@ export const getAll = asyncHandler(async (req, res, next) => {
         queryParams.coach = null;
     }
 
+    // Stage 2 — سكوب proScout بيتحط في الموضع الأساسي (base position)، وApiFeature
+    // بيسلسل .find() فوقه. مهم تعرف **ليه** ده آمن: الشروط المتسلسلة بتتدمج
+    // بـ"آخر واحد يكسب عند تصادم المفتاح"، **مش** بـAND. التركيب بيبقى AND هنا
+    // فقط لأن النطاق ملفوف في $and جوه services/scope.js. ماتعيدش صياغة ده كـ
+    // "الموضع الأساسي بيتدمج بـAND" — التعميم ده غلط (research R12).
+    // بيرجع {} لأي رول قائم، و{} في .find() لا-عملية، فاستعلاماتهم مطابقة بايت
+    // ببايت لما كانت عليه (Principle III).
+    const scope = await playerScopeFor(req);
+
     const features = new ApiFeature(
-        Player.find()
+        Player.find(scope)
             .populate({ path: "coach", select: "name email" })
             .populate({ path: "team", select: "name clubName" }),
         queryParams,
@@ -177,7 +251,10 @@ export const getAll = asyncHandler(async (req, res, next) => {
     )
         .filter({
             parentField: "coach",
-            ownerFields: { coach: "coach", observer: "observers" },
+            // proScout: null = "متسكوب من الفلتر الأساسي فوق، مش من هنا". لازم
+            // يكون معلن صراحةً — لو سيبناه غايب، buildOwnerScope بترجّع
+            // MATCH_NOTHING وبتتدمج بـAND مع السكوب فتلغيه بالكامل.
+            ownerFields: { coach: "coach", observer: "observers", proScout: null },
             allowed: PLAYER_FILTERS,
         })
         // §11 — البحث اتضيّق من 5 حقول لحقل الكلمات المطبّع المشتق من name+city.
@@ -186,7 +263,7 @@ export const getAll = asyncHandler(async (req, res, next) => {
         // (حقل واحد مفهرس وسط حقول مش مفهرسة = COLLSCAN برضه).
         .searchPrefix("searchTokens");
 
-    if (coachPendingOverride) {
+    if (pendingIncludesObserved) {
         features.query = features.query.find({ status: { $in: ["pending", "observed"] } });
     }
 
@@ -194,7 +271,13 @@ export const getAll = asyncHandler(async (req, res, next) => {
     features.sort().limitFields().paginate(documentCount);
 
     let documents = await features.query;
-    if (isCoach) documents = documents.map(maskObservedForCoach);
+    // FR-014 — الـproScout بياخد نفس قناع الكوتش: مايشوفش مصفوفة observers
+    // و"observed" بتتعرضله "pending". القراءة دي هي المنع-بالافتراض
+    // (Principle II): فتح صفحة تفاصيل اللاعب للرول ده معناه رد مالوش فرع قناع
+    // أصلاً، فكان هيرجّع تخصيصات الأوبزيرفرز. الاختيار الأضيق دلوقتي، والسؤال
+    // مفتوح صراحةً للمرحلة 4 — تخفيف القناع بعدين إضافة، لكن سحب بيانات
+    // اتعرضت مش ممكن. maskCoachForObserver **مش** بتتطبّق: كوتش اللاعب بيفضل ظاهر.
+    if (isCoach || req.user.role === ROLES.PRO_SCOUT) documents = documents.map(maskObservedForCoach);
     else if (req.user.role === ROLES.OBSERVER) documents = documents.map(maskCoachForObserver);
 
     res.status(200).json({
@@ -219,8 +302,10 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
     }
 
     let out = document;
-    if (req.user.role === ROLES.COACH) out = maskObservedForCoach(document);
-    else if (req.user.role === ROLES.OBSERVER) out = maskCoachForObserver(document);
+    // FR-014 — نفس قناع الكوتش للـproScout؛ الشرح في getAll فوق.
+    if (req.user.role === ROLES.COACH || req.user.role === ROLES.PRO_SCOUT) {
+        out = maskObservedForCoach(document);
+    } else if (req.user.role === ROLES.OBSERVER) out = maskCoachForObserver(document);
 
     res.status(200).json({
         status: "success",

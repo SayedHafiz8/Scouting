@@ -154,6 +154,21 @@ export async function createPlayer(coachToken, overrides = {}) {
   return res.body.data?.document;
 }
 
+// ── Create a player DIRECTLY in the DB, bypassing the API ─────────────────────
+// Stage 2: the scope tests need players the HTTP path cannot produce —
+// `createdBy` set to an arbitrary user (it is always the caller via POST
+// /players), and players owned by a proScout at all (that role cannot create
+// players until Stage 4). Team/coach/createdBy are all caller-controlled here.
+//
+// Age group is still derived by the pre('save') hook, so seedAgeGroups() must
+// have run first, exactly as with the API path.
+export async function createPlayerDoc(overrides = {}) {
+  return Player.create({
+    ...playerPayload(),
+    ...overrides,
+  });
+}
+
 // ── Two fresh Teams under the given AgeGroup — homeTeam/awayTeam are Team ObjectId refs ──
 export async function defaultTeamIds(ageGroupId) {
   const home = await createTeam(ageGroupId);
