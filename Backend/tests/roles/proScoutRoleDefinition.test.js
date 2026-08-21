@@ -50,6 +50,11 @@ describe('proScout — deny by default on GET /players (US3, FR-004, SC-002)', (
 });
 
 describe('proScout — 403 on role-gated routes it is not listed for (US3, FR-004, SC-003)', () => {
+  // Phase 3 (docs/scout-pro-plan-v2.md, navigation) — US4/FR-012/FR-014: this
+  // 403 is also what backs the frontend's Observers area. observer-list.component.ts
+  // injects the same UserService as the Coaches/Users page and has no endpoint of
+  // its own (contracts/navigation-matrix.md §4 in specs/004-role-based-navigation/),
+  // so one test covers both menu entries' server-side refusal.
   it('GET /users (admin-only) → 403', async () => {
     const { token } = await createProScout();
 
@@ -154,5 +159,33 @@ describe('proScout — GET /teams is now league-scoped (US3, FR-005, Stage-1 con
     // no professional-league teams seeded here → scoped list is empty, whereas
     // before Stage 2 this returned every team in the database
     expect(res.body.data.documents).toEqual([]);
+  });
+});
+
+// Phase 3 (docs/scout-pro-plan-v2.md, navigation) — US4/FR-014, Constitution C-3 /
+// TODO(AGES_UNAUTHENTICATED_READ). Unlike every other area behind the sidebar, the
+// age-groups area's GET /ages and GET /ages/:id (Backend/routes/ageGroupRouter.js:113,116)
+// carry NO `protect` at all, so there is no req.user for allowedTo to reject.
+// This is a KNOWN, ACCEPTED gap tracked as tech debt outside this plan's scope by
+// owner decision (docs/scout-pro-plan-v2.md, "Tech debt مسجّل", item 1) — it is
+// recorded here, not fixed, so the removal of the Age Groups menu entry for
+// proScout is never mistaken for a locked door. If a future change adds `protect`
+// here, this test will fail loudly and the tech-debt item should be closed
+// deliberately at that point, not silently.
+describe('proScout — GET /ages is NOT refused (documented gap, Constitution C-3)', () => {
+  it('returns 200 for a proScout token — ageGroupRouter has no protect/allowedTo to deny it', async () => {
+    const { token } = await createProScout();
+
+    const res = await request(app)
+      .get('/api/v1/ages')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('returns 200 with NO token at all — the route has no protect, for any caller', async () => {
+    const res = await request(app).get('/api/v1/ages');
+
+    expect(res.status).toBe(200);
   });
 });

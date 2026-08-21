@@ -7,12 +7,27 @@ import { AuthService } from '../../core/auth/auth.service';
 import { UserRole } from '../../core/models/user.model';
 import { PlayerContextService } from '../../core/services/player-context.service';
 
+type NavIcon = 'dashboard' | 'players' | 'coaches' | 'observers' | 'age-groups' | 'my-matches' | 'profile';
+
 interface NavItem {
-  label: string;
-  icon: string;
+  labelKey: string;
+  icon: NavIcon;
   route: string;
-  roles: UserRole[];
+  roles: readonly UserRole[];
 }
+
+// Declaration order is render order (contracts/navigation-matrix.md §1). An entry
+// renders only when the signed-in user's role is named here — deny-by-default,
+// not a hand-written @if per role (Constitution Principles II, VII).
+const NAV_ITEMS: readonly NavItem[] = [
+  { labelKey: 'NAV.DASHBOARD',  icon: 'dashboard',   route: '/dashboard',   roles: ['admin', 'coach', 'observer'] },
+  { labelKey: 'NAV.PLAYERS',    icon: 'players',     route: '/players',     roles: ['admin', 'coach', 'observer', 'proScout'] },
+  { labelKey: 'NAV.COACHES',    icon: 'coaches',     route: '/users',       roles: ['admin'] },
+  { labelKey: 'NAV.OBSERVERS',  icon: 'observers',   route: '/observers',   roles: ['admin'] },
+  { labelKey: 'NAV.AGE_GROUPS', icon: 'age-groups',  route: '/age-groups',  roles: ['admin'] },
+  { labelKey: 'NAV.MY_MATCHES', icon: 'my-matches',  route: '/my-matches',  roles: ['coach', 'observer'] },
+  { labelKey: 'NAV.PROFILE',    icon: 'profile',     route: '/profile',     roles: ['admin', 'coach', 'observer', 'proScout'] },
+];
 
 const STATUS_CHILDREN = [
   { labelKey: 'NAV.SELECTED', status: 'selected', color: '#22c55e' },
@@ -39,98 +54,57 @@ const STATUS_CHILDREN = [
       <!-- Navigation -->
       <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
 
-        <!-- Dashboard -->
-        <a routerLink="/dashboard" routerLinkActive="sidebar-active"
-           class="sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150"
-           (click)="onNavClick()">
-          <span class="w-5 h-5 flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-              <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-            </svg>
-          </span>
-          <span class="text-sm font-medium">{{ 'NAV.DASHBOARD' | translate }}</span>
-        </a>
-
-        <!-- Players (simple link for everyone) -->
-        <a routerLink="/players" routerLinkActive="sidebar-active"
-           class="sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150"
-           (click)="onNavClick()">
-          <span class="w-5 h-5 flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-            </svg>
-          </span>
-          <span class="text-sm font-medium">{{ 'NAV.PLAYERS' | translate }}</span>
-        </a>
-
-        <!-- Coaches (admin only) -->
-        @if (isAdmin()) {
-          <a routerLink="/users" routerLinkActive="sidebar-active"
+        @for (item of visibleNavItems(); track item.route) {
+          <a [routerLink]="item.route" routerLinkActive="sidebar-active"
              class="sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150"
              (click)="onNavClick()">
             <span class="w-5 h-5 flex-shrink-0">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-              </svg>
+              @switch (item.icon) {
+                @case ('dashboard') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                  </svg>
+                }
+                @case ('players') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                  </svg>
+                }
+                @case ('coaches') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                }
+                @case ('observers') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                }
+                @case ('age-groups') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="6" height="18"/><rect x="9" y="8" width="6" height="13"/>
+                    <rect x="16" y="12" width="6" height="9"/>
+                  </svg>
+                }
+                @case ('my-matches') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+                    <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                  </svg>
+                }
+                @case ('profile') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                }
+              }
             </span>
-            <span class="text-sm font-medium">{{ 'NAV.COACHES' | translate }}</span>
-          </a>
-
-          <!-- Observers (admin only) -->
-          <a routerLink="/observers" routerLinkActive="sidebar-active"
-             class="sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150"
-             (click)="onNavClick()">
-            <span class="w-5 h-5 flex-shrink-0">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-              </svg>
-            </span>
-            <span class="text-sm font-medium">{{ 'NAV.OBSERVERS' | translate }}</span>
-          </a>
-
-          <!-- Age Groups (admin only) -->
-          <a routerLink="/age-groups" routerLinkActive="sidebar-active"
-             class="sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150"
-             (click)="onNavClick()">
-            <span class="w-5 h-5 flex-shrink-0">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="6" height="18"/><rect x="9" y="8" width="6" height="13"/>
-                <rect x="16" y="12" width="6" height="9"/>
-              </svg>
-            </span>
-            <span class="text-sm font-medium">{{ 'NAV.AGE_GROUPS' | translate }}</span>
+            <span class="text-sm font-medium">{{ item.labelKey | translate }}</span>
           </a>
         }
-
-        <!-- My Matches — coach: matches they're assigned to attend; observer: upcoming matches for their observed players' teams -->
-        @if (auth.isCoach() || auth.isObserver()) {
-          <a routerLink="/my-matches" routerLinkActive="sidebar-active"
-             class="sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150"
-             (click)="onNavClick()">
-            <span class="w-5 h-5 flex-shrink-0">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-            </span>
-            <span class="text-sm font-medium">{{ 'NAV.MY_MATCHES' | translate }}</span>
-          </a>
-        }
-
-        <!-- Profile -->
-        <a routerLink="/profile" routerLinkActive="sidebar-active"
-           class="sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150"
-           (click)="onNavClick()">
-          <span class="w-5 h-5 flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-            </svg>
-          </span>
-          <span class="text-sm font-medium">{{ 'NAV.PROFILE' | translate }}</span>
-        </a>
 
       </nav>
 
@@ -343,6 +317,14 @@ export class SidebarComponent {
 
   readonly isAdmin = computed(() => this.auth.currentUser()?.role === 'admin');
   readonly playersOpen = signal(false);
+
+  // Deny-by-default: absent role or a role named on no entry yields []. Can only
+  // grow as the session resolves, never shrink (research.md R8).
+  readonly visibleNavItems = computed(() => {
+    const role = this.auth.currentUser()?.role;
+    if (!role) return [];
+    return NAV_ITEMS.filter(item => item.roles.includes(role));
+  });
 
   private readonly currentUrl = toSignal(
     this.router.events.pipe(
