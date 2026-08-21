@@ -4,11 +4,12 @@ import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { AuthService } from './auth.service';
 import { roleGuard } from './role.guard';
-import { User } from '../models/user.model';
+import { User, UserRole } from '../models/user.model';
 
 const ts = '2024-01-01T00:00:00.000Z';
 const coachUser: User = { _id: '1', name: 'Coach', email: 'c@t.com', role: 'coach', active: true, createdAt: ts, updatedAt: ts };
 const adminUser: User = { _id: '2', name: 'Admin', email: 'a@t.com', role: 'admin', active: true, createdAt: ts, updatedAt: ts };
+const proScoutUser: User = { _id: '3', name: 'Scout', email: 's@t.com', role: 'proScout', active: true, createdAt: ts, updatedAt: ts };
 
 function makeAuthSpy(user: User | null): Partial<AuthService> {
   return {
@@ -17,7 +18,7 @@ function makeAuthSpy(user: User | null): Partial<AuthService> {
   };
 }
 
-async function runRoleGuard(spy: Partial<AuthService>, allowedRoles: ('coach' | 'admin')[]) {
+async function runRoleGuard(spy: Partial<AuthService>, allowedRoles: UserRole[]) {
   TestBed.configureTestingModule({
     providers: [
       provideRouter([]),
@@ -73,6 +74,27 @@ describe('roleGuard', () => {
 
   it('redirects a null user (no role at all) to /unauthorized', async () => {
     const result = await runRoleGuard(makeAuthSpy(null), ['admin']);
+    expect(result.toString()).toBe('/unauthorized');
+  });
+
+  // Phase 3 (proScout navigation) — US4/FR-012: direct navigation to the three
+  // administration areas is refused via the same single RoleLandingService used
+  // above, not a new hand-written condition (FR-013).
+  it('redirects proScout away from /users (admin-only) to /unauthorized', async () => {
+    const result = await runRoleGuard(makeAuthSpy(proScoutUser), ['admin']);
+    expect(result).not.toBeTrue();
+    expect(result.toString()).toBe('/unauthorized');
+  });
+
+  it('redirects proScout away from /observers (admin-only) to /unauthorized', async () => {
+    const result = await runRoleGuard(makeAuthSpy(proScoutUser), ['admin']);
+    expect(result).not.toBeTrue();
+    expect(result.toString()).toBe('/unauthorized');
+  });
+
+  it('redirects proScout away from /age-groups (admin-only) to /unauthorized', async () => {
+    const result = await runRoleGuard(makeAuthSpy(proScoutUser), ['admin']);
+    expect(result).not.toBeTrue();
     expect(result.toString()).toBe('/unauthorized');
   });
 });
