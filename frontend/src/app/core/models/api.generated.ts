@@ -984,7 +984,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a match's status/result (the assigned attendee coach/observer, or an admin) */
+        /** Update a match's status/result (the assigned attendee coach/observer/proScout, or an admin) */
         patch: {
             parameters: {
                 query?: never;
@@ -1041,7 +1041,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Scout self-enrolls to attend this match (coach/observer) */
+        /** Scout self-enrolls to attend this match (coach/observer/proScout) */
         post: {
             parameters: {
                 query?: never;
@@ -1067,6 +1067,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Match is outside the caller's scope (proScout) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Not found */
                 404: {
                     headers: {
@@ -1076,7 +1083,7 @@ export interface paths {
                 };
             };
         };
-        /** Scout removes self from this match's attendees (coach/observer) */
+        /** Scout removes self from this match's attendees (coach/observer/proScout) */
         delete: {
             parameters: {
                 query?: never;

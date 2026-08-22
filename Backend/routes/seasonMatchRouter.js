@@ -132,7 +132,7 @@ import { ROLES } from "../constants/roles.js";
  *
  * /seasonMatches/{id}/status:
  *   patch:
- *     summary: Update a match's status/result (the assigned attendee coach/observer, or an admin)
+ *     summary: Update a match's status/result (the assigned attendee coach/observer/proScout, or an admin)
  *     tags: [SeasonMatches]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -163,7 +163,7 @@ import { ROLES } from "../constants/roles.js";
  *
  * /seasonMatches/{id}/attend:
  *   post:
- *     summary: Scout self-enrolls to attend this match (coach/observer)
+ *     summary: Scout self-enrolls to attend this match (coach/observer/proScout)
  *     tags: [SeasonMatches]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -174,9 +174,10 @@ import { ROLES } from "../constants/roles.js";
  *     responses:
  *       200: { description: Attending }
  *       400: { description: Match is cancelled }
+ *       403: { description: Match is outside the caller's scope (proScout) }
  *       404: { description: Not found }
  *   delete:
- *     summary: Scout removes self from this match's attendees (coach/observer)
+ *     summary: Scout removes self from this match's attendees (coach/observer/proScout)
  *     tags: [SeasonMatches]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -203,13 +204,19 @@ seasonMatchRouter.route('/:id')
     .patch(protect, allowedTo(ROLES.ADMIN), updateValidate, setUpdatedBy, update)
     .delete(protect, allowedTo(ROLES.ADMIN), deleteValidate, deleting);
 
-// الكوتش أو الأوبزيرفر الحاضر (attendee) أو الأدمن بس — منفصلة عن التعديل العام، بتغيّر status/result بس
+// الكوتش أو الأوبزيرفر أو الـproScout الحاضر (attendee) أو الأدمن بس — منفصلة عن
+// التعديل العام، بتغيّر status/result بس. proScout بيخضع لنفس قيد يوم المباراة
+// (updateMatchStatus مبني على role !== ADMIN، مش قايمة أدوار — بيتفعّل تلقائي)
+// وفرع النطاق+العضوية المصحّح في checkSeasonMatchAttendee (Stage 6).
 seasonMatchRouter.route('/:id/status')
-    .patch(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.ADMIN), checkSeasonMatchAttendee, updateStatusValidate, updateMatchStatus);
+    .patch(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT, ROLES.ADMIN), checkSeasonMatchAttendee, updateStatusValidate, updateMatchStatus);
 
-// self-service — الكشاف نفسه بيسجّل/يلغي حضوره للمباراة
+// self-service — الكشاف نفسه بيسجّل/يلغي حضوره للمباراة. proScout اتضاف في
+// المرحلة 6 مع checkSeasonMatchScope — نفس حارس GET /:id بالظبط، مش نسخة
+// تانية منه — عشان يمنعه من الحضور على مباراة برّة نطاقه (كان مفيش أي حارس
+// نطاق على المسارين دول قبل كده، Principle IV).
 seasonMatchRouter.route('/:id/attend')
-    .post(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER), attendMatch)
-    .delete(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER), unattendMatch);
+    .post(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkSeasonMatchScope, attendMatch)
+    .delete(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkSeasonMatchScope, unattendMatch);
 
 export default seasonMatchRouter;

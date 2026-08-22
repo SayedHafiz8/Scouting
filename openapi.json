@@ -2234,7 +2234,7 @@
     },
     "/seasonMatches/{id}/status": {
       "patch": {
-        "summary": "Update a match's status/result (the assigned attendee coach/observer, or an admin)",
+        "summary": "Update a match's status/result (the assigned attendee coach/observer/proScout, or an admin)",
         "tags": [
           "SeasonMatches"
         ],
@@ -2305,7 +2305,7 @@
     },
     "/seasonMatches/{id}/attend": {
       "post": {
-        "summary": "Scout self-enrolls to attend this match (coach/observer)",
+        "summary": "Scout self-enrolls to attend this match (coach/observer/proScout)",
         "tags": [
           "SeasonMatches"
         ],
@@ -2331,13 +2331,16 @@
           "400": {
             "description": "Match is cancelled"
           },
+          "403": {
+            "description": "Match is outside the caller's scope (proScout)"
+          },
           "404": {
             "description": "Not found"
           }
         }
       },
       "delete": {
-        "summary": "Scout removes self from this match's attendees (coach/observer)",
+        "summary": "Scout removes self from this match's attendees (coach/observer/proScout)",
         "tags": [
           "SeasonMatches"
         ],
