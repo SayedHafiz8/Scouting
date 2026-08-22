@@ -7,6 +7,14 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
+  // Spec files share one coach account (and proScout/admin accounts) rather
+  // than provisioning per-worker fixtures. `fullyParallel: false` only
+  // serializes tests within a single file — different spec files still run
+  // concurrently on separate workers by default, and concurrent logins as
+  // the same account race the backend's refresh-token rotation, silently
+  // invalidating another worker's session mid-test. Force a single worker
+  // so the whole suite runs serially until per-account test isolation exists.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   timeout: 30_000,
 

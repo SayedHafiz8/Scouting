@@ -17,7 +17,8 @@ export async function apiLogin(
 export interface PlayerPayload {
   name: string;
   dateOfBirth: string;
-  team: string;
+  team?: string;     // must be a real Team ObjectId if provided
+  teamName?: string;  // free-text team name — mutually exclusive with `team`
   position: string;
   preferredFoot: string;
   nationality: string;

@@ -8,6 +8,8 @@ const aEmail = process.env.ADMIN_EMAIL;
 const aPass  = process.env.ADMIN_PASSWORD;
 const cEmail = process.env.E2E_COACH_EMAIL;
 const cPass  = process.env.E2E_COACH_PASSWORD;
+const pEmail = process.env.E2E_PROSCOUT_EMAIL;
+const pPass  = process.env.E2E_PROSCOUT_PASSWORD;
 
 async function run() {
   // 1. Log in as admin to get a bearer token
@@ -46,16 +48,50 @@ async function run() {
       body.message?.includes('email already exists');
     if (alreadyExists) {
       console.log(`Coach already exists (${cEmail}) — skipping`);
+    } else {
+      throw new Error(`Coach creation failed 400: ${JSON.stringify(body)}`);
+    }
+  } else if (!createRes.ok) {
+    throw new Error(`Coach creation failed ${createRes.status}: ${await createRes.text()}`);
+  } else {
+    console.log(`Coach created (${cEmail})`);
+  }
+
+  // Stage 7 (hardening) — same idempotent create-or-skip pattern, for the
+  // proScout E2E fixture (never seeded before this stage — research.md R5).
+  const createProScoutRes = await fetch(`${API}/users`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      name:            'E2E Pro Scout',
+      email:           pEmail,
+      phoneNumber:     '01098765432',
+      password:        pPass,
+      passwordConfirm: pPass,
+      role:            'proScout',
+    }),
+  });
+
+  if (createProScoutRes.status === 400) {
+    const body = await createProScoutRes.json();
+    const alreadyExists =
+      body.errors?.some(e => e.msg?.includes('email already exists')) ||
+      body.message?.includes('email already exists');
+    if (alreadyExists) {
+      console.log(`Pro scout already exists (${pEmail}) — skipping`);
       return;
     }
-    throw new Error(`Coach creation failed 400: ${JSON.stringify(body)}`);
+    throw new Error(`Pro scout creation failed 400: ${JSON.stringify(body)}`);
   }
 
-  if (!createRes.ok) {
-    throw new Error(`Coach creation failed ${createRes.status}: ${await createRes.text()}`);
+  if (!createProScoutRes.ok) {
+    throw new Error(`Pro scout creation failed ${createProScoutRes.status}: ${await createProScoutRes.text()}`);
   }
 
-  console.log(`Coach created (${cEmail})`);
+  console.log(`Pro scout created (${pEmail})`);
 }
 
 run().catch(err => {

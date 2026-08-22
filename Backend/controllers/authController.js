@@ -7,6 +7,7 @@ import AppError from "../utils/appError.js";
 import User from "../models/userModel.js";
 import sendEmail from "../utils/sendEmail.js";
 import { ROLES } from "../constants/roles.js";
+import { logRoleDenial } from "../utils/accessLog.js";
 
 // ============================
 // helpers
@@ -214,6 +215,10 @@ export const protect = asyncHandler(async (req, res, next) => {
 export const allowedTo = (...roles) => {
     return asyncHandler(async (req, res, next) => {
         if (!roles.includes(req.user.role)) {
+            // Stage 7 — تسجيل رفض بوابة الرول (Principle IV). ما بيغيّرش الرد
+            // (نفس الحالة، نفس رسالة الخطأ) — أثر تدقيق إضافي بس، قبل الرفض
+            // الفعلي عشان لو حصل خطأ لاحق في السلسلة يفضل الرفض مسجّل.
+            logRoleDenial({ req, resource: (req.baseUrl || "").replace(/^\/api\/v1/, "") || "/" });
             return next(new AppError("You are not allowed to access this route", 403));
         }
         next();

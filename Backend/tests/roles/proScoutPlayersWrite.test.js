@@ -5,7 +5,13 @@ import request from 'supertest';
 // (Principle IV)، بنفس أسلوب الـI/O الخارجي الموكوك في tests/setup.js.
 vi.mock('../../utils/accessLog.js', () => {
   const fn = vi.fn();
-  return { logScopeDenial: fn, default: fn };
+  // Stage 7 — accessLog.js gained a logRoleDenial export (role-gate denial
+  // logging). The mock must declare every export the real module has, or an
+  // unrelated 403-producing call chain that happens to pass through
+  // allowedTo() throws "logRoleDenial is not a function" and surfaces as a
+  // 500 instead of the expected 403 in tests that never intended to touch
+  // logging at all.
+  return { logScopeDenial: fn, logRoleDenial: fn, default: fn };
 });
 
 import app from '../../app.js';
