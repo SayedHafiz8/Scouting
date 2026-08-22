@@ -48,17 +48,20 @@ interface ObservedPlayerRow {
         }
       </div>
 
-      <!-- League toggle — a separate schedule per league -->
+      <!-- League toggle — a separate schedule per league. Hidden for proScout: the role
+           only ever has one league in scope, so there is nothing to toggle (research.md R6). -->
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="inline-flex gap-1 p-1 rounded-xl" style="background:var(--bg-secondary)">
-          @for (lg of leagues; track lg.value) {
-            <button type="button" (click)="selectLeague(lg.value)"
-                    class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                    [class]="selectedLeague() === lg.value ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
-              {{ lg.labelKey | translate }}
-            </button>
-          }
-        </div>
+        @if (!auth.isProScout()) {
+          <div class="inline-flex gap-1 p-1 rounded-xl" style="background:var(--bg-secondary)">
+            @for (lg of leagues; track lg.value) {
+              <button type="button" (click)="selectLeague(lg.value)"
+                      class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                      [class]="selectedLeague() === lg.value ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
+                {{ lg.labelKey | translate }}
+              </button>
+            }
+          </div>
+        }
         @if (!auth.isAdmin()) {
           <label class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--text-secondary)">
             <input type="checkbox" [ngModel]="attendingOnly()" (ngModelChange)="attendingOnly.set($event)" class="rounded" />
@@ -79,7 +82,9 @@ interface ObservedPlayerRow {
                 <tr class="border-b" style="border-color:var(--border-color)">
                   <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.MATCH_DATE' | translate }}</th>
                   <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.FIXTURE' | translate }}</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.AGE_GROUP' | translate }}</th>
+                  @if (!auth.isProScout()) {
+                    <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.AGE_GROUP' | translate }}</th>
+                  }
                   <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.VENUE' | translate }}</th>
                   <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.ACTION' | translate }}</th>
                 </tr>
@@ -104,7 +109,9 @@ interface ObservedPlayerRow {
                         </svg>
                       }
                     </td>
-                    <td class="px-4 py-3.5" style="color:var(--text-secondary)">{{ ageGroupName(m.ageGroup) }}</td>
+                    @if (!auth.isProScout()) {
+                      <td class="px-4 py-3.5" style="color:var(--text-secondary)">{{ ageGroupName(m.ageGroup) }}</td>
+                    }
                     <td class="px-4 py-3.5" style="color:var(--text-secondary)">{{ m.venue || '—' }}</td>
                     <td class="px-4 py-3.5 text-right" (click)="$event.stopPropagation()">
                       @if (canEnterResult(m)) {
@@ -134,7 +141,7 @@ interface ObservedPlayerRow {
                   </tr>
                   @if (resultMatchId() === m._id) {
                     <tr (click)="$event.stopPropagation()">
-                      <td [attr.colspan]="5" class="px-4 py-4" style="background:var(--bg-secondary)">
+                      <td [attr.colspan]="columnCount()" class="px-4 py-4" style="background:var(--bg-secondary)">
                         <div class="flex flex-wrap items-end gap-3">
                           <div>
                             <label class="block text-xs font-medium mb-1" style="color:var(--text-secondary)">{{ 'SEASON_MATCHES.STATUS_LABEL' | translate }}</label>
@@ -167,7 +174,7 @@ interface ObservedPlayerRow {
                   }
                   @if (expandedMatchId() === m._id) {
                     <tr>
-                      <td [attr.colspan]="5" class="px-4 py-4" style="background:var(--bg-secondary)">
+                      <td [attr.colspan]="columnCount()" class="px-4 py-4" style="background:var(--bg-secondary)">
                         <div class="flex gap-1 mb-3" (click)="$event.stopPropagation()">
                           <button type="button" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                                   [class]="matchDetailTab() === 'reports' ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'"
@@ -300,7 +307,9 @@ export class MyMatchesComponent implements OnInit {
   private readonly translate = inject(TranslateService);
 
   readonly leagues = SEASON_MATCH_LEAGUES;
-  readonly selectedLeague = signal<SeasonMatchLeague>('premier');
+  // proScout has exactly one league in scope — default straight to it instead of 'premier',
+  // which the scope layer's $and wrap would silently return zero rows for (research.md R6).
+  readonly selectedLeague = signal<SeasonMatchLeague>(this.auth.isProScout() ? 'professional' : 'premier');
   readonly attendingOnly = signal(false);
 
   readonly loading = signal(true);
@@ -328,6 +337,10 @@ export class MyMatchesComponent implements OnInit {
     const set = new Set([...this.allSeasons(), currentSeason()]);
     return Array.from(set).sort().reverse();
   });
+
+  // Table column count for expandable rows' colspan — one fewer for proScout,
+  // which has no age-group column (FR-002).
+  readonly columnCount = computed(() => this.auth.isProScout() ? 4 : 5);
 
   readonly visibleMatches = computed(() => {
     let list = this.matches();

@@ -97,7 +97,7 @@ A proScout who types the address of the users area, the observers area, or the a
 - **FR-004**: The menu presented to an administrator MUST be exactly: Dashboard, Players, Coaches, Observers, Age Groups, Profile — in that order. ("Coaches" is the entry leading to the users area; the label is unchanged from today.)
 - **FR-005**: The menu presented to a coach MUST be exactly: Dashboard, Players, My Matches, Profile — in that order.
 - **FR-006**: The menu presented to an observer MUST be exactly: Dashboard, Players, My Matches, Profile — in that order.
-- **FR-007**: The menu presented to a proScout MUST be exactly: Dashboard, Players, Profile — in that order. **(Updated by Stage 5 — see DF-001 below. Originally "Players, Profile" while the role had no dashboard destination.)**
+- **FR-007**: The menu presented to a proScout MUST be exactly: Dashboard, Players, My Matches, Profile — in that order. **(Updated by Stage 6 — see DF-002 below. Was "Dashboard, Players, Profile" while the role had no matches destination; originally "Players, Profile" while it had no dashboard destination either — see DF-001.)**
 - **FR-008**: The age-groups entry MUST NOT name proScout, in this phase or any later one.
 - **FR-009**: Every entry's label, icon, and destination MUST be identical to the corresponding entry before this change, so that no existing role observes any visual or behavioral difference.
 - **FR-010**: The formation graphic rendered below the menu MUST keep its existing display condition (administrator, while the players area is active) and MUST NOT become a menu entry.
@@ -111,7 +111,7 @@ A proScout who types the address of the users area, the observers area, or the a
 
 ### Deferred by Design *(binding follow-ups)*
 
-These two entries belonged to proScout by the overall plan but were deliberately **not** added in this phase, because the destinations behind them did not yet accept the role — adding them then would have produced a menu entry that ends in a refusal, violating FR-015. DF-001 has since been discharged by Stage 5; DF-002 remains open.
+These two entries belonged to proScout by the overall plan but were deliberately **not** added in this phase, because the destinations behind them did not yet accept the role — adding them then would have produced a menu entry that ends in a refusal, violating FR-015. Both DF-001 and DF-002 have since been discharged, by Stage 5 and Stage 6 respectively.
 
 - **DF-001 — Dashboard entry for proScout → Phase 5. DISCHARGED.** The dashboard area routes each role to its own landing destination, and proScout originally had none, so it resolved to the unauthorized destination.
 
@@ -127,9 +127,19 @@ These two entries belonged to proScout by the overall plan but were deliberately
   > Locked by `core/services/role-landing.service.spec.ts` → *"RoleLandingService — proScout
   > (DF-001, discharged in Stage 5)"* and `layout/sidebar/sidebar.component.spec.ts`'s proScout
   > cases.
-- **DF-002 — My Matches entry for proScout → Phase 6.** The matches area is restricted to coach, observer, and administrator, and the attendance actions behind it are restricted to coach and observer on the server. Phase 6 opens both; **the same phase MUST add proScout to the My Matches entry's role set**, and MUST update FR-007 to expect four entries.
+- **DF-002 — My Matches entry for proScout → Phase 6. DISCHARGED.** The matches area was restricted to coach, observer, and administrator, and the attendance actions behind it were restricted to coach and observer on the server.
 
-Both were recorded here so that the original "exactly two entries" expectation in FR-007 was understood as a phase checkpoint, not a final state — DF-001's discharge (three entries) is that checkpoint moving; DF-002 (four entries) is the next one.
+  > **History**: Stage 6 (`specs/008-proscout-matches-attendance/`) opened
+  > `POST`/`DELETE /seasonMatches/{id}/attend` and `PATCH /seasonMatches/{id}/status` to proScout
+  > (the latter under the same attendee-plus-match-day constraint coaches/observers already have),
+  > opened the `/my-matches` route guard to the role, and added proScout to the My Matches nav
+  > entry's role set. FR-007 above now reflects four entries.
+  >
+  > Locked by `layout/sidebar/sidebar.component.spec.ts` → *"proScout sees exactly: Dashboard,
+  > Players, My Matches, Profile (Stage 6 — DF-002 discharged)"* and
+  > `core/auth/role-landing-destinations.spec.ts`.
+
+Both were recorded here so that the original "exactly two entries" expectation in FR-007 was understood as a phase checkpoint, not a final state — DF-001's discharge (three entries) was the first checkpoint moving; DF-002's discharge (four entries) is the second, and closes this deferral.
 
 ### Key Entities
 
@@ -141,9 +151,9 @@ Both were recorded here so that the original "exactly two entries" expectation i
 ### Measurable Outcomes
 
 - **SC-001**: For each of administrator, coach, and observer, the set and order of menu entries after this change is identical to the set and order before it — zero differences.
-- **SC-002**: A proScout sees exactly 3 menu entries **(Updated by Stage 5 — was 2 while DF-001 was open)**; a coach and an observer see exactly 4 each; an administrator sees exactly 6.
+- **SC-002**: A proScout sees exactly 4 menu entries **(Updated by Stage 6 — was 3 while DF-002 was open, and 2 before that while DF-001 was open)**; a coach and an observer see exactly 4 each; an administrator sees exactly 6.
 - **SC-003**: A user with no role, and a user with a role named on no entry, each see exactly 0 menu entries.
-- **SC-004**: 100% of menu entries shown to any role lead to a destination that role can open. DF-001 is discharged (Stage 5) and is no longer an exclusion; DF-002 remains excluded by not being shown at all until its own stage.
+- **SC-004**: 100% of menu entries shown to any role lead to a destination that role can open. DF-001 (Stage 5) and DF-002 (Stage 6) are both discharged and are no longer exclusions.
 - **SC-005**: All three administration areas (users, observers, age groups), when opened directly by a proScout, are refused — the guard does not grant entry — with the refusal bouncing to the role's own landing destination (`/dashboard/proScout` as of Stage 5) rather than granting access. **Corrected by Stage 5**: this criterion originally named `/unauthorized` as the destination, which stopped being accurate the moment Stage 4 gave the role its own (then-temporary) landing — `/unauthorized` is reserved for *unrecognized* roles, and a refused-but-recognized role has bounced to its own destination since Stage 4. The security property — "the guard does not grant access" — was true throughout and is what this criterion actually measures; only the destination string was stale.
 - **SC-006**: The server's decision for a proScout on the data behind those three areas is recorded by an executable check for each one, so a future change that silently opens one of them fails a test.
 - **SC-007**: Adding a hypothetical new role to the system, without touching the menu, results in that role seeing 0 entries.

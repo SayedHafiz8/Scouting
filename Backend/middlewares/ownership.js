@@ -235,20 +235,14 @@ export const checkSeasonMatchAttendee = asyncHandler(async (req, res, next) => {
         return next();
     }
 
-    // Stage 2 — proScout. مسارات الحضور لسه مقفولة من allowedTo لحد المرحلة 6،
-    // فالفرع ده مش قابل للوصول عبر HTTP دلوقتي — موجود عشان لما الحد يتفتح
-    // يبقى الفحص الأمني معمول بالفعل مش مؤجّل.
-    //
-    // **الفحصين الاتنين مطلوبين مع بعض**: عضوية attendees وحدها **مش** فحص دوري.
-    // من غير فحص النطاق، أول ما المرحلة 6 تفتح الحد، proScout اتضاف لـattendees
-    // بتاعة مباراة في الدوري الممتاز (بأي طريقة) هيعدّي. النطاق هو اللي بيبقى
-    // حامل الحمل ساعتها.
+    // Stage 6 — proScout. **الفحصين الاتنين مطلوبين مع بعض**: عضوية attendees
+    // وحدها مش فحص دوري. من غير فحص النطاق، proScout اتضاف لـattendees بتاعة
+    // مباراة في الدوري الممتاز (بأي طريقة) كان هيعدّي. النطاق هو اللي بيبقى
+    // حامل الحمل هنا — نفس منطق checkSeasonMatchScope بالظبط، مش نسخة تانية منه.
     //
     // skipPopulate: exists() بتنفّذ كـfindOne فبتشغّل pre(/^find/) بتاع
     // seasonMatchModel اللي بيعمل populate رباعي — نفس السبب اللي الفحص فوق
     // مستخدم عشانه setOptions({ skipPopulate: true }).
-    //
-    // الحضور نفسه مرفوض دلوقتي بغض النظر — المرحلة 2 قراءة بس.
     if (req.user.role === ROLES.PRO_SCOUT) {
         const inScope = await SeasonMatch.exists({
             _id: req.params.id,
@@ -257,8 +251,16 @@ export const checkSeasonMatchAttendee = asyncHandler(async (req, res, next) => {
 
         if (!inScope) {
             logScopeDenial({ req, resource: "seasonMatch", resourceId: req.params.id });
+            return next(new AppError("You are not assigned to attend this match", 403));
         }
-        return next(new AppError("You are not assigned to attend this match", 403));
+
+        const isAttendee = (match.attendees ?? []).some(
+            (a) => a.toString() === req.user._id.toString()
+        );
+        if (!isAttendee) {
+            return next(new AppError("You are not assigned to attend this match", 403));
+        }
+        return next();
     }
 
     // Deny by default — رول غير معدود صراحةً.

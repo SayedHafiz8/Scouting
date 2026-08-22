@@ -48,7 +48,7 @@ export const routes: Routes = [
       {
         path: 'my-matches',
         loadComponent: () => import('./features/season-matches/my-matches/my-matches.component').then(m => m.MyMatchesComponent),
-        canActivate: [roleGuard(['coach', 'observer', 'admin'])],
+        canActivate: [roleGuard(['coach', 'observer', 'admin', 'proScout'])],
       },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
     ],

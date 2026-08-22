@@ -743,14 +743,16 @@ describe('proScout — denied access is auditable (US4, FR-010, SC-004)', () => 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// T042 — يونيت تست مباشر للفروع اللي مفيش request HTTP بيوصلها في المرحلة دي.
+// T042 — يونيت تست مباشر لـcheckSeasonMatchAttendee (بيتخطى HTTP، بينادي الحارس
+// مباشرة). checkReportOwnership/checkMediaOwnership لسه فروعهم مش مفتوحة عبر
+// allowedTo، فتستاتهم فضلوا كما هي.
 //
-// حضور المباريات والتقارير والميديا كلهم لسه 403 من allowedTo لحد المرحلة 4/6،
-// يعني كل تست على مستوى HTTP بيتوقف عند بوابة الرول وبينجح **للسبب الغلط**.
-// من غير الملف ده، مسح فحص النطاق من جوه فرع checkSeasonMatchAttendee مش هيكسر
-// أي حاجة لحد ما المرحلة 6 تفتح الحد. "متوصّل" و"متحقَّق منه" ادعاءين مختلفين.
+// حتى المرحلة 6، فرع proScout في checkSeasonMatchAttendee كان بيحسب فحص النطاق
+// وبعدين بيرفض دايماً بغض النظر عن النتيجة — عمداً، لأن /attend و/status كانوا
+// لسه مقفولين من allowedTo (research.md R2). المرحلة 6 فتحت الحدين وصلّحت
+// الفرع: بقى بيمنح فقط لو النطاق **و** عضوية attendees الاتنين صح معاً.
 // ═══════════════════════════════════════════════════════════════════════════
-describe('T042 — guard branches unreachable over HTTP in this stage', () => {
+describe('T042 — checkSeasonMatchAttendee: scope + attendee-membership (Stage 6)', () => {
   let scout, admin, proMatch, premierMatch;
 
   const runGuard = async (guard, req) => {
@@ -793,8 +795,23 @@ describe('T042 — guard branches unreachable over HTTP in this stage', () => {
     });
   });
 
-  it('checkSeasonMatchAttendee: proScout is denied even when listed as an attendee (Stage 2 = read only)', async () => {
+  it('checkSeasonMatchAttendee: proScout is granted when in-scope AND a registered attendee (Stage 6)', async () => {
     const next = await runGuard(checkSeasonMatchAttendee, reqFor(scout.user, proMatch._id));
+
+    // next() called with no argument = grant, per the coach/observer branches' shape.
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0]).toBeUndefined();
+  });
+
+  it('checkSeasonMatchAttendee: proScout is denied when in-scope but NOT a registered attendee', async () => {
+    // proMatch is in scope but built with no attendees array — attendee-membership leg alone must deny.
+    const noAttendeeMatch = await SeasonMatch.create({
+      ageGroup: ageGroup._id, season: '2025/2026', league: 'professional',
+      matchDate: new Date('2026-03-03T00:00:00.000Z'),
+      homeTeam: proMatch.homeTeam, awayTeam: proMatch.awayTeam, createdBy: admin.user._id,
+    });
+
+    const next = await runGuard(checkSeasonMatchAttendee, reqFor(scout.user, noAttendeeMatch._id));
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0]).toBeInstanceOf(AppError);
@@ -809,11 +826,12 @@ describe('T042 — guard branches unreachable over HTTP in this stage', () => {
     expect(logScopeDenial).toHaveBeenCalledTimes(1);
     expect(logScopeDenial.mock.calls[0][0].resource).toBe('seasonMatch');
 
-    // وفي المباراة داخل النطاق: برضه مرفوض (الحد مقفول) لكن **من غير** تسجيل
-    // خرق نطاق — الرفض هنا سببه المرحلة مش النطاق.
+    // وفي المباراة داخل النطاق (وهو attendee فيها كمان): بيتمنح، ومن غير أي
+    // تسجيل خرق نطاق — مفيش خرق أصلاً.
     logScopeDenial.mockClear();
-    await runGuard(checkSeasonMatchAttendee, reqFor(scout.user, proMatch._id));
+    const next = await runGuard(checkSeasonMatchAttendee, reqFor(scout.user, proMatch._id));
     expect(logScopeDenial).not.toHaveBeenCalled();
+    expect(next.mock.calls[0][0]).toBeUndefined();
   });
 
   it('checkReportOwnership and checkMediaOwnership deny proScout explicitly (Constraint C-2)', async () => {

@@ -25,7 +25,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { labelKey: 'NAV.COACHES',    icon: 'coaches',     route: '/users',       roles: ['admin'] },
   { labelKey: 'NAV.OBSERVERS',  icon: 'observers',   route: '/observers',   roles: ['admin'] },
   { labelKey: 'NAV.AGE_GROUPS', icon: 'age-groups',  route: '/age-groups',  roles: ['admin'] },
-  { labelKey: 'NAV.MY_MATCHES', icon: 'my-matches',  route: '/my-matches',  roles: ['coach', 'observer'] },
+  { labelKey: 'NAV.MY_MATCHES', icon: 'my-matches',  route: '/my-matches',  roles: ['coach', 'observer', 'proScout'] },
   { labelKey: 'NAV.PROFILE',    icon: 'profile',     route: '/profile',     roles: ['admin', 'coach', 'observer', 'proScout'] },
 ];
 
