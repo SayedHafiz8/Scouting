@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import app from '../../app.js';
 import { createProScout } from '../helpers/factory.js';
+import Player from '../../models/playedModel.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  Stage 1 (docs/scout-pro-plan-v2.md) — ProScout Role Definition
@@ -115,18 +116,27 @@ describe('proScout — 403 on role-gated routes it is not listed for (US3, FR-00
     expect(res.body.count).toBe(0); // no professional-league matches seeded here
   });
 
-  it('POST /players (coach-only) → 403', async () => {
+  it('POST /players → reachable, no longer role-gated (Stage-4 gate opened)', async () => {
+    // المرحلة 1 كانت بتأكد 403 هنا لأن الحد كان allowedTo("coach") بس. المرحلة 4
+    // فتحته للـproScout بعد ما اتظبطت التلات طبقات: teamExistsInScope في
+    // createValidate، وdelete req.body.coach في الكنترولر، وlockField على الباقي.
+    // الـ400 دي من الـvalidation (الـbody ناقص) — المهم إنها **مش 403**، يعني
+    // البوابة اتفتحت. السلوك الكامل في tests/roles/proScoutPlayersWrite.test.js.
     const { token } = await createProScout();
 
     const res = await request(app)
       .post('/api/v1/players')
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: 'Should Not Be Created' });
+      .send({ name: 'Incomplete Payload' });
 
-    expect(res.status).toBe(403);
+    expect(res.status).not.toBe(403);
+    expect(res.status).toBe(400);
+    expect(await Player.countDocuments()).toBe(0);
   });
 
-  it('POST /players/:playerId/reports (coach/observer-only) → 403', async () => {
+  it('POST /players/:playerId/reports → reachable, guarded per-document (Stage-4 gate opened)', async () => {
+    // نفس القصة: المرحلة 4 فتحت الحد، وcheckPlayerOwnership بقى هو اللي بيحكم.
+    // لاعب مش موجود → 404 من الحارس، مش 403 من البوابة.
     const { token } = await createProScout();
 
     const res = await request(app)
@@ -134,7 +144,8 @@ describe('proScout — 403 on role-gated routes it is not listed for (US3, FR-00
       .set('Authorization', `Bearer ${token}`)
       .send({});
 
-    expect(res.status).toBe(403);
+    expect(res.status).not.toBe(403);
+    expect(res.status).toBe(404);
   });
 });
 

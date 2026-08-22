@@ -5,6 +5,7 @@ import validatorMiddleware from "../../middlewares/validatorMiddleware.js";
 import Team from "../../models/teamModel.js";
 import Player from "../../models/playedModel.js";
 import { teamScopeFor } from "../../services/scope.js";
+import { logScopeDenial } from "../accessLog.js";
 
 // Stage 2 — نفس نقطة الحقيقة اللي checkTeamScope (middlewares/ownership.js)
 // بيستخدمها. من غيره كان فيه تحقق تاني (Team.findById خام) بيرجع "الفريق موجود"
@@ -16,12 +17,33 @@ import { teamScopeFor } from "../../services/scope.js";
 // وهمي — مفيش تفرقة قابلة للملاحظة.
 //
 // لغير proScout: teamScopeFor بترجع {} فالسلوك زي ما هو بالظبط (Principle III).
+// Stage 4 (analysis finding D2) — تسجيل الرفض.
+//
+// Principle IV بيطلب إن **كل** محاولة وصول مرفوضة تتسجّل. الرفض ده بقى مسار
+// قابل للوصول في الكتابة أول مرة في المرحلة دي (POST/PATCH /players اتفتحوا
+// للـproScout)، وكان الوحيد اللي بيرفض من غير لوج.
+//
+// ⚠️ اللوج بيفرّق بين "فريق موجود بس برّه النطاق" و"فريق مش موجود"، لكن
+// **الرد بيفضل مطابق بالحرف في الحالتين**. التفرقة دليل على السيرفر بس، ومش
+// قابلة للملاحظة من العميل إطلاقاً — لو ظهرت في الرد (status أو رسالة مختلفة)
+// بترجّع بالظبط الـoracle اللي المرحلة 2 قفلته: عدّ فرق الدوري التاني بالتخمين.
+// راجع research R4 والتعليق فوق.
+//
+// الاستعلام التاني بيتنفّذ بس لما يكون فيه نطاق فعلاً (proScout) — لغير
+// proScout الـscope بيبقى {} فبنخرج من غير أي تكلفة زيادة (Principle III).
 const teamExistsInScope = (val, { req }) =>
     teamScopeFor(req).then((scope) =>
-        Team.exists({ _id: val, ...scope }).then((exists) => {
-            if (!exists) {
-                return Promise.reject(new Error(`No team for this id: ${val}`));
+        Team.exists({ _id: val, ...scope }).then(async (exists) => {
+            if (exists) return;
+
+            if (Object.keys(scope).length) {
+                const existsOutOfScope = await Team.exists({ _id: val });
+                if (existsOutOfScope) {
+                    logScopeDenial({ req, resource: "team", resourceId: val });
+                }
             }
+
+            return Promise.reject(new Error(`No team for this id: ${val}`));
         })
     );
 
@@ -120,6 +142,9 @@ export const createValidate = [
     lockField("ageGroup"),
     // Stage 2 — createdBy بيتحط من التوكن في playerController.create زي coach.
     lockField("createdBy"),
+    // Stage 4b — isProfessional بيتحدد من رول المنشئ في الكنترولر. من غير القفل
+    // ده أي كوتش يبعتها true ويرفع قيد الفئة العمرية (2007→2019) عن لاعبه.
+    lockField("isProfessional"),
     validatorMiddleware
 
 ];
@@ -170,6 +195,9 @@ export const updateValidate = [
     // Stage 2 — من غير القفل ده أي كوتش يقدر يعيد كتابة نسبة إنشاء أي لاعب
     // يملكه عن طريق PATCH /players/:id (services.updating بيمرّر req.body كما هو).
     lockField("createdBy"),
+    // Stage 4b — ومن غيره كمان يقدر يحوّل لاعب ناشئ لـ"محترف" بتعديل عادي،
+    // فيتخطّى قيد سنة الميلاد ويفضّي فئته العمرية.
+    lockField("isProfessional"),
     validatorMiddleware
 ];
 

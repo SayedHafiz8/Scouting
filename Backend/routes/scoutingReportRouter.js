@@ -52,7 +52,7 @@
  *         $ref: '#/components/responses/NotFound'
  *
  *   post:
- *     summary: Create a scouting report for a player (coach only)
+ *     summary: Create a scouting report for a player (coach, observer, or proScout — each within its own data scope)
  *     tags: [Reports]
  *     parameters:
  *       - in: path
@@ -175,7 +175,7 @@
  *         $ref: '#/components/responses/NotFound'
  *
  *   patch:
- *     summary: Update a scouting report (coach only — own reports)
+ *     summary: Update a scouting report (coach, observer, or proScout — own reports only)
  *     tags: [Reports]
  *     parameters:
  *       - in: path
@@ -230,7 +230,7 @@
  *         $ref: '#/components/responses/NotFound'
  *
  *   delete:
- *     summary: Delete a scouting report (admin only)
+ *     summary: Delete a scouting report (admin only — no other role, including proScout, may delete)
  *     tags: [Reports]
  *     parameters:
  *       - in: path
@@ -264,21 +264,32 @@ import { ROLES } from "../constants/roles.js";
 // mergeParams علشان يشتغل كـ nested route تحت /players/:id/scouting-reports
 const scoutingRouter = express.Router({ mergeParams: true });
 
+// Stage 4 — proScout اتضاف للقراءة والكتابة على التقارير، بنفس مجموعة الكوتش
+// بالظبط ولا أوسع. checkPlayerOwnership وcheckReportOwnership الاتنين عندهم فرع
+// proScout حقيقي (المرحلة 4، middlewares/ownership.js) — الحد اتفتح **بعد**
+// الحارس مش قبله.
+//
+// getAll بيضيّق غير الأدمن على تقاريره هو (baseFilter.coach = req.user._id في
+// scoutingReportController)، فالـproScout ورث السلوك الضيق الصح من غير منطق جديد.
 scoutingRouter
     .route("/")
-    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), checkPlayerOwnership, getAllValidate, getAll)
-    .post(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER), checkPlayerOwnership, resolveMatchTypeFields, createValidate, setPlayerToBody, resolveSeasonMatchToBody, create);
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, getAllValidate, getAll)
+    .post(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, resolveMatchTypeFields, createValidate, setPlayerToBody, resolveSeasonMatchToBody, create);
 
 
 scoutingRouter
     .route("/statistics")
-    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), checkPlayerOwnership, statisticsValidate, getPlayerStatistics);
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, statisticsValidate, getPlayerStatistics);
 
 
 scoutingRouter
     .route("/:id")
-    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER),checkReportOwnership, getSpecificValidate,getSpecific)
-    .patch(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER), checkReportOwnership,updateValidate, resolveSeasonMatchToBody, update)
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),checkReportOwnership, getSpecificValidate,getSpecific)
+    .patch(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkReportOwnership,updateValidate, resolveSeasonMatchToBody, update)
+    // ⚠️ DELETE بيفضل أدمن-أونلي — **متضفش proScout هنا** (research R2).
+    // خطة المرحلة كانت بتقول "حالياً coach + observer" وده غلط: الكوتش نفسه
+    // مايقدرش يمسح تقرير. إضافة proScout كانت هتدي رول جديد صلاحية هدّامة
+    // مالهاش الرولين القائمين، بناءً على خطأ في وثيقة تخطيط.
     .delete(protect, allowedTo(ROLES.ADMIN),deleteValidate, deleting);
 
 

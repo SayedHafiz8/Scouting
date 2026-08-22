@@ -80,21 +80,43 @@ describe('roleGuard', () => {
   // Phase 3 (proScout navigation) — US4/FR-012: direct navigation to the three
   // administration areas is refused via the same single RoleLandingService used
   // above, not a new hand-written condition (FR-013).
-  it('redirects proScout away from /users (admin-only) to /unauthorized', async () => {
+  //
+  // ⚠️ Updated in Stage 4 (DF-001). These previously asserted `/unauthorized`,
+  // which was correct only while proScout had no landing destination and fell
+  // into the unknown-role default. It now has one (`/players`, temporary until
+  // Stage 5), so a refusal bounces it to its own landing — exactly what already
+  // happens to a coach or observer refused an admin-only route.
+  //
+  // The security property under test is unchanged and is what these assert:
+  // **the guard does not grant access.** Which page the refusal lands on is a UX
+  // detail; `/unauthorized` is the destination for *unrecognized* roles, and
+  // proScout is no longer one of those.
+  const refusedProScout = async () => {
     const result = await runRoleGuard(makeAuthSpy(proScoutUser), ['admin']);
     expect(result).not.toBeTrue();
-    expect(result.toString()).toBe('/unauthorized');
+    return result.toString();
+  };
+
+  it('refuses proScout on /users (admin-only) and bounces it to its landing', async () => {
+    expect(await refusedProScout()).toBe('/players');
   });
 
-  it('redirects proScout away from /observers (admin-only) to /unauthorized', async () => {
-    const result = await runRoleGuard(makeAuthSpy(proScoutUser), ['admin']);
-    expect(result).not.toBeTrue();
-    expect(result.toString()).toBe('/unauthorized');
+  it('refuses proScout on /observers (admin-only) and bounces it to its landing', async () => {
+    expect(await refusedProScout()).toBe('/players');
   });
 
-  it('redirects proScout away from /age-groups (admin-only) to /unauthorized', async () => {
+  it('refuses proScout on /age-groups (admin-only) and bounces it to its landing', async () => {
+    expect(await refusedProScout()).toBe('/players');
+  });
+
+  it('never returns true for proScout on an admin-only route, whatever the landing is', async () => {
+    // The assertion that must survive Stage 5 changing the landing destination.
     const result = await runRoleGuard(makeAuthSpy(proScoutUser), ['admin']);
     expect(result).not.toBeTrue();
-    expect(result.toString()).toBe('/unauthorized');
+  });
+
+  it('still grants proScout a route it IS listed for', async () => {
+    const result = await runRoleGuard(makeAuthSpy(proScoutUser), ['admin', 'proScout']);
+    expect(result).toBeTrue();
   });
 });

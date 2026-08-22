@@ -324,7 +324,9 @@
       "TEAM_ERR": "Team is required",
       "TEAM_LOCKED": "Select a birth date first",
       "TEAM_HINT": "Choose a birth date to see teams for that age group",
+      "TEAM_HINT_SCOUT": "Choose a birth date to see the teams available for this player",
       "TEAM_EMPTY": "No teams registered for this age group yet",
+      "TEAM_EMPTY_SCOUT": "No teams are available for a player born in this year yet",
       "TEAM_OTHER": "Team not listed — type the name",
       "TEAM_NAME_PH": "Enter team name",
       "POSITION": "Position *",
@@ -591,7 +593,8 @@
       "SAVE": "Save Changes",
       "ADD_BTN": "Add Coach",
       "SAVING": "Saving...",
-      "OBSERVER": "Observer"
+      "OBSERVER": "Observer",
+      "PRO_SCOUT": "Pro Scout"
     },
     "DETAIL": {
       "ACTIVE": "Active account",

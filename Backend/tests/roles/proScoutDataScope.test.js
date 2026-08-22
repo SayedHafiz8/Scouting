@@ -867,7 +867,11 @@ describe('T043 — deny-by-default sweep across the endpoint matrix (scenario 26
 
   const forbidden = [
     ['GET', '/api/v1/users'],
-    ['POST', '/api/v1/players'],
+    // ⚠️ POST /api/v1/players اتشال من الكنس ده في المرحلة 4 — الحد اتفتح
+    // للـproScout عن قصد (إنشاء لاعبين هو نص المرحلة). المنع اتحوّل من بوابة
+    // الرول لطبقة النطاق: teamExistsInScope بيمنع فرق برّه دوري المحترفين،
+    // وcheckPlayerOwnership بيمنع أي لاعب برّه النطاق. التغطية في
+    // tests/roles/proScoutPlayersWrite.test.js.
     ['POST', '/api/v1/teams'],
     ['POST', '/api/v1/seasonMatches'],
     ['GET', '/api/v1/dashboard/admin'],

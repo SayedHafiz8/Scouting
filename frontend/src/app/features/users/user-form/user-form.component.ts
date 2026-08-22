@@ -5,6 +5,24 @@ import { TranslateService, TranslatePipe } from '@ngx-translate/core';
 import { UserService } from '../services/user.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { LanguageService } from '../../../core/services/language.service';
+import { UserRole } from '../../../core/models/user.model';
+
+// Stage 4 — the role list used to be three hard-coded <option> literals, which is why
+// an admin could not assign proScout from the UI at all (Constitution Principle VII).
+//
+// ⚠️ Limitation, stated plainly: UserRole is a *type* alias derived from openapi.json
+// (core/models/user.model.ts → api.generated.ts). A type has no runtime value, so this
+// list cannot be auto-derived from it. What the annotation buys is a compile error if
+// any entry here is not in the generated union — adding a role to openapi.json will NOT
+// populate this array on its own. Same discipline as NAV_ITEMS in sidebar.component.ts.
+const ROLE_OPTIONS: readonly UserRole[] = ['coach', 'admin', 'observer', 'proScout'];
+
+const ROLE_LABEL_KEYS: Record<UserRole, string> = {
+  coach: 'COACHES.FORM.COACH',
+  admin: 'COACHES.FORM.ADMIN',
+  observer: 'COACHES.FORM.OBSERVER',
+  proScout: 'COACHES.FORM.PRO_SCOUT',
+};
 
 function passwordMatchValidator(control: AbstractControl) {
   const p = control.get('password')?.value;
@@ -168,9 +186,9 @@ function passwordMatchValidator(control: AbstractControl) {
             <div>
               <label class="block text-sm font-medium mb-1.5" style="color:var(--text-primary)">{{ 'COACHES.FORM.ROLE' | translate }}</label>
               <select formControlName="role" class="form-input">
-                <option value="coach">{{ 'COACHES.FORM.COACH' | translate }}</option>
-                <option value="admin">{{ 'COACHES.FORM.ADMIN' | translate }}</option>
-                <option value="observer">{{ 'COACHES.FORM.OBSERVER' | translate }}</option>
+                @for (r of roleOptions; track r) {
+                  <option [value]="r">{{ roleLabelKeys[r] | translate }}</option>
+                }
               </select>
             </div>
 
@@ -210,6 +228,10 @@ export class UserFormComponent implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
   private readonly lang = inject(LanguageService);
+
+  // Stage 4 — template reads these; see ROLE_OPTIONS above for the derivation caveat.
+  readonly roleOptions = ROLE_OPTIONS;
+  readonly roleLabelKeys = ROLE_LABEL_KEYS;
 
   readonly loading = signal(false);
   readonly isEdit = signal(false);

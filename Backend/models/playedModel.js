@@ -119,6 +119,30 @@ const playerSchema = new mongoose.Schema({
         type: mongoose.Schema.ObjectId,
         ref: 'User',
     },
+    // Stage 4b — لاعب محترف (بالغ) بدل لاعب ناشئ.
+    //
+    // بيغيّر حاجتين في الـpre-save hooks تحت، وبس:
+    //   1) مدى سنة الميلاد المسموح: 1996→2019 بدل 2007→2019.
+    //   2) اشتقاق ageGroup: **بيتخطّى تماماً**، فالحقل بيفضل فاضي.
+    //
+    // ليه علم صريح مش استنتاج من الرول أو من دوري الفريق:
+    //   • الرول — الموديل مالوش وصول لـreq.user، وربطه بالرولات بيخلط طبقتين.
+    //   • دوري الفريق — Player.team قيمته default: null، ولاعب الـproScout اللي
+    //     لسه متربطش بفريق هو بالظبط الحالة اللي الفرع التاني من سكوب المرحلة 2
+    //     موجود عشانها. الاستنتاج من الفريق بيفشل هناك.
+    // العلم بيتقرا synchronously في الـhook من غير أي استعلام إضافي.
+    //
+    // بيتحط من السيرفر بس (playerController.create من رول المنشئ)، و
+    // lockField("isProfessional") في playerValidation بيرفض أي قيمة من العميل
+    // في الإنشاء والتعديل — يعني كوتش مايقدرش يرفع القيد عن لاعبه بإنه يبعتها.
+    //
+    // ⚠️ تعارض مسجّل مع القيد C-4 في الدستور، اللي بيقول ageGroup يفضل "مشتقاً
+    // إجبارياً على Player". القيد اتكتب في سياق "متشيلش الحقل من المخطط"، مش في
+    // سياق لاعبين بالغين مالهمش فئة عمرية أصلاً. الحقل باقٍ كما هو للناشئين.
+    isProfessional: {
+        type: Boolean,
+        default: false,
+    },
     // §11 — كلمات البحث المطبّعة (lowercase) المشتقة من name + city.
     //
     // ليه حقل مشتق أصلاً: الـ$regex الـcase-insensitive (i) مابيستخدمش حدود
@@ -141,12 +165,30 @@ const playerSchema = new mongoose.Schema({
     },
 },{ timestamps: true });
 
-// Valid birth-year range for age groups (2007 → 2019)
+// Valid birth-year range for age groups (2007 → 2019) — لاعبي الناشئين
 const MIN_BIRTH_YEAR = 2007;
 const MAX_BIRTH_YEAR = 2019;
 
+// Stage 4b — الحد الأدنى للاعب المحترف: 1996 (= 30 سنة في 2026).
+//
+// رقم **ثابت** بقرار المالك، مش محسوب من السنة الحالية. المتحرك
+// (currentYear - 30) كان بيعمل فخ: لاعب مواليد 1996 مسجّل النهارده يبقى تعديل
+// تاريخ ميلاده مرفوض في 2027، لأن pre('findOneAndUpdate') بيعيد الفحص بنفس
+// الحدود. الثابت بيزحف ببطء (31 سنة في 2027) لكنه مابيبطّلش بيانات قائمة،
+// وهو نفس أسلوب MAX_BIRTH_YEAR الموجود أصلاً.
+const PRO_MIN_BIRTH_YEAR = 1996;
+
 function getBirthYear(dateOfBirth) {
     return new Date(dateOfBirth).getFullYear();
+}
+
+// Stage 4b — نقطة واحدة لقرار "إيه المسموح لسنة الميلاد دي".
+// بترجع { min, max } وبس؛ قرار اشتقاق ageGroup منفصل عنها في الـhooks.
+function birthYearBoundsFor(isProfessional) {
+    return {
+        min: isProfessional ? PRO_MIN_BIRTH_YEAR : MIN_BIRTH_YEAR,
+        max: MAX_BIRTH_YEAR,
+    };
 }
 
 // §11 — بيحوّل الاسم والمدينة لكلمات مطبّعة للبحث بالبادئة.
@@ -164,9 +206,25 @@ export const buildSearchTokens = (...values) => {
 
 playerSchema.pre('save', async function () {
     const birthYear = getBirthYear(this.dateOfBirth);
+    const { min, max } = birthYearBoundsFor(this.isProfessional);
 
-    if (birthYear < MIN_BIRTH_YEAR || birthYear > MAX_BIRTH_YEAR) {
-        throw new AppError(`Player birth year must be between ${MIN_BIRTH_YEAR} and ${MAX_BIRTH_YEAR} (got: ${birthYear})`, 400);
+    if (birthYear < min || birthYear > max) {
+        throw new AppError(`Player birth year must be between ${min} and ${max} (got: ${birthYear})`, 400);
+    }
+
+    // Stage 4b — اللاعب المحترف مالوش فئة عمرية.
+    //
+    // مش "الفئة مش موجودة فبنتخطاها" — الفئات العمرية مفهوم خاص بالناشئين
+    // (فرق الأكاديمية بتتقسم بسنة الميلاد)، ولاعب محترف بالغ مالوش مكان فيها
+    // أصلاً. إنشاء فئات 1996→2006 عشان نملا الخانة كان هيحطّ 11 كارت جديد في
+    // شبكة الفئات عند الكوتش والأدمن — ودي بالظبط الحاجة اللي المالك قال إنها
+    // تفضل زي ما هي (2007→2019).
+    //
+    // ageGroup بيفضل فاضي، وده متعامَل معاه أصلاً في getCountsByAgeGroup
+    // (بيتخطّى الـbucket الفاضي في counts وبيعدّه في total).
+    if (this.isProfessional) {
+        this.ageGroup = undefined;
+        return;
     }
 
     const ageGroup = await AgeGroup.findOne({ birthYear });
@@ -260,17 +318,34 @@ playerSchema.pre('findOneAndUpdate', async function () {
 
         const birthYear = getBirthYear(incoming.dateOfBirth);
 
-        if(birthYear < MIN_BIRTH_YEAR || birthYear > MAX_BIRTH_YEAR){
-            throw new AppError(`Player birth year must be between ${MIN_BIRTH_YEAR} and ${MAX_BIRTH_YEAR} (got: ${birthYear})`, 400);
+        // Stage 4b — isProfessional بيتقرا من **المستند المخزّن**، مش من الـupdate.
+        // lockField("isProfessional") بيمنع العميل يبعتها أصلاً، فالقيمة الوحيدة
+        // الموثوقة هي اللي في الداتابيز. الاستعلام ده بيحصل بس لما تاريخ الميلاد
+        // نفسه بيتعدّل — مش على كل تحديث.
+        const current = await this.model
+            .findOne(this.getQuery())
+            .select("isProfessional")
+            .lean();
+        const isProfessional = Boolean(current?.isProfessional);
+        const { min, max } = birthYearBoundsFor(isProfessional);
+
+        if(birthYear < min || birthYear > max){
+            throw new AppError(`Player birth year must be between ${min} and ${max} (got: ${birthYear})`, 400);
         }
 
-        const ageGroup = await AgeGroup.findOne({birthYear});
+        // اللاعب المحترف مالوش فئة عمرية — نفس منطق pre('save') فوق. بنفضّيها
+        // صراحةً بدل ما نسيبها، عشان لاعب اتحوّل لمحترف مايفضلش شايل فئة قديمة.
+        if (isProfessional) {
+            setDerived('ageGroup', undefined);
+        } else {
+            const ageGroup = await AgeGroup.findOne({birthYear});
 
-        if(!ageGroup){
-            throw new AppError(`No age group is configured for birth year ${birthYear}. Please ask the admin to add it.`, 400);
+            if(!ageGroup){
+                throw new AppError(`No age group is configured for birth year ${birthYear}. Please ask the admin to add it.`, 400);
+            }
+
+            setDerived('ageGroup', ageGroup._id);
         }
-
-        setDerived('ageGroup', ageGroup._id);
     }
 
     // §11 — تحديث كلمات البحث.

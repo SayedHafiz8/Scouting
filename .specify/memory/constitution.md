@@ -1,39 +1,51 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.0 → 1.0.1
-Bump rationale: PATCH. Two deferred TODOs were resolved by owner decision and their
-placeholders replaced with the concrete rulings, plus a stale document reference was
-corrected. No principle was added, removed, or redefined; no governance rule changed
-meaning. The rulings narrow ambiguity that already existed inside Constraints C-3 and
-C-4 rather than introducing new guidance.
+Version change: 1.0.1 → 1.0.2
+Bump rationale: PATCH, by owner decision. Constraint C-4 gains an explicit, bounded
+exception: players flagged `isProfessional: true` carry no `ageGroup`. No principle was
+added, removed, or redefined; no governance rule changed meaning; no existing role's
+behavior is altered by the text.
+
+  ⚠️ Honest note for reviewers: a reasonable reader could argue this is MINOR rather
+  than PATCH, since it carves out an exception that did not previously exist rather than
+  merely clarifying wording. The PATCH classification rests on the reading that C-4's
+  original sentence was authored to mean "do not delete the field from the schema, and
+  do not let the new role read age-group data" — a scenario in which adult players with
+  no age group at all were never contemplated. The owner made this call explicitly. It
+  is recorded here rather than silently assumed, so a future reviewer can revisit the
+  classification without having to reconstruct the reasoning.
+
+  This is NOT a weakening of Principles I–IV, so the "documented security review" clause
+  in Governance is not triggered: the exception touches a derived descriptive field, not
+  authentication, authorization, ownership, or data scoping. The proScout scope shape in
+  C-4 is unchanged.
 
 Modified principles: none (I–VII unchanged in title, wording, and force)
 
 Modified sections:
-  - Security & Access Control Constraints — split into "القرارات المحسومة" (C-3, C-4)
-    and "القيود المعروفة" (C-1, C-2, C-5). Constraint IDs are intentionally stable so
-    existing references (including Governance) stay valid.
-  - Governance — document reference updated from the deleted `docs/scout-junior-plan.md`
-    to `docs/scout-pro-plan-v2.md`.
+  - Constraint C-4 — added "الاستثناء الوحيد المسموح" (the `isProfessional` carve-out)
+    plus four binding implementation constraints on that exception: server-only
+    assignment with `lockField` on create AND update; the exception is limited to the
+    birth-year range and the `ageGroup` derivation and MUST NOT be read as a general
+    exemption; the youth path stays byte-identical and must be proven by a coach
+    regression test; and `SeasonMatch.ageGroup` stays `required: true` with no exception.
 
 Added sections: none
 Removed sections: none
 
-Resolved items:
-  - TODO(SECOND_DIVISION_DEFINITION) → CLOSED. "القسم الثاني" = `league: "professional"`.
-    Concrete scope shapes recorded in Constraint C-4.
-  - TODO(PUBLIC_READ_DECISION) → CLOSED. `GET /ages` and `GET /teams` stay open for
-    existing roles (Principle III wins); the new role is denied explicitly via
-    `allowedTo`, and `GET /teams` is league-scoped for it. Recorded in Constraint C-3.
+Motivating context: professional players are adults, and the youth birth-year window
+(2007→2019) made them impossible to register. Implemented in Stage 4b — see
+`specs/005-proscout-players-write/` (data-model.md invariant I-4, PR-DESCRIPTION.md).
+Age groups for 1996→2006 were deliberately NOT created: doing so would have added eleven
+new cards to the age-group grid for coach and admin, which the owner ruled out.
 
-Deferred items / TODOs:
-  - TODO(PLAYER_OWNER_FIELD): the orphan-player branch of the C-4 player scope names
-    `createdBy`, which is NOT a path on the Player schema today (it exists only on
-    SeasonMatch). Recorded as an implementation constraint inside C-4 — the scope shape
-    is decided, the backing field is not yet built.
+Deferred items / TODOs (carried forward, unchanged):
   - TODO(AGES_UNAUTHENTICATED_READ): `GET /ages` and `GET /ages/:id` carry no `protect`
     at all. Logged as tech debt outside the plan's scope by owner decision; see C-3.
+    Confirmed still open as of Stage 4.
+  - TODO(PLAYER_OWNER_FIELD): CLOSED by Stage 2 — `Player.createdBy` now exists with a
+    backfill script. Listed here only to close the loop from v1.0.1.
 
 Templates read at runtime (plan/spec/tasks/checklist) are unmodified by design — the
 Scope Guard limits this command to the constitution itself.
@@ -265,6 +277,27 @@ spec أو plan دون تعديل دستوري:
     التعريف أعلاه MUST NOT يُفهَم كإذن بإزالته أو تجاوزه — الرول الجديد يُمنَع من
     *قراءة* بيانات الفئات العمرية، والحقل نفسه يبقى قائماً في المخطط.
 
+    **الاستثناء الوحيد المسموح:** لاعبون بعلامة `isProfessional: true` (لاعبو دوري
+    المحترفين اللي رول `proScout` بيكتشفهم) لا يحملون `ageGroup` إطلاقاً، لأن مفهوم
+    الفئة العمرية خاص بالناشئين حصراً وليس جزءاً من نطاق عملهم. هذا لا يُعتبر إزالة
+    أو تجاوزاً للحقل — الحقل يبقى مشتقاً إجبارياً لكل لاعب ناشئ كما هو، والاستثناء
+    محصور في هذا النوع الوحيد من اللاعبين.
+
+    قيود تنفيذية على الاستثناء (ملزمة، وتُقرأ كجزء منه لا كتعليق عليه):
+
+    - `isProfessional` MUST يُحدَّد من السيرفر وحده، من رول المُنشئ وقت الإنشاء.
+      MUST يحمل `lockField` في **الإنشاء والتعديل معاً** — بدون قفل التعديل يستطيع
+      أي كوتش رفع قيد سنة الميلاد (2007→2019) عن لاعبه وتفريغ فئته العمرية بطلب
+      `PATCH` عادي.
+    - الاستثناء يشمل **بندين فقط**: مدى سنة الميلاد المسموح، واشتقاق `ageGroup`.
+      MUST NOT يُوسَّع ليشمل أي قيد آخر (الملكية، النطاق، الأقنعة، أو حراس
+      `ownership.js`) — علامة "محترف" ليست إعفاءً عاماً.
+    - مسار اللاعب الناشئ MUST يبقى مطابقاً حرفياً: نفس المدى، نفس الاشتقاق، ونفس
+      رسالة `No age group is configured` (Principle III). يُثبَت باختبار انحدار على
+      `coach`، لا بمراجعة بصرية.
+    - `ageGroup` يبقى `required: true` على `SeasonMatch` **بلا استثناء** — هذا
+      الاستثناء يخص `Player` وحده.
+
 ### القيود المعروفة (Known Enforcement Gaps)
 
 هذه ثغرات قائمة في الكود اليوم. MUST تُعالَج صراحةً في أول مرحلة تعتمد عليها، و
@@ -350,4 +383,4 @@ MUST NOT يُفترَض أنها آمنة:
 - التعقيد MUST يُبرَّر. الحل الأبسط الذي يحقق المبادئ هو الحل المطلوب.
 - `CLAUDE.md` هو مرجع التوجيه أثناء التطوير اليومي، ويظل تابعاً لهذا الدستور.
 
-**Version**: 1.0.1 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-19
+**Version**: 1.0.2 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-22

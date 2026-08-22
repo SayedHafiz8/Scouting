@@ -114,6 +114,22 @@ A proScout who types the address of the users area, the observers area, or the a
 These two entries belong to proScout by the overall plan but are deliberately **not** added in this phase, because the destinations behind them do not yet accept the role. Adding them now would produce a menu entry that ends in a refusal, violating FR-015.
 
 - **DF-001 — Dashboard entry for proScout → Phase 5.** The dashboard area routes each role to its own landing destination, and proScout currently has none, so it resolves to the unauthorized destination. Phase 5 creates the proScout dashboard and registers its landing destination; **the same phase MUST add proScout to the Dashboard entry's role set**, and MUST update FR-007 to expect three entries.
+
+  > **Amended after Stage 4 — the landing destination is now `/players`, temporarily.**
+  >
+  > Leaving proScout in the unknown-role default meant a *successful login* landed on the
+  > unauthorized screen, which made Stage 4's completed players page unreachable through the UI. The
+  > role now has an explicit `case 'proScout'` in `RoleLandingService` returning `['/players']` —
+  > the one page it can actually work in today, and one that is guarded server-side.
+  >
+  > **Phase 5 MUST EDIT that existing case to return `['/dashboard/proScout']` — not add a second
+  > case for the same role.** A duplicate case for one role means two contradicting branches in the
+  > same `switch`, and only the first would ever run. The rest of DF-001 is unchanged: Phase 5 still
+  > adds proScout to the Dashboard nav entry and still updates FR-007 to expect three entries.
+  >
+  > Locked by `core/services/role-landing.service.spec.ts` → *"RoleLandingService — proScout
+  > (DF-001, temporary until Stage 5)"*, whose assertions Phase 5 must update in the same commit
+  > that changes the destination.
 - **DF-002 — My Matches entry for proScout → Phase 6.** The matches area is restricted to coach, observer, and administrator, and the attendance actions behind it are restricted to coach and observer on the server. Phase 6 opens both; **the same phase MUST add proScout to the My Matches entry's role set**, and MUST update FR-007 to expect four entries.
 
 Both are recorded here so that the "exactly two entries" expectation in FR-007 is understood as a phase checkpoint, not a final state.

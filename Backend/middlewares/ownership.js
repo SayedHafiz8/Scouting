@@ -70,6 +70,23 @@ export const checkPlayerOwnership = asyncHandler(async (req, res, next) => {
     return next(new AppError("You are not allowed to access this player's data", 403));
 });
 
+// Stage 4 — فحص "اللاعب ده جوه نطاق الـproScout؟" على مستند لاعب واحد، بنفس منطق
+// playerScopeFor بالظبط لكن مقارَن في الذاكرة مش باستعلام تاني (code-review high
+// fix #4 المتبع في checkPlayerOwnership). professionalTeamIds(req) عندها كاش على
+// الـreq، فلو الحارس اتنده بعد checkPlayerOwnership في نفس الطلب مفيش round-trip
+// زيادة أصلاً.
+//
+// مصدر الحقيقة الوحيد لشكل النطاق هو services/scope.js — الدالة دي بتعيد تقييم
+// **نفس** الفرعين ($or) على مستند محمّل، مش بتخترع شرط جديد (Principle IV).
+const playerInProScoutScope = async (req, player) => {
+    if (!player) return false;
+    const teamIds = await professionalTeamIds(req);
+    return Boolean(
+        (player.team && teamIds.some((t) => t.equals(player.team))) ||
+        (!player.team && player.createdBy && player.createdBy.equals(req.user._id))
+    );
+};
+
 export const checkReportOwnership = asyncHandler(async (req, res, next) => {
     const report = await ScoutingReport.findById(req.params.id).select("coach player");
 
@@ -91,12 +108,44 @@ export const checkReportOwnership = asyncHandler(async (req, res, next) => {
         return next();
     }
 
-    // Stage 2 — proScout. مسارات التقارير لسه مقفولة من allowedTo لحد المرحلة 4،
-    // فالفرع ده مش قابل للوصول عبر HTTP دلوقتي. موجود عشان فتح الحد في المرحلة 4
-    // يبقى سطر واحد من غير تفكير أمني متأجّل — الدرس المسجّل من المرحلة 1.
+    // Stage 4 — الفرع اللي المرحلة 2 حجزته بقى حارس حقيقي. المرحلة 2 كانت بترفض
+    // رفض ثابت لأن مسارات التقارير كانت مقفولة من allowedTo؛ دلوقتي اتفتحت
+    // (scoutingReportRouter) فالفحص الفعلي هنا.
+    //
+    // **المحورين مطلوبين مع بعض — الملكية لوحدها بتفشل مفتوحة.**
+    // مسار /reports/:id مافيهوش checkPlayerOwnership في السلسلة إطلاقاً (بص على
+    // scoutingReportRouter: الحارس ده هو الوحيد اللي بيشتغل)، يعني من غير فحص
+    // النطاق، تقرير اتكتب وقت ما اللاعب كان في فريق محترفين بيفضل قابل للتعديل
+    // بعد ما الأدمن ينقل اللاعب لدوري تاني. النطاق هو الحامل، مش الملكية.
+    //
+    // نفس الدرس المسجّل حرفياً في checkSeasonMatchAttendee تحت: "عضوية attendees
+    // وحدها مش فحص دوري".
     if (req.user.role === ROLES.PRO_SCOUT) {
-        logScopeDenial({ req, resource: "scoutingReport", resourceId: req.params.id });
-        return next(new AppError("You are not allowed to access this report", 403));
+        const isAuthor = report.coach && report.coach.toString() === req.user._id.toString();
+        const belongsToPlayer = report.player.toString() === req.params.playerId;
+
+        // اللاعب بيتجاب مرة واحدة بس، وبس لو المحورين التانيين عدّوا — رفض الملكية
+        // مابيستاهلش استعلام زيادة.
+        const inScope =
+            isAuthor &&
+            belongsToPlayer &&
+            (await playerInProScoutScope(
+                req,
+                await Player.findById(report.player).select("team createdBy")
+            ));
+
+        if (!inScope) {
+            logScopeDenial({ req, resource: "scoutingReport", resourceId: req.params.id });
+            return next(
+                new AppError(
+                    belongsToPlayer
+                        ? "You are not allowed to access this report"
+                        : "This report does not belong to this player",
+                    403
+                )
+            );
+        }
+        return next();
     }
 
     // Deny by default — رول غير معدود صراحةً.
@@ -125,13 +174,38 @@ export const checkMediaOwnership = asyncHandler(async (req, res, next) => {
         return next();
     }
 
-    // Stage 2 — proScout صراحةً. القيد C-2 بيسمّي الدالة دي بالتحديد: المقارنة
-    // فوق على uploadedBy من غير فحص رول، فأي رول غير معدود كان هيشوف الميديا
-    // اللي رفعها هو — بالمصادفة مش بالتصميم. مسارات الميديا مقفولة من allowedTo
-    // لحد المرحلة 4، والفرع ده بيخلي المنع تصميم صريح قبل ما الحد يتفتح.
+    // Stage 4 — الفرع اللي المرحلة 2 حجزته بقى حارس حقيقي. القيد C-2 بيسمّي الدالة
+    // دي بالتحديد: المقارنة فوق على uploadedBy من غير فحص رول، فأي رول غير معدود
+    // كان هيشوف الميديا اللي رفعها هو — بالمصادفة مش بالتصميم.
+    //
+    // تلات شروط، ومحور النطاق هو الحامل: زي checkReportOwnership فوق بالظبط،
+    // مسار /media/:id مافيهوش checkPlayerOwnership، فمن غير الفحص التالت الميديا
+    // اللي اترفعت وقت ما اللاعب كان في فريق محترفين بتفضل مقروءة بعد ما يخرج من
+    // الدوري.
     if (req.user.role === ROLES.PRO_SCOUT) {
-        logScopeDenial({ req, resource: "playerMedia", resourceId: req.params.id });
-        return next(new AppError("You are not allowed to access this media", 403));
+        const isUploader = media.uploadedBy && media.uploadedBy.toString() === req.user._id.toString();
+        const belongsToPlayer = media.player.toString() === req.params.playerId;
+
+        const inScope =
+            isUploader &&
+            belongsToPlayer &&
+            (await playerInProScoutScope(
+                req,
+                await Player.findById(media.player).select("team createdBy")
+            ));
+
+        if (!inScope) {
+            logScopeDenial({ req, resource: "playerMedia", resourceId: req.params.id });
+            return next(
+                new AppError(
+                    belongsToPlayer
+                        ? "You are not allowed to access this media"
+                        : "This media does not belong to this player",
+                    403
+                )
+            );
+        }
+        return next();
     }
 
     // Deny by default (FR-002) — رول غير معدود صراحةً يُرفَض هنا حتى لو كانت قيمة
