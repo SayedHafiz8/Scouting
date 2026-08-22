@@ -294,10 +294,20 @@ export const getAll = asyncHandler(async (req, res, next) => {
     // ببايت لما كانت عليه (Principle III).
     const scope = await playerScopeFor(req);
 
+    const playerQuery = Player.find(scope)
+        .populate({ path: "coach", select: "name email" })
+        .populate({ path: "team", select: "name clubName" });
+
+    // specs/010-professional-lens-creator — عرض proScout المسؤول عن اللاعب،
+    // للأدمن بس. Player.createdBy موجود من المرحلة 2 لكل الرولات، لكن ده أول
+    // استهلاك ليه. مربوط هنا (مش فلترة بعد الرجوع) عشان غير الأدمن ميعملش
+    // الـpopulate ده أصلاً، لا يوصله ولا يتحسب لطلبه.
+    if (req.user.role === ROLES.ADMIN) {
+        playerQuery.populate({ path: "createdBy", select: "name" });
+    }
+
     const features = new ApiFeature(
-        Player.find(scope)
-            .populate({ path: "coach", select: "name email" })
-            .populate({ path: "team", select: "name clubName" }),
+        playerQuery,
         queryParams,
         req.params,
         req.user

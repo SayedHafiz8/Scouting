@@ -407,7 +407,8 @@
     },
     "NO_COACH": "No coach assigned",
     "PROFESSIONAL_LEAGUE": "Professional league",
-    "ALL_TEAMS": "All teams"
+    "ALL_TEAMS": "All teams",
+    "CREATED_BY": "Added by"
   },
   "REPORTS": {
     "COUNT": "{{count}} report(s)",

@@ -3941,6 +3941,8 @@ export interface components {
             ageGroup?: string | components["schemas"]["AgeGroup"];
             coach?: string | components["schemas"]["User"];
             observers?: (string | components["schemas"]["User"])[];
+            /** @description specs/010-professional-lens-creator — the user who created this player. Populated to { _id, name } only for GET /players requests made by an admin; absent for every other role and for GET /players/:id. */
+            createdBy?: string | components["schemas"]["User"];
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */

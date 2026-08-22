@@ -44,6 +44,9 @@ export interface Player {
   // Omitted by the API for observers — they aren't allowed to see the player's coach
   coach?: User | string;
   observers?: (User | string)[];
+  // specs/010-professional-lens-creator — populated to { _id, name } only for admins on
+  // GET /players (Professional League lens); absent for every other role and endpoint.
+  createdBy?: { _id?: string; name: string } | string;
   createdAt: string;
   updatedAt: string;
 }

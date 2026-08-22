@@ -20,6 +20,7 @@ import {
 } from '../helpers/factory.js';
 import AgeGroup from '../../models/ageGroupModel.js';
 import Player from '../../models/playedModel.js';
+import User from '../../models/userModel.js';
 
 const auth = (token) => ['Authorization', `Bearer ${token}`];
 
@@ -387,5 +388,175 @@ describe('SC-004 — the professional lens does not depend on the "No coach" acc
       .set(...auth(admin.token));
     expect(viaLens.body.data.documents.map((d) => d._id).sort())
       .toEqual([pro1._id.toString(), pro2._id.toString()].sort());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// specs/010-professional-lens-creator (backlog 4d) — the responsible
+// proScout's name on the Professional League lens, admin only.
+// Player.createdBy has existed since Stage 2 but no endpoint populated it
+// before this feature. T007-T012, T017-T018.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// T007 — US1 positive: two distinct creators, correct name per player, FR-001
+describe('specs/010 — GET /players exposes createdBy.name to admin only — FR-001, FR-002', () => {
+  it('returns the correct creator name per player for two distinct proScout creators', async () => {
+    const scoutA = await createProScout({ name: 'Scout Alpha', email: `scout_alpha_${Date.now()}@test.com` });
+    const scoutB = await createProScout({ name: 'Scout Beta', email: `scout_beta_${Date.now()}@test.com` });
+    const playerA = await professionalPlayer({ name: 'Player A', createdBy: scoutA.user._id });
+    const playerB = await professionalPlayer({ name: 'Player B', createdBy: scoutB.user._id });
+
+    const res = await request(app)
+      .get('/api/v1/players?isProfessional=true')
+      .set(...auth(admin.token));
+
+    expect(res.status).toBe(200);
+    const byId = Object.fromEntries(res.body.data.documents.map((d) => [d._id, d]));
+    expect(byId[playerA._id.toString()].createdBy.name).toBe('Scout Alpha');
+    expect(byId[playerB._id.toString()].createdBy.name).toBe('Scout Beta');
+  });
+
+  it('exposes the name only — no email or other User field (FR-002)', async () => {
+    const player = await professionalPlayer({ name: 'Solo Player', createdBy: scout.user._id });
+
+    const res = await request(app)
+      .get('/api/v1/players?isProfessional=true')
+      .set(...auth(admin.token));
+
+    const doc = res.body.data.documents.find((d) => d._id === player._id.toString());
+    expect(doc.createdBy).toEqual({ _id: scout.user._id.toString(), name: 'Test Pro Scout' });
+  });
+});
+
+// T008 — US1 negative: byte-identical for every non-admin role, FR-004, SC-003
+//
+// ⚠️ Corrected during implementation (see spec.md "Implementation note"):
+// `createdBy` was never excluded by a `.select()` anywhere in this controller,
+// so it was already present in every JSON response as a **raw ObjectId
+// string** — for every role — since Stage 2, long before this feature. This
+// feature's `.populate()` only resolves that string to `{ _id, name }`, and
+// only when `req.user.role === ADMIN`. "Unaffected" for every other role
+// therefore means the field stays a bare id string exactly as before, not
+// that the key disappears — these tests assert that, using a player each
+// role can actually see with `createdBy` genuinely set (the original
+// assertions accidentally exercised only players lacking the field at all).
+describe('specs/010 — createdBy stays an unpopulated raw id for every non-admin role — FR-004, SC-003', () => {
+  it('coach: createdBy remains the bare id string, never resolved to a name', async () => {
+    const player = await createPlayerDoc({
+      coach: coach.user._id, createdBy: scout.user._id, name: 'Coach Player',
+    });
+
+    const res = await request(app).get('/api/v1/players').set(...auth(coach.token));
+    expect(res.status).toBe(200);
+    const doc = res.body.data.documents.find((d) => d._id === player._id.toString());
+    expect(doc.createdBy).toBe(scout.user._id.toString());
+  });
+
+  it('observer: createdBy remains the bare id string, never resolved to a name', async () => {
+    const player = await createPlayerDoc({
+      observers: [observer.user._id], createdBy: scout.user._id, name: 'Observed Player',
+    });
+
+    const res = await request(app).get('/api/v1/players').set(...auth(observer.token));
+    expect(res.status).toBe(200);
+    const doc = res.body.data.documents.find((d) => d._id === player._id.toString());
+    expect(doc.createdBy).toBe(scout.user._id.toString());
+  });
+
+  it('proScout: createdBy remains the bare id string, even on their own player', async () => {
+    const player = await professionalPlayer({ name: 'Own Player', createdBy: scout.user._id, team: proTeam._id });
+
+    const res = await request(app).get('/api/v1/players').set(...auth(scout.token));
+    expect(res.status).toBe(200);
+    const doc = res.body.data.documents.find((d) => d._id === player._id.toString());
+    expect(doc.createdBy).toBe(scout.user._id.toString());
+  });
+});
+
+// T009 — US1 boundary: GET /players/:id untouched for every role, FR-005
+describe('specs/010 — GET /players/:id is unaffected for every role, including admin — FR-005', () => {
+  it('admin GET /players/:id still returns the bare id string, never resolved to a name', async () => {
+    const player = await professionalPlayer({ name: 'Detail Player', createdBy: scout.user._id });
+
+    const res = await request(app).get(`/api/v1/players/${player._id}`).set(...auth(admin.token));
+    expect(res.status).toBe(200);
+    expect(res.body.data.document.createdBy).toBe(scout.user._id.toString());
+  });
+});
+
+// T011 — closes /speckit-analyze finding C1 (FR-006): the populate is
+// role-gated, not lens-gated, so every other admin view of this endpoint
+// must be unaffected beyond the additive field.
+describe('specs/010 — other admin views of GET /players are unaffected beyond the additive field — FR-006', () => {
+  it('the ordinary (non-lens) admin list returns the same players and same pre-existing field values', async () => {
+    const pro = await professionalPlayer({ name: 'Pro Player', createdBy: scout.user._id });
+    const youth = await youthPlayer({ name: 'Youth Player', coach: coach.user._id });
+
+    const res = await request(app).get('/api/v1/players').set(...auth(admin.token));
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(2);
+    const byId = Object.fromEntries(res.body.data.documents.map((d) => [d._id, d]));
+    expect(byId[pro._id.toString()].name).toBe('Pro Player');
+    expect(byId[pro._id.toString()].status).toBe('pending');
+    expect(byId[youth._id.toString()].name).toBe('Youth Player');
+    expect(byId[youth._id.toString()].coach).toBeTruthy();
+    // Additive only — createdBy is present for admin, nothing else changed shape.
+    expect(byId[pro._id.toString()].createdBy.name).toBe('Test Pro Scout');
+  });
+
+  it('an existing filter (?status=) composes unaffected, with createdBy still attached', async () => {
+    const selected = await professionalPlayer({ name: 'Selected Pro', status: 'selected', createdBy: scout.user._id });
+    await professionalPlayer({ name: 'Pending Pro', status: 'pending', createdBy: scout.user._id });
+
+    const res = await request(app).get('/api/v1/players?status=selected').set(...auth(admin.token));
+
+    expect(res.body.count).toBe(1);
+    expect(res.body.data.documents[0]._id).toBe(selected._id.toString());
+    expect(res.body.data.documents[0].createdBy.name).toBe('Test Pro Scout');
+  });
+});
+
+// T012 — closes /speckit-analyze finding C2 (FR-008): createdBy must not be
+// a client-suppliable filter, guarding against a future PLAYER_FILTERS edit.
+describe('specs/010 — createdBy is not a client-suppliable filter — FR-008', () => {
+  it('?createdBy=<id> has no effect on the result set', async () => {
+    await professionalPlayer({ name: 'Pro Player', createdBy: scout.user._id });
+    await youthPlayer({ name: 'Youth Player' });
+
+    const withoutParam = await request(app).get('/api/v1/players').set(...auth(admin.token));
+    const withParam = await request(app)
+      .get(`/api/v1/players?createdBy=${scout.user._id}`)
+      .set(...auth(admin.token));
+
+    const idsOf = (res) => res.body.data.documents.map((d) => d._id).sort();
+    expect(idsOf(withParam)).toEqual(idsOf(withoutParam));
+    expect(withParam.body.count).toBe(withoutParam.body.count);
+  });
+});
+
+// T017/T018 — US2: a missing or deactivated creator degrades gracefully, FR-003
+describe('specs/010 — a missing or deactivated creator degrades gracefully — FR-003', () => {
+  it('a professional player with no createdBy has createdBy absent, no error, siblings unaffected', async () => {
+    const orphan = await professionalPlayer({ name: 'No Creator Player' });
+    const sibling = await professionalPlayer({ name: 'Sibling Player', createdBy: scout.user._id });
+
+    const res = await request(app).get('/api/v1/players?isProfessional=true').set(...auth(admin.token));
+
+    expect(res.status).toBe(200);
+    const byId = Object.fromEntries(res.body.data.documents.map((d) => [d._id, d]));
+    expect(byId[orphan._id.toString()].createdBy).toBeFalsy();
+    expect(byId[sibling._id.toString()].createdBy.name).toBe('Test Pro Scout');
+  });
+
+  it('a professional player whose creator was deactivated resolves createdBy to absent/null, not an error or leaked data', async () => {
+    const player = await professionalPlayer({ name: 'Deactivated Creator Player', createdBy: scout.user._id });
+    await User.findByIdAndUpdate(scout.user._id, { active: false }).setOptions({ bypassFilter: true });
+
+    const res = await request(app).get('/api/v1/players?isProfessional=true').set(...auth(admin.token));
+
+    expect(res.status).toBe(200);
+    const doc = res.body.data.documents.find((d) => d._id === player._id.toString());
+    expect(doc.createdBy).toBeFalsy();
   });
 });

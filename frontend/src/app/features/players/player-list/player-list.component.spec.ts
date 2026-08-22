@@ -12,6 +12,7 @@ import { PlayerService } from '../services/player.service';
 import { ScoutingReportService } from '../../scouting-reports/services/scouting-report.service';
 import { TeamService } from '../../teams/services/team.service';
 import { AuthService } from '../../../core/auth/auth.service';
+import type { Player } from '../../../core/models/player.model';
 
 // §9 — عدسة "اللاعبين اليتامى" في قايمة اللاعبين. أدمن-فقط، وبتبعت ?coach=none
 // اللي الباكإند بيترجمه لـ{coach: null} (شوف PLAYER_ADMIN_ONLY_LENSES).
@@ -476,5 +477,34 @@ describe('PlayerListComponent — other roles keep the age-group UI (FR-014)', (
   it('an admin does not get the Add player control', async () => {
     await setup('admin');
     expect(addButton()).toBeNull();
+  });
+});
+
+// specs/010-professional-lens-creator — creatorName() mirrors coachName()'s
+// three-way guard (populated object / bare string / absent) for the new
+// admin-only createdBy field. T010, T019.
+describe('PlayerListComponent — creatorName()', () => {
+  it('returns the name when createdBy is a populated { _id, name } object (T010)', async () => {
+    const comp = await setup('admin');
+    const player = { createdBy: { _id: 'u9', name: 'Scout Alpha' } } as Player;
+    expect(comp.creatorName(player)).toBe('Scout Alpha');
+  });
+
+  it('returns an empty string when createdBy is a bare id string (T019)', async () => {
+    const comp = await setup('admin');
+    const player = { createdBy: '507f1f77bcf86cd799439099' } as Player;
+    expect(comp.creatorName(player)).toBe('');
+  });
+
+  it('returns an empty string when createdBy is null (T019)', async () => {
+    const comp = await setup('admin');
+    const player = { createdBy: null } as unknown as Player;
+    expect(comp.creatorName(player)).toBe('');
+  });
+
+  it('returns an empty string when createdBy is absent (T019)', async () => {
+    const comp = await setup('admin');
+    const player = {} as Player;
+    expect(comp.creatorName(player)).toBe('');
   });
 });
