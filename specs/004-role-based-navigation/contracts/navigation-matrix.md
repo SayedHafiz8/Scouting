@@ -29,6 +29,7 @@ Order below **is** render order. `✓` = the role is named on the entry; blank =
 **Deferred cells (binding, see spec.md "Deferred by Design"):**
 
 - **DF-001 — row 1, proScout → Phase 5.** `/dashboard` routes each role to its own landing destination via `RoleLandingService`; proScout has none, so it resolves to `/unauthorized`. Phase 5 creates the proScout dashboard, registers its landing, **and adds `proScout` to row 1**.
+  - **Amended after Stage 4**: the landing is now an explicit `case 'proScout'` returning `['/players']`, because the default branch turned every successful proScout login into an `/unauthorized` screen. Phase 5 **edits that case** to `['/dashboard/proScout']`; it must not add a second case for the same role.
 - **DF-002 — row 6, proScout → Phase 6.** `/my-matches` is `roleGuard(['coach','observer','admin'])`, and the attendance endpoints behind it are `allowedTo(COACH, OBSERVER)`. Phase 6 opens both, **and adds `proScout` to row 6**.
 
 Adding either cell before its phase produces a menu entry that ends in a refusal — the exact defect FR-015 forbids.
@@ -62,7 +63,7 @@ The frontend enforcement side. `roleGuard(allowed)` returns `true` on a match, o
 | `/observers` | `roleGuard(['admin'])` | `UrlTree` → `/unauthorized` | **None.** Add test (FR-012) |
 | `/age-groups` | `roleGuard(['admin'])` | `UrlTree` → `/unauthorized` | **None.** Add test (FR-012) |
 | `/my-matches` | `roleGuard(['coach','observer','admin'])` | `UrlTree` → `/unauthorized` | None — consistent with DF-002 withholding the entry |
-| `/dashboard` | none; child routes + `''` fallback resolve via `RoleLandingService` | → `/unauthorized` | None — consistent with DF-001 |
+| `/dashboard` | none; child routes + `''` fallback resolve via `RoleLandingService` | → `/players` *(was `/unauthorized`; changed in Stage 4, see DF-001)* | None — consistent with DF-001 |
 | `/players` | none | reachable | None — scoped server-side in Phase 2 |
 | `/profile` | none | reachable | None |
 | `/observer-evaluations` | `roleGuard(['admin','observer'])` | `UrlTree` → `/unauthorized` | None |

@@ -22,6 +22,10 @@ export class AuthService {
   readonly isAdmin = computed(() => this.currentUser()?.role === 'admin');
   readonly isCoach = computed(() => this.currentUser()?.role === 'coach');
   readonly isObserver = computed(() => this.currentUser()?.role === 'observer');
+  // Stage 4 — the players page gates on these computeds in ~10 template positions,
+  // so proScout needs one too. UserRole is derived from openapi.json, so 'proScout'
+  // here is checked against the generated union, not a free-floating literal.
+  readonly isProScout = computed(() => this.currentUser()?.role === 'proScout');
 
   // Guards await this before checking auth state
   readonly whenReady: Promise<void>;

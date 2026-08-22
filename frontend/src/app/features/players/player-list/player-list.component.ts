@@ -31,7 +31,8 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
             {{ 'PLAYERS.TOTAL' | translate:{count: ''} }}
           </p>
         </div>
-        @if (auth.isCoach()) {
+        <!-- Stage 4 (FR-007) — proScout may create players, so it gets the control. -->
+        @if (auth.isCoach() || auth.isProScout()) {
           <a routerLink="/players/new" class="btn btn-primary">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -292,7 +293,7 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
         <app-empty-state
           [title]="'PLAYERS.EMPTY_TITLE' | translate"
           [message]="keyword ? ('PLAYERS.EMPTY_SEARCH' | translate) : ('PLAYERS.EMPTY_FIRST' | translate)"
-          [actionLabel]="auth.isCoach() && !keyword ? ('PLAYERS.ADD' | translate) : null"
+          [actionLabel]="(auth.isCoach() || auth.isProScout()) && !keyword ? ('PLAYERS.ADD' | translate) : null"
           (actionClicked)="router.navigate(['/players/new'])"
           [icon]="playerIcon"
         />
@@ -624,8 +625,14 @@ export class PlayerListComponent implements OnInit {
   // إنهم يتلمّوا عشان يتعيّنلهم كوتش، مش يتصفّحوا فئة فئة. وكمان endpoint الـ
   // counts بيتجاهل أي coach مش ObjectId صالح، فشبكة الفئات كانت هتوري أعداد كل
   // اللاعبين بدل اليتامى — الـflat view بيتخطّاها تماماً فمفيش تضارب.
+  //
+  // Stage 4 (FR-002) — proScout joins this list. The role has no age-group
+  // dimension at all: its scope is "professional-league teams + its own team-less
+  // players", which cuts across every birth year. Routing it through the existing
+  // flat-list path is the whole of FR-002 — no parallel template, no per-element
+  // @if, and it reuses a code path that already has test coverage.
   private skipGroupsView(): boolean {
-    return !!this.observerFilter || this.auth.isObserver() || this.orphanedOnly();
+    return !!this.observerFilter || this.auth.isObserver() || this.auth.isProScout() || this.orphanedOnly();
   }
 
   // Decide which view to show based on the ageGroup query param
@@ -650,6 +657,20 @@ export class PlayerListComponent implements OnInit {
   }
 
   loadGroups(): void {
+    // Stage 4 (FR-002) — proScout never renders the age-group grid, so it must not
+    // fetch age groups either. Hiding a grid while still requesting the data behind
+    // it is theatre; the role simply has no business consuming this category.
+    //
+    // ⚠️ This is an INTENT fix, not access control. GET /ages carries no `protect`
+    // at all (ageGroupRouter.js) — it answers 200 to anonymous callers, let alone to
+    // a signed-in proScout. Constraint C-3 stays open; see TODO(AGES_UNAUTHENTICATED_READ).
+    // Nobody should read this early-return as "the door is closed".
+    if (this.auth.isProScout()) {
+      this.loadingGroups.set(false);
+      this.resolveView();
+      return;
+    }
+
     this.loadingGroups.set(true);
     this.http.get<PaginatedResponse<{ documents: AgeGroup[] }>>(`${environment.apiUrl}/ages`).subscribe({
       next: res => {

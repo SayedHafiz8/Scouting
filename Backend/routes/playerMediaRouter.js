@@ -376,7 +376,7 @@ mediaRouter
     .route("/video")
     .post(
         protect,
-        allowedTo(ROLES.COACH, ROLES.OBSERVER),
+        allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),
         checkPlayerOwnership,
         videoCreateLimiter,
         createVideoValidator,
@@ -388,7 +388,7 @@ mediaRouter
     .route("/upload-eligibility")
     .get(
         protect,
-        allowedTo(ROLES.COACH, ROLES.OBSERVER),
+        allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),
         checkPlayerOwnership,
         getUploadEligibilityValidator,
         getUploadEligibility
@@ -399,7 +399,7 @@ mediaRouter
     .route("/video/:mediaId/upload-envelope")
     .post(
         protect,
-        allowedTo(ROLES.COACH, ROLES.OBSERVER),
+        allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),
         checkPlayerOwnership,
         videoCreateLimiter,
         reissueEnvelope
@@ -407,10 +407,10 @@ mediaRouter
 
 mediaRouter
     .route("/")
-    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), checkPlayerOwnership, getAll)
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, getAll)
     .post(
         protect,
-        allowedTo(ROLES.COACH, ROLES.OBSERVER),
+        allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),
         checkPlayerOwnership,
         upload.single("file"),
         uploadMediaValidator,
@@ -419,7 +419,7 @@ mediaRouter
 
 mediaRouter
     .route("/:id")
-    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER), mediaIdValidator, checkMediaOwnership, getSpecific)
+    .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), mediaIdValidator, checkMediaOwnership, getSpecific)
     // Delete is admin-only — coaches/observers can upload but not remove media (F5/F7d restriction)
     .delete(protect, allowedTo(ROLES.ADMIN), mediaIdValidator, checkMediaOwnership, deleteMedia);
 

@@ -1155,7 +1155,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Create a scouting report for a player (coach only) */
+        /** Create a scouting report for a player (coach, observer, or proScout — each within its own data scope) */
         post: {
             parameters: {
                 query?: never;
@@ -1294,7 +1294,7 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        /** Delete a scouting report (admin only) */
+        /** Delete a scouting report (admin only — no other role, including proScout, may delete) */
         delete: {
             parameters: {
                 query?: never;
@@ -1315,7 +1315,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Update a scouting report (coach only — own reports) */
+        /** Update a scouting report (coach, observer, or proScout — own reports only) */
         patch: {
             parameters: {
                 query?: never;
@@ -1368,7 +1368,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List players (coaches see only their own; admins see all) */
+        /** List players (coaches see only their own; observers see assigned; proScout sees the professional league plus its own team-less players; admins see all) */
         get: {
             parameters: {
                 query?: {
@@ -1409,7 +1409,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Create a player (coach only) */
+        /** Create a player (coach or proScout; proScout is confined to professional-league teams and is not recorded as the player's coach) */
         post: {
             parameters: {
                 query?: never;
@@ -1525,7 +1525,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Update a player's details (coach only) */
+        /** Update a player's details (coach or proScout, each within its own data scope) */
         patch: {
             parameters: {
                 query?: never;
@@ -1845,7 +1845,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Upload/replace a player's profile image (coach or admin) */
+        /** Upload/replace a player's profile image (coach, admin, or proScout — each within its own data scope) */
         patch: {
             parameters: {
                 query?: never;

@@ -6,6 +6,7 @@ import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { environment } from '../../../../environments/environment';
 import { PlayerService } from '../services/player.service';
 import { TeamService } from '../../teams/services/team.service';
+import { AuthService } from '../../../core/auth/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { LanguageService } from '../../../core/services/language.service';
 import { PLAYER_POSITIONS } from '../../../core/models/player.model';
@@ -107,36 +108,41 @@ const MAX_PLAYER_IMAGE_MB = 4;
               }
             </div>
 
-            <!-- Team (optional, scoped to the player's age group) -->
+            <!-- Team (optional, scoped to the player's age group).
+                 Stage 4b: proScout registers professional adults, who have no age
+                 group at all — the server skips the derivation for them — so for
+                 that role this picker is never gated on one and lists the whole
+                 professional set. Which teams are actually permitted is enforced
+                 server-side by teamScopeFor, not here. -->
             <div>
               <label class="block text-sm font-medium mb-1.5" style="color:var(--text-primary)">{{ 'PLAYERS.FORM.TEAM' | translate }}</label>
               <select formControlName="team" class="form-input" (change)="onTeamSelectChange()">
                 <option value="">
-                  {{ !ageGroupForDob() ? ('PLAYERS.FORM.TEAM_LOCKED' | translate) : ('PLAYERS.FORM.TEAM_PH' | translate) }}
+                  {{ !teamPickerUnlocked() ? ('PLAYERS.FORM.TEAM_LOCKED' | translate) : ('PLAYERS.FORM.TEAM_PH' | translate) }}
                 </option>
                 @for (t of teams(); track t._id) {
                   <option [value]="t._id">{{ t.name }} — {{ t.clubName }}</option>
                 }
-                @if (ageGroupForDob()) {
+                @if (teamPickerUnlocked()) {
                   <option value="__other__">{{ 'PLAYERS.FORM.TEAM_OTHER' | translate }}</option>
                 }
               </select>
               @if (form.get('team')?.value === '__other__') {
                 <input formControlName="teamName" type="text" class="form-input mt-2"
                        [placeholder]="'PLAYERS.FORM.TEAM_NAME_PH' | translate" />
-              } @else if (ageGroupForDob() && teams().length === 0) {
+              } @else if (teamPickerUnlocked() && teams().length === 0) {
                 <p class="text-xs mt-1.5 flex items-center gap-1" style="color:var(--text-muted)">
                   <svg style="width:12px;height:12px;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                   </svg>
-                  {{ 'PLAYERS.FORM.TEAM_EMPTY' | translate }}
+                  {{ (auth.isProScout() ? 'PLAYERS.FORM.TEAM_EMPTY_SCOUT' : 'PLAYERS.FORM.TEAM_EMPTY') | translate }}
                 </p>
-              } @else if (!ageGroupForDob()) {
+              } @else if (!teamPickerUnlocked()) {
                 <p class="text-xs mt-1.5 flex items-center gap-1" style="color:var(--text-muted)">
                   <svg style="width:12px;height:12px;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                   </svg>
-                  {{ 'PLAYERS.FORM.TEAM_HINT' | translate }}
+                  {{ (auth.isProScout() ? 'PLAYERS.FORM.TEAM_HINT_SCOUT' : 'PLAYERS.FORM.TEAM_HINT') | translate }}
                 </p>
               }
             </div>
@@ -275,6 +281,8 @@ export class PlayerFormComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly playerService = inject(PlayerService);
   private readonly teamService = inject(TeamService);
+  // Stage 4 — public because the template reads it for the Team-dropdown hints (FR-002).
+  readonly auth = inject(AuthService);
   private readonly http = inject(HttpClient);
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
@@ -306,6 +314,26 @@ export class PlayerFormComponent implements OnInit {
   // and clears the current selection if it no longer belongs to that age group.
   private syncTeamsForDob(): void {
     const teamCtrl = this.form.get('team');
+
+    // Stage 4b — proScout registers professional adults, who have no age group at
+    // all (the server skips the derivation for them). So the Team dropdown cannot
+    // be gated on, or narrowed by, an age group here: it is always enabled and
+    // always lists the full professional set. The backend still enforces which
+    // teams are allowed — teamScopeFor confines this role to league=professional,
+    // so passing the league below narrows the request, it does not grant anything.
+    if (this.auth.isProScout()) {
+      teamCtrl?.enable({ emitEvent: false });
+      this.teamService.getAll(undefined, 'professional').subscribe(res => {
+        const list = res.data?.documents ?? [];
+        this.teams.set(list);
+        const current = teamCtrl?.value;
+        if (current && current !== '__other__' && !list.some(t => t._id === current)) {
+          teamCtrl?.setValue('', { emitEvent: false });
+        }
+      });
+      return;
+    }
+
     const ageGroup = this.ageGroupForDob();
 
     if (!ageGroup) {
@@ -380,7 +408,28 @@ export class PlayerFormComponent implements OnInit {
 
   // Age groups are birth-year based (2007 → 2019) — years listed newest-birth-year-first
   // isn't needed here since there are only 13 of them; oldest→newest reads naturally.
-  readonly dobYears = Array.from({ length: 2019 - 2007 + 1 }, (_, i) => 2007 + i);
+  //
+  // Stage 4b — proScout registers professional adults, so its range starts at 1996
+  // (age 30 in 2026). The floor is a fixed year, not `currentYear - 30`: a rolling
+  // floor would make an already-registered 1996 player fail validation the moment
+  // they age out, which is the trap the server-side constant deliberately avoids.
+  // Keep this bound in step with PRO_MIN_BIRTH_YEAR in Backend/models/playedModel.js
+  // — the server is the enforcer; this list only decides what the picker offers.
+  private readonly YOUTH_MIN_BIRTH_YEAR = 2007;
+  private readonly PRO_MIN_BIRTH_YEAR = 1996;
+  private readonly MAX_BIRTH_YEAR = 2019;
+
+  get dobYears(): number[] {
+    const min = this.auth.isProScout() ? this.PRO_MIN_BIRTH_YEAR : this.YOUTH_MIN_BIRTH_YEAR;
+    return Array.from({ length: this.MAX_BIRTH_YEAR - min + 1 }, (_, i) => min + i);
+  }
+
+  // Stage 4b — the Team dropdown is gated on an age group for youth players, because
+  // teams are age-group scoped. Professional players have no age group, so for
+  // proScout the picker is simply always available (see syncTeamsForDob).
+  teamPickerUnlocked(): boolean {
+    return this.auth.isProScout() ? true : !!this.ageGroupForDob();
+  }
   readonly dobMonths = [
     { value: 1, en: 'January', ar: 'يناير' },
     { value: 2, en: 'February', ar: 'فبراير' },
@@ -483,11 +532,21 @@ export class PlayerFormComponent implements OnInit {
     // Team starts locked until a birth date resolves to an age group
     this.form.get('team')?.disable({ emitEvent: false });
 
-    this.http.get<PaginatedResponse<{ documents: AgeGroup[] }>>(this.agesBase).subscribe(res => {
-      this.ageGroups.set(res.data?.documents ?? []);
+    // Stage 4b — proScout has no age-group dimension: its players are professional
+    // adults, for whom the server skips the derivation entirely. So it neither needs
+    // nor requests /ages, and its team list does not depend on one.
+    //
+    // ⚠️ Same caveat as the players list: this is an INTENT fix, not access control.
+    // GET /ages has no `protect` and answers 200 to anyone (C-3 still open).
+    if (this.auth.isProScout()) {
       this.syncTeamsForDob();
-    });
-    this.form.get('dateOfBirth')?.valueChanges.subscribe(() => this.syncTeamsForDob());
+    } else {
+      this.http.get<PaginatedResponse<{ documents: AgeGroup[] }>>(this.agesBase).subscribe(res => {
+        this.ageGroups.set(res.data?.documents ?? []);
+        this.syncTeamsForDob();
+      });
+      this.form.get('dateOfBirth')?.valueChanges.subscribe(() => this.syncTeamsForDob());
+    }
 
     this.playerId = this.route.snapshot.paramMap.get('playerId') ?? '';
     if (this.playerId) {

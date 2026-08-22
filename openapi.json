@@ -2325,7 +2325,7 @@
         }
       },
       "post": {
-        "summary": "Create a scouting report for a player (coach only)",
+        "summary": "Create a scouting report for a player (coach, observer, or proScout — each within its own data scope)",
         "tags": [
           "Reports"
         ],
@@ -2526,7 +2526,7 @@
         }
       },
       "patch": {
-        "summary": "Update a scouting report (coach only — own reports)",
+        "summary": "Update a scouting report (coach, observer, or proScout — own reports only)",
         "tags": [
           "Reports"
         ],
@@ -2614,7 +2614,7 @@
         }
       },
       "delete": {
-        "summary": "Delete a scouting report (admin only)",
+        "summary": "Delete a scouting report (admin only — no other role, including proScout, may delete)",
         "tags": [
           "Reports"
         ],
@@ -2654,7 +2654,7 @@
     },
     "/players": {
       "get": {
-        "summary": "List players (coaches see only their own; admins see all)",
+        "summary": "List players (coaches see only their own; observers see assigned; proScout sees the professional league plus its own team-less players; admins see all)",
         "tags": [
           "Players"
         ],
@@ -2778,7 +2778,7 @@
         }
       },
       "post": {
-        "summary": "Create a player (coach only)",
+        "summary": "Create a player (coach or proScout; proScout is confined to professional-league teams and is not recorded as the player's coach)",
         "tags": [
           "Players"
         ],
@@ -2943,7 +2943,7 @@
         }
       },
       "patch": {
-        "summary": "Update a player's details (coach only)",
+        "summary": "Update a player's details (coach or proScout, each within its own data scope)",
         "tags": [
           "Players"
         ],
@@ -3402,7 +3402,7 @@
     },
     "/players/{id}/profileImg": {
       "patch": {
-        "summary": "Upload/replace a player's profile image (coach or admin)",
+        "summary": "Upload/replace a player's profile image (coach, admin, or proScout — each within its own data scope)",
         "tags": [
           "Players"
         ],

@@ -2,7 +2,7 @@
  * @swagger
  * /players:
  *   get:
- *     summary: List players (coaches see only their own; admins see all)
+ *     summary: List players (coaches see only their own; observers see assigned; proScout sees the professional league plus its own team-less players; admins see all)
  *     tags: [Players]
  *     parameters:
  *       - in: query
@@ -67,7 +67,7 @@
  *         $ref: '#/components/responses/Unauthorized'
  *
  *   post:
- *     summary: Create a player (coach only)
+ *     summary: Create a player (coach or proScout; proScout is confined to professional-league teams and is not recorded as the player's coach)
  *     tags: [Players]
  *     requestBody:
  *       required: true
@@ -159,7 +159,7 @@
  *         $ref: '#/components/responses/NotFound'
  *
  *   patch:
- *     summary: Update a player's details (coach only)
+ *     summary: Update a player's details (coach or proScout, each within its own data scope)
  *     tags: [Players]
  *     parameters:
  *       - in: path
@@ -414,7 +414,7 @@
  *
  * /players/{id}/profileImg:
  *   patch:
- *     summary: Upload/replace a player's profile image (coach or admin)
+ *     summary: Upload/replace a player's profile image (coach, admin, or proScout — each within its own data scope)
  *     tags: [Players]
  *     parameters:
  *       - in: path
@@ -482,9 +482,16 @@ playerRouter.use('/:playerId/media', mediaRouter)
 // اتفتحت الحدود دي — الترتيب ده شرط أمني: فتح الحد قبل السكوب كان بيكشف الكولكشن
 // كله. تصحيح: average-ratings مكانتش غير مفلترة أصلاً، كانت مسكوبة على محور
 // ملكية التقرير (محور غلط) — راجع specs/003-proscout-data-scope/research.md R6.
+// Stage 4 — POST اتفتح للـproScout. تلات طبقات بتحكمه، وكلها كانت جاهزة قبل فتح الحد:
+//   1) createValidate → teamExistsInScope: فريق برّه دوري المحترفين بيترفض بنفس
+//      رسالة "فريق مش موجود" بالظبط (anti-oracle، research R4).
+//   2) create: بيمسح req.body.coach لأي رول مش كوتش (research R14 — الراوتر ده
+//      متمركّب كمان على /users/:id/players وsetUserIdToBody بينسخ الـuser id من
+//      الـURL في coach).
+//   3) lockField على status/coach/observers/profileImg/ageGroup/createdBy.
 playerRouter.route('/')
             .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),getAllValidate ,getAll)
-            .post(protect,allowedTo(ROLES.COACH),setUserIdToBody, createValidate,create)
+            .post(protect,allowedTo(ROLES.COACH, ROLES.PRO_SCOUT),setUserIdToBody, createValidate,create)
 
 // Counts per age group — must be declared before '/:id' so "counts" isn't treated as an id
 playerRouter.route('/counts')
@@ -493,7 +500,10 @@ playerRouter.route('/counts')
 
 playerRouter.route('/:id')
             .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, getSpecificValidate, getSpecific)
-            .patch(protect, allowedTo(ROLES.COACH), checkPlayerOwnership, updateValidate, update)
+            // Stage 4 — checkPlayerOwnership عنده فرع proScout صريح من المرحلة 2،
+            // وupdateValidate فيه teamExistsInScope، فإعادة الإسناد لفريق برّه
+            // الدوري بترفض زي الإنشاء بالظبط.
+            .patch(protect, allowedTo(ROLES.COACH, ROLES.PRO_SCOUT), checkPlayerOwnership, updateValidate, update)
             .delete(protect, allowedTo(ROLES.ADMIN), deleteValidate, deleting)
 
 playerRouter.route('/:id/status')
@@ -508,7 +518,19 @@ playerRouter.route('/:id/observers')
 playerRouter.route('/:id/coach')
             .patch(protect, allowedTo(ROLES.ADMIN), assignPlayerCoachValidator, assignPlayerCoach)
 
+// Stage 4 (research R7) — الحارس اتنقل لطبقته الصح.
+//
+// المسار ده كان الوحيد اللي بيعمل فحص ملكية **بإيده جوه الكنترولر**
+// (uploadProfileImg: مقارنة existing.coach بـreq.user._id) بدل ما يعدّي على
+// middlewares/ownership.js — مخالفة لـPrinciple IV. إضافة checkPlayerOwnership
+// هنا بتدي الـproScout فرعه الصحيح مجاناً وبتدي كمان تسجيل الرفض
+// (logScopeDenial) اللي كل مسار محروس تاني بيعمله.
+//
+// المكان بعد upload.single عن قصد: الحفاظ على أسبقية الأخطاء القائمة للكوتش
+// والأدمن (Principle III) — التستات في proScoutPlayersWrite.test.js بتقفل ده.
+// الفحص القديم جوه الكنترولر اتساب مكانه كما هو (بقى زيادة للكوتش، بس شيله
+// تغيير سلوك لرول قائم برّه نطاق المرحلة).
 playerRouter.route('/:id/profileImg')
-            .patch(protect, allowedTo(ROLES.COACH, ROLES.ADMIN), upload.single('profileImg'), uploadProfileImg)
+            .patch(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.PRO_SCOUT), upload.single('profileImg'), checkPlayerOwnership, uploadProfileImg)
 
 export default playerRouter;

@@ -34,10 +34,42 @@ export const setUserIdToBody = (req, res, next) => {
 // @route   POST api/v1/ages
 // @access  private
 export const create = asyncHandler(async (req, res, next) => {
-    req.body.coach = req.user._id;
+    // Stage 4 (R14) — ⚠️ الـdelete مش زيادة، هو التصليح نفسه.
+    //
+    // playerRouter متمركّب **مرتين**: على /players وكمان على /users/:id/players
+    // (userRouter.js: userRouter.use("/:id/players", playerRouter)). في المسار
+    // التاني req.params.id بيبقى **user id** مش player id، وsetUserIdToBody بينسخه
+    // في req.body.coach قبل ما نوصل هنا. الحاجة الوحيدة اللي بتبطّله النهارده هي
+    // الإسناد اللي تحت.
+    //
+    // فلو سيبنا coach "من غير ما نحطه" للـproScout بدل ما نمسحه، كان يقدر يبعت
+    // POST /users/<أي coach id>/players ويخلق لاعب مملوك لكوتش من اختياره —
+    // تخطّي كامل لـPATCH /players/:id/coach (أدمن-أونلي، والمخرج الشرعي الوحيد
+    // للحقل ده). lockField("coach") مابيقفلهاش: هو بيرفض coach في الـbody،
+    // والقيمة دي جاية من الـpath عن طريق middleware.
+    //
+    // else مش else if (proScout) — منع بالافتراض (Principle II): أي رول خامس
+    // ياخد POST /players مستقبلاً بيرث الفرع الآمن، مش القابل للاستغلال.
+    //
+    // ليه الـproScout مالوش coach أصلاً: الحقل معناه "الكوتش المالك للاعب"،
+    // وassignPlayerCoach بيرفض أي يوزر مش role: coach. اللاعب بيبقى "يتيم" (§9)
+    // والأدمن بيلمّه من عدسة ?coach=none ويعيّنله كوتش حقيقي.
+    if (req.user.role === ROLES.COACH) {
+        req.body.coach = req.user._id;
+    } else {
+        delete req.body.coach;
+    }
     // Stage 2 — نسبة الإنشاء. الإسناد بيحصل بعد استلام الـbody، فأي قيمة بعتها
     // العميل بتتكتب فوقها هنا (وlockField("createdBy") بيرفضها قبل كده أصلاً).
     req.body.createdBy = req.user._id;
+
+    // Stage 4b — لاعبو الـproScout محترفون: مدى سنة ميلاد أوسع (1996→2019) وبدون
+    // فئة عمرية. الفرعين في playedModel pre-save hooks بيقرأوا العلم ده.
+    //
+    // الإسناد صريح للقيمتين مش `= (role === PRO_SCOUT)` بس، عشان الكوتش ياخد
+    // false صراحةً وميعتمدش على default المخطط — ولإن أي قيمة جاية من العميل
+    // بتتكتب فوقها هنا (وlockField بيرفضها قبل كده أصلاً).
+    req.body.isProfessional = req.user.role === ROLES.PRO_SCOUT;
 
     const player = await Player.create(req.body);
 
