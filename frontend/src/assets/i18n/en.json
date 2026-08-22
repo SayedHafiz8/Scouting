@@ -282,7 +282,16 @@
     "TOP_COACHES": "Top Coaches by Selected Players",
     "RANK": "#",
     "COACH": "Coach",
-    "NO_DATA": "No data available"
+    "NO_DATA": "No data available",
+    "PROSCOUT_TITLE": "My Dashboard",
+    "PROSCOUT_SUBTITLE": "Overview of your professional-league scouting activity",
+    "UPCOMING_PRO_LEAGUE_MATCHES": "Upcoming Professional League Matches",
+    "UPCOMING_MATCHES_SECTION": "Upcoming Matches",
+    "LATEST_RESULTS": "Latest Results",
+    "RECENT_REPORTS": "Recent Reports",
+    "NO_UPCOMING_MATCHES": "No upcoming matches yet",
+    "NO_RESULTS_YET": "No results yet",
+    "NO_REPORTS_YET": "No reports yet"
   },
   "PLAYERS": {
     "TITLE": "Players",

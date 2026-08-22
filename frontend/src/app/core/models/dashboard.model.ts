@@ -18,3 +18,37 @@ export interface ObserverDashboard {
   totalMedia: number;
   totalMatches: number;
 }
+
+export type ProScoutMatchTeamRef = Required<components['schemas']['ProScoutMatchTeamRef']>;
+export type ProScoutMatchResult = components['schemas']['ProScoutMatchResult'];
+
+export interface ProScoutMatch {
+  _id: string;
+  matchDate: string;
+  homeTeam: ProScoutMatchTeamRef;
+  awayTeam: ProScoutMatchTeamRef;
+  venue: string | null;
+  status: 'scheduled' | 'completed' | 'cancelled' | 'postponed';
+  result: ProScoutMatchResult | null;
+}
+
+export type ProScoutReportPlayerRef = Required<components['schemas']['ProScoutReportPlayerRef']>;
+
+export interface ProScoutReport {
+  _id: string;
+  player: ProScoutReportPlayerRef;
+  matchDate: string;
+  overallRating: number;
+}
+
+// Re-expand so the two list element types above are used, rather than the
+// shallow-Required generated shape (Required<> does not recurse into nested
+// array element types).
+export interface ProScoutDashboard {
+  totalPlayers: number;
+  upcomingMatchesCount: number;
+  totalReports: number;
+  upcomingMatches: ProScoutMatch[];
+  latestResults: ProScoutMatch[];
+  recentReports: ProScoutReport[];
+}

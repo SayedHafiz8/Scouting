@@ -20,7 +20,7 @@ interface NavItem {
 // renders only when the signed-in user's role is named here — deny-by-default,
 // not a hand-written @if per role (Constitution Principles II, VII).
 const NAV_ITEMS: readonly NavItem[] = [
-  { labelKey: 'NAV.DASHBOARD',  icon: 'dashboard',   route: '/dashboard',   roles: ['admin', 'coach', 'observer'] },
+  { labelKey: 'NAV.DASHBOARD',  icon: 'dashboard',   route: '/dashboard',   roles: ['admin', 'coach', 'observer', 'proScout'] },
   { labelKey: 'NAV.PLAYERS',    icon: 'players',     route: '/players',     roles: ['admin', 'coach', 'observer', 'proScout'] },
   { labelKey: 'NAV.COACHES',    icon: 'coaches',     route: '/users',       roles: ['admin'] },
   { labelKey: 'NAV.OBSERVERS',  icon: 'observers',   route: '/observers',   roles: ['admin'] },

@@ -75,18 +75,17 @@ describe('SidebarComponent — role-based navigation menu', () => {
     expect(menuHrefs()).toEqual(['/dashboard', '/players', '/my-matches', '/profile']);
   });
 
-  it('proScout sees exactly: Players, Profile', async () => {
+  it('proScout sees exactly: Dashboard, Players, Profile (Stage 5 — DF-001 discharged)', async () => {
     await setup('proScout');
-    expect(menuHrefs()).toEqual(['/players', '/profile']);
+    expect(menuHrefs()).toEqual(['/dashboard', '/players', '/profile']);
   });
 
-  it('proScout menu contains no age-groups, users, observers, dashboard, or my-matches entry (FR-008, FR-015)', async () => {
+  it('proScout menu contains no age-groups, users, observers, or my-matches entry (FR-008, FR-015)', async () => {
     await setup('proScout');
     const hrefs = menuHrefs();
     expect(hrefs).not.toContain('/age-groups');
     expect(hrefs).not.toContain('/users');
     expect(hrefs).not.toContain('/observers');
-    expect(hrefs).not.toContain('/dashboard');
     expect(hrefs).not.toContain('/my-matches');
   });
 
@@ -102,8 +101,8 @@ describe('SidebarComponent — role-based navigation menu', () => {
 
   it('a hidden entry is absent from the DOM, not merely styled hidden (FR-002)', async () => {
     await setup('proScout');
-    // Only 2 anchors exist at all in the nav — not 7 with 5 hidden via CSS.
+    // Only 3 anchors exist at all in the nav — not 7 with 4 hidden via CSS.
     const anchors = fixture.nativeElement.querySelectorAll('nav a');
-    expect(anchors.length).toBe(2);
+    expect(anchors.length).toBe(3);
   });
 });

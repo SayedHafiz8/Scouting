@@ -49,7 +49,7 @@ Spec, plan, and tasks: `specs/006-admin-professional-lens/`.
 
 | Suite | Before this stage | After |
 |---|---|---|
-| Backend (vitest) | 594 passed / 25 files | **612 passed / 26 files** |
+| Backend (vitest) | 594 passed / 25 files | **613 passed / 26 files** |
 | Frontend (karma) | 117 passed | **137 passed** |
 | `Backend/tests/isolation.test.js` | unmodified | **unmodified (zero diff)** |
 

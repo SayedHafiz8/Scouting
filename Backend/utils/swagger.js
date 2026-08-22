@@ -246,6 +246,71 @@ const options = {
           },
         },
 
+        // Stage 5 — no ageGroup at any depth in this schema (FR-005). Team refs are
+        // deliberately thin (id/name/clubName) — same fields the coach/observer
+        // dashboards never needed to expose beyond.
+        ProScoutMatchTeamRef: {
+          type: "object",
+          properties: {
+            _id:      { type: "string" },
+            name:     { type: "string" },
+            clubName: { type: "string" },
+          },
+        },
+
+        ProScoutMatchResult: {
+          type: "object",
+          nullable: true,
+          properties: {
+            homeScore: { type: "integer" },
+            awayScore: { type: "integer" },
+          },
+        },
+
+        ProScoutMatch: {
+          type: "object",
+          properties: {
+            _id:       { type: "string" },
+            matchDate: { type: "string", format: "date-time" },
+            homeTeam:  { $ref: "#/components/schemas/ProScoutMatchTeamRef" },
+            awayTeam:  { $ref: "#/components/schemas/ProScoutMatchTeamRef" },
+            venue:     { type: "string", nullable: true },
+            status:    { type: "string", enum: ["scheduled", "completed", "cancelled", "postponed"] },
+            result:    { $ref: "#/components/schemas/ProScoutMatchResult" },
+          },
+        },
+
+        ProScoutReportPlayerRef: {
+          type: "object",
+          properties: {
+            _id:      { type: "string" },
+            name:     { type: "string" },
+            position: { type: "string" },
+          },
+        },
+
+        ProScoutReport: {
+          type: "object",
+          properties: {
+            _id:            { type: "string" },
+            player:         { $ref: "#/components/schemas/ProScoutReportPlayerRef" },
+            matchDate:      { type: "string", format: "date-time" },
+            overallRating:  { type: "number" },
+          },
+        },
+
+        ProScoutDashboard: {
+          type: "object",
+          properties: {
+            totalPlayers:          { type: "integer" },
+            upcomingMatchesCount:  { type: "integer" },
+            totalReports:          { type: "integer" },
+            upcomingMatches:       { type: "array", items: { $ref: "#/components/schemas/ProScoutMatch" } },
+            latestResults:         { type: "array", items: { $ref: "#/components/schemas/ProScoutMatch" } },
+            recentReports:         { type: "array", items: { $ref: "#/components/schemas/ProScoutReport" } },
+          },
+        },
+
         ReportStatistics: {
           type: "object",
           properties: {

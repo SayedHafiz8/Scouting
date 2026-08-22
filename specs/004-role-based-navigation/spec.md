@@ -97,7 +97,7 @@ A proScout who types the address of the users area, the observers area, or the a
 - **FR-004**: The menu presented to an administrator MUST be exactly: Dashboard, Players, Coaches, Observers, Age Groups, Profile — in that order. ("Coaches" is the entry leading to the users area; the label is unchanged from today.)
 - **FR-005**: The menu presented to a coach MUST be exactly: Dashboard, Players, My Matches, Profile — in that order.
 - **FR-006**: The menu presented to an observer MUST be exactly: Dashboard, Players, My Matches, Profile — in that order.
-- **FR-007**: The menu presented to a proScout MUST be exactly: Players, Profile — in that order.
+- **FR-007**: The menu presented to a proScout MUST be exactly: Dashboard, Players, Profile — in that order. **(Updated by Stage 5 — see DF-001 below. Originally "Players, Profile" while the role had no dashboard destination.)**
 - **FR-008**: The age-groups entry MUST NOT name proScout, in this phase or any later one.
 - **FR-009**: Every entry's label, icon, and destination MUST be identical to the corresponding entry before this change, so that no existing role observes any visual or behavioral difference.
 - **FR-010**: The formation graphic rendered below the menu MUST keep its existing display condition (administrator, while the players area is active) and MUST NOT become a menu entry.
@@ -111,28 +111,25 @@ A proScout who types the address of the users area, the observers area, or the a
 
 ### Deferred by Design *(binding follow-ups)*
 
-These two entries belong to proScout by the overall plan but are deliberately **not** added in this phase, because the destinations behind them do not yet accept the role. Adding them now would produce a menu entry that ends in a refusal, violating FR-015.
+These two entries belonged to proScout by the overall plan but were deliberately **not** added in this phase, because the destinations behind them did not yet accept the role — adding them then would have produced a menu entry that ends in a refusal, violating FR-015. DF-001 has since been discharged by Stage 5; DF-002 remains open.
 
-- **DF-001 — Dashboard entry for proScout → Phase 5.** The dashboard area routes each role to its own landing destination, and proScout currently has none, so it resolves to the unauthorized destination. Phase 5 creates the proScout dashboard and registers its landing destination; **the same phase MUST add proScout to the Dashboard entry's role set**, and MUST update FR-007 to expect three entries.
+- **DF-001 — Dashboard entry for proScout → Phase 5. DISCHARGED.** The dashboard area routes each role to its own landing destination, and proScout originally had none, so it resolved to the unauthorized destination.
 
-  > **Amended after Stage 4 — the landing destination is now `/players`, temporarily.**
-  >
-  > Leaving proScout in the unknown-role default meant a *successful login* landed on the
-  > unauthorized screen, which made Stage 4's completed players page unreachable through the UI. The
-  > role now has an explicit `case 'proScout'` in `RoleLandingService` returning `['/players']` —
-  > the one page it can actually work in today, and one that is guarded server-side.
-  >
-  > **Phase 5 MUST EDIT that existing case to return `['/dashboard/proScout']` — not add a second
-  > case for the same role.** A duplicate case for one role means two contradicting branches in the
-  > same `switch`, and only the first would ever run. The rest of DF-001 is unchanged: Phase 5 still
-  > adds proScout to the Dashboard nav entry and still updates FR-007 to expect three entries.
+  > **History**: Stage 4 gave the role a temporary landing (`/players`, the one page it could
+  > actually work in at the time) rather than leave a successful login ending on a refusal screen.
+  > **Stage 5** (`specs/007-proscout-dashboard/`) then built the real dashboard
+  > (`GET /dashboard/proScout` + the page), **edited the existing `RoleLandingService` case in
+  > place** to return `['/dashboard/proScout']` (no second case was added for the role — a
+  > duplicate would mean two contradicting branches in the same `switch`, and only the first would
+  > ever run), and added proScout to the Dashboard nav entry's role set. FR-007 above now reflects
+  > three entries.
   >
   > Locked by `core/services/role-landing.service.spec.ts` → *"RoleLandingService — proScout
-  > (DF-001, temporary until Stage 5)"*, whose assertions Phase 5 must update in the same commit
-  > that changes the destination.
+  > (DF-001, discharged in Stage 5)"* and `layout/sidebar/sidebar.component.spec.ts`'s proScout
+  > cases.
 - **DF-002 — My Matches entry for proScout → Phase 6.** The matches area is restricted to coach, observer, and administrator, and the attendance actions behind it are restricted to coach and observer on the server. Phase 6 opens both; **the same phase MUST add proScout to the My Matches entry's role set**, and MUST update FR-007 to expect four entries.
 
-Both are recorded here so that the "exactly two entries" expectation in FR-007 is understood as a phase checkpoint, not a final state.
+Both were recorded here so that the original "exactly two entries" expectation in FR-007 was understood as a phase checkpoint, not a final state — DF-001's discharge (three entries) is that checkpoint moving; DF-002 (four entries) is the next one.
 
 ### Key Entities
 
@@ -144,10 +141,10 @@ Both are recorded here so that the "exactly two entries" expectation in FR-007 i
 ### Measurable Outcomes
 
 - **SC-001**: For each of administrator, coach, and observer, the set and order of menu entries after this change is identical to the set and order before it — zero differences.
-- **SC-002**: A proScout sees exactly 2 menu entries; a coach and an observer see exactly 4 each; an administrator sees exactly 6.
+- **SC-002**: A proScout sees exactly 3 menu entries **(Updated by Stage 5 — was 2 while DF-001 was open)**; a coach and an observer see exactly 4 each; an administrator sees exactly 6.
 - **SC-003**: A user with no role, and a user with a role named on no entry, each see exactly 0 menu entries.
-- **SC-004**: 100% of menu entries shown to any role lead to a destination that role can open, with the two deferrals in DF-001/DF-002 excluded by not being shown at all.
-- **SC-005**: All three administration areas (users, observers, age groups), when opened directly by a proScout, end at the unauthorized destination — 3 of 3.
+- **SC-004**: 100% of menu entries shown to any role lead to a destination that role can open. DF-001 is discharged (Stage 5) and is no longer an exclusion; DF-002 remains excluded by not being shown at all until its own stage.
+- **SC-005**: All three administration areas (users, observers, age groups), when opened directly by a proScout, are refused — the guard does not grant entry — with the refusal bouncing to the role's own landing destination (`/dashboard/proScout` as of Stage 5) rather than granting access. **Corrected by Stage 5**: this criterion originally named `/unauthorized` as the destination, which stopped being accurate the moment Stage 4 gave the role its own (then-temporary) landing — `/unauthorized` is reserved for *unrecognized* roles, and a refused-but-recognized role has bounced to its own destination since Stage 4. The security property — "the guard does not grant access" — was true throughout and is what this criterion actually measures; only the destination string was stale.
 - **SC-006**: The server's decision for a proScout on the data behind those three areas is recorded by an executable check for each one, so a future change that silently opens one of them fails a test.
 - **SC-007**: Adding a hypothetical new role to the system, without touching the menu, results in that role seeing 0 entries.
 - **SC-008**: The full existing frontend test suite and the production build both pass with no new failures.

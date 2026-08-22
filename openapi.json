@@ -624,6 +624,130 @@
           }
         }
       },
+      "ProScoutMatchTeamRef": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "clubName": {
+            "type": "string"
+          }
+        }
+      },
+      "ProScoutMatchResult": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "homeScore": {
+            "type": "integer"
+          },
+          "awayScore": {
+            "type": "integer"
+          }
+        }
+      },
+      "ProScoutMatch": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "matchDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "homeTeam": {
+            "$ref": "#/components/schemas/ProScoutMatchTeamRef"
+          },
+          "awayTeam": {
+            "$ref": "#/components/schemas/ProScoutMatchTeamRef"
+          },
+          "venue": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "completed",
+              "cancelled",
+              "postponed"
+            ]
+          },
+          "result": {
+            "$ref": "#/components/schemas/ProScoutMatchResult"
+          }
+        }
+      },
+      "ProScoutReportPlayerRef": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "position": {
+            "type": "string"
+          }
+        }
+      },
+      "ProScoutReport": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "player": {
+            "$ref": "#/components/schemas/ProScoutReportPlayerRef"
+          },
+          "matchDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "overallRating": {
+            "type": "number"
+          }
+        }
+      },
+      "ProScoutDashboard": {
+        "type": "object",
+        "properties": {
+          "totalPlayers": {
+            "type": "integer"
+          },
+          "upcomingMatchesCount": {
+            "type": "integer"
+          },
+          "totalReports": {
+            "type": "integer"
+          },
+          "upcomingMatches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProScoutMatch"
+            }
+          },
+          "latestResults": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProScoutMatch"
+            }
+          },
+          "recentReports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProScoutReport"
+            }
+          }
+        }
+      },
       "ReportStatistics": {
         "type": "object",
         "properties": {
@@ -4541,6 +4665,41 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/dashboard/proScout": {
+      "get": {
+        "summary": "Get the logged-in proScout's dashboard statistics (professional-league scope only)",
+        "tags": [
+          "Dashboard"
+        ],
+        "responses": {
+          "200": {
+            "description": "ProScout dashboard data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ProScoutDashboard"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       }

@@ -31,17 +31,15 @@ describe('RoleLandingService', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// proScout landing — DF-001
+// proScout landing — DF-001, discharged (Stage 5)
 //
 // Stage 1 asserted /unauthorized here: the role had zero data access, so the
 // default branch was the correct answer. Stage 4 gave it a working, fully
-// guarded /players page, at which point that assertion became the reason a
-// successful login ended on a refusal screen.
-//
-// ⚠️ /players is TEMPORARY. Stage 5 must EDIT the existing 'proScout' case to
-// return /dashboard/proScout — not add a second case for the same role.
+// guarded /players page as a temporary landing. Stage 5 gave the role its own
+// dashboard (GET /dashboard/proScout + the page) and edited this existing
+// case in place to point at it — no second case was added for the role.
 // ═══════════════════════════════════════════════════════════════════════════
-describe('RoleLandingService — proScout (DF-001, temporary until Stage 5)', () => {
+describe('RoleLandingService — proScout (DF-001, discharged in Stage 5)', () => {
   let service: RoleLandingService;
 
   beforeEach(() => {
@@ -49,8 +47,8 @@ describe('RoleLandingService — proScout (DF-001, temporary until Stage 5)', ()
     service = TestBed.inject(RoleLandingService);
   });
 
-  it('lands proScout on /players', () => {
-    expect(service.landingFor('proScout')).toEqual(['/players']);
+  it('lands proScout on /dashboard/proScout', () => {
+    expect(service.landingFor('proScout')).toEqual(['/dashboard/proScout']);
   });
 
   it('does NOT land proScout on /unauthorized — a successful login must not end on a refusal', () => {
