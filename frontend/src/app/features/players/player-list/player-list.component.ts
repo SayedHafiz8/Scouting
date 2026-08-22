@@ -427,6 +427,16 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
                         <span class="truncate">{{ 'PLAYERS.NO_COACH' | translate }}</span>
                       </p>
                     }
+                    <!-- specs/010-professional-lens-creator — who added this player, admin-only,
+                         only inside the Professional League lens (Stage 4c's flat view). -->
+                    @if (professionalOnly() && auth.isAdmin() && creatorName(player)) {
+                      <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
+                        <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
+                          <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                        <span class="truncate">{{ 'PLAYERS.CREATED_BY' | translate }}: {{ creatorName(player) }}</span>
+                      </p>
+                    }
                     <!-- Status badge -->
                     <div class="mt-2">
                       <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold"
@@ -922,6 +932,15 @@ export class PlayerListComponent implements OnInit {
     const coach = player.coach;
     if (!coach || typeof coach === 'string') return '';
     return coach.name;
+  }
+
+  // specs/010-professional-lens-creator — createdBy is only ever populated to
+  // { _id, name } for admins; for every other role it stays a bare id string
+  // (or is absent), so this mirrors coachName()'s guard exactly.
+  creatorName(player: Player): string {
+    const createdBy = player.createdBy;
+    if (!createdBy || typeof createdBy === 'string') return '';
+    return createdBy.name;
   }
 
   // لاعب "يتيم" — كوتشه اتمسح نهائياً فالحقل اتفضّى من السيرفر. ملحوظة مهمة:

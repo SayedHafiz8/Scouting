@@ -407,7 +407,8 @@
     },
     "NO_COACH": "بدون كوتش",
     "PROFESSIONAL_LEAGUE": "دوري المحترفين",
-    "ALL_TEAMS": "كل الفرق"
+    "ALL_TEAMS": "كل الفرق",
+    "CREATED_BY": "أضافه"
   },
   "REPORTS": {
     "COUNT": "{{count}} تقرير",
