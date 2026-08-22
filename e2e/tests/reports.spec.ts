@@ -22,7 +22,7 @@ test.beforeAll(async ({ request }) => {
   playerId = await apiCreatePlayer(request, coachToken, {
     name: `E2E Report Target ${Date.now()}`,
     dateOfBirth: '2011-06-10',
-    team: 'Al Ahly',
+    teamName: 'Al Ahly', // `team` must be a real Team ObjectId — free text goes in `teamName`
     position: 'CM',
     preferredFoot: 'left',
     nationality: 'Egyptian',
@@ -55,12 +55,21 @@ test('coach submits a scouting report and it appears in the report list', async 
   // Wait for report form to render inside the player detail shell
   await expect(page.getByText('New Report')).toBeVisible();
 
-  // Set match date to today
-  const today = new Date().toISOString().split('T')[0];
-  await page.locator('input[type="date"]').fill(today);
-
-  // Choose recommendation
-  await page.getByRole('button', { name: 'Promote' }).click();
+  // matchDate is now set server-side (never entered by the client — see
+  // report-form.component.ts), and there is no recommendation/"Promote" step
+  // any more. Since this player has no linked Team (only a free-text
+  // teamName from apiCreatePlayer), the form falls into its manual
+  // home/away-team branch and requires both to be filled.
+  // This page embeds a player-details summary card ABOVE the report form, so
+  // `.card` alone would pick the wrong one — scope to the one containing the
+  // "Match Information" heading.
+  const matchInfoCard = page.locator('.card', { hasText: 'Match Information' });
+  await matchInfoCard.locator('select').nth(0)
+    .selectOption({ label: 'Team not in the list (type its name)' });
+  await matchInfoCard.locator('input[type="text"]').nth(0).fill('Home FC');
+  await matchInfoCard.locator('select').nth(1)
+    .selectOption({ label: 'Team not in the list (type its name)' });
+  await matchInfoCard.locator('input[type="text"]').nth(1).fill('Away FC');
 
   // All 12 skill sliders default to 5 — no need to change them
 

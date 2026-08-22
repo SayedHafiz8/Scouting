@@ -3,7 +3,9 @@ import request from 'supertest';
 import app from '../app.js';
 import {
   createAdmin, createCoach, createObserver, createPlayer, seedAgeGroups,
+  createProScout, createTeam, createPlayerDoc,
 } from './helpers/factory.js';
+import AgeGroup from '../models/ageGroupModel.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  Cross-tenant isolation contract for ApiFeature.filter()
@@ -288,5 +290,86 @@ describe('/api/v1/teams/:id/players — dead mount removed', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(404);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  Stage 7 (hardening) — proScout cross-tenant isolation, same contract as B1
+//  above but for the professional-league role. Appended only; nothing above
+//  this block is touched (Constitution Principle III / FR-017).
+// ══════════════════════════════════════════════════════════════════════════════
+describe('Data isolation — GET /api/v1/players (proScout)', () => {
+  beforeEach(seedAgeGroups);
+
+  async function twoProScouts() {
+    const ageGroup = await AgeGroup.findOne();
+    const proTeam = await createTeam(ageGroup._id, { league: 'professional' });
+    const a = await createProScout({ email: 'iso_scout_a@test.com' });
+    const b = await createProScout({ email: 'iso_scout_b@test.com' });
+    // Shared professional-team players are visible to BOTH scouts by design
+    // (the professional-league scope is shared, not per-scout — this is not
+    // the leak under test). The orphan (team: null) players ARE per-scout via
+    // createdBy, and that is the boundary this block proves holds.
+    const orphanA = await createPlayerDoc({ name: 'Orphan A', team: null, createdBy: a.user._id });
+    const orphanB = await createPlayerDoc({ name: 'Orphan B', team: null, createdBy: b.user._id });
+    return { proTeam, a, b, orphanA, orphanB };
+  }
+
+  it('proScout A never sees proScout B\'s team-less (orphan) players', async () => {
+    const { a } = await twoProScouts();
+
+    const res = await request(app)
+      .get('/api/v1/players')
+      .set('Authorization', `Bearer ${a.token}`);
+
+    expect(res.status).toBe(200);
+    const names = res.body.data.documents.map((p) => p.name);
+    expect(names).toContain('Orphan A');
+    expect(names).not.toContain('Orphan B');
+  });
+
+  it('?coach=<otherScout> cannot be used to surface another proScout\'s orphan (coach is unset on proScout-created players)', async () => {
+    const { a, b } = await twoProScouts();
+
+    const res = await request(app)
+      .get(`/api/v1/players?coach=${b.user._id}`)
+      .set('Authorization', `Bearer ${a.token}`);
+
+    expect(res.status).toBe(200);
+    const names = res.body.data.documents.map((p) => p.name);
+    expect(names).toContain('Orphan A');
+    expect(names).not.toContain('Orphan B');
+  });
+
+  it('?observers=<id> cannot widen a proScout\'s view beyond its own scope (maskObservedForCoach applies to proScout too)', async () => {
+    const { adminToken } = await createAdmin({ email: 'iso_scout_admin@test.com' });
+    const { a, orphanA } = await twoProScouts();
+    const obs = await createObserver({ email: 'iso_scout_obs@test.com' });
+
+    await request(app)
+      .patch(`/api/v1/players/${orphanA._id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'observed', observers: [obs.user._id.toString()] });
+
+    const res = await request(app)
+      .get(`/api/v1/players?observers=${obs.user._id}`)
+      .set('Authorization', `Bearer ${a.token}`);
+
+    expect(res.status).toBe(200);
+    const names = res.body.data.documents.map((p) => p.name);
+    expect(names).toContain('Orphan A'); // still visible — the param is dropped, not honored
+    expect(res.body.data.documents.every((p) => p.observers === undefined)).toBe(true); // masked, same as coach
+  });
+
+  it('search combined with ?coach=<otherScout> still cannot widen the scope', async () => {
+    const { a, b } = await twoProScouts();
+    await createPlayerDoc({ name: 'Kareem Orphan B', team: null, createdBy: b.user._id });
+
+    const res = await request(app)
+      .get(`/api/v1/players?keyword=kareem&coach=${b.user._id}`)
+      .set('Authorization', `Bearer ${a.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.documents).toEqual([]);
   });
 });

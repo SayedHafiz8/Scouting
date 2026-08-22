@@ -37,7 +37,9 @@ test.describe('Authentication', () => {
 
   test('unauthenticated visit to /players redirects to login', async ({ page }) => {
     await page.goto('/players');
-    await page.waitForURL('**/auth/login', { timeout: 10_000 });
+    // authGuard appends ?returnUrl=... (see auth.guard.ts), so the glob must
+    // not anchor on a bare "/auth/login" suffix.
+    await page.waitForURL('**/auth/login**', { timeout: 10_000 });
     await expect(page.getByPlaceholder('coach@example.com')).toBeVisible();
   });
 });

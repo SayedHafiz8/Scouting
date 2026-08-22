@@ -19,15 +19,13 @@
 // الاختبارات بتعمل spy على الموديول ده (نفس نمط الـI/O الخارجي الموكوك في
 // tests/setup.js) وبتتأكد إن كل رفض بيسجّل مرة واحدة بالحقول الأربعة.
 
-/**
- * @param {object} params
- * @param {import('express').Request} params.req  الطلب المرفوض
- * @param {string} params.resource                نوع المورد ("player" | "seasonMatch" | "team" | ...)
- * @param {string} params.resourceId              معرّف المورد المطلوب
- */
-export function logScopeDenial({ req, resource, resourceId }) {
+// Stage 7 (hardening) — writeDenialLog هو الكاتب الداخلي الوحيد. logScopeDenial
+// (فوق تاريخياً) وlogRoleDenial (تحت، جديد) بيمرّوا عليه بس، فأسماء الحقول
+// الأربعة (userId, role, path, resourceId) ماتتفرقعش بين الطبقتين — نفس
+// المنطق اللي عمل الملف ده من الأساس (راجع التعليق فوق).
+function writeDenialLog(event, { req, resource, resourceId }) {
     const entry = {
-        event: "scope_denied",
+        event,
         userId: req?.user?._id ? String(req.user._id) : null,
         role: req?.user?.role ?? null,
         method: req?.method ?? null,
@@ -38,6 +36,24 @@ export function logScopeDenial({ req, resource, resourceId }) {
     };
 
     console.warn(JSON.stringify(entry));
+}
+
+/**
+ * @param {object} params
+ * @param {import('express').Request} params.req  الطلب المرفوض
+ * @param {string} params.resource                نوع المورد ("player" | "seasonMatch" | "team" | ...)
+ * @param {string} params.resourceId              معرّف المورد المطلوب
+ */
+export function logScopeDenial({ req, resource, resourceId }) {
+    writeDenialLog("scope_denied", { req, resource, resourceId });
+}
+
+// Stage 7 — رفض على مستوى بوابة الرول (allowedTo)، مش طبقة النطاق. بيتنفّذ
+// قبل ما أي سياق خاص بالمورد يتحدد، فـresource هنا اسم المسار (baseUrl بدون
+// بادئة /api/v1) مش اسم دومين، وresourceId بيتاخد من req.params.id لو موجود
+// وإلا null (مش placeholder — فرق بين "مفيش id" و"id فاضي").
+export function logRoleDenial({ req, resource }) {
+    writeDenialLog("role_denied", { req, resource, resourceId: req?.params?.id ?? null });
 }
 
 export default logScopeDenial;
