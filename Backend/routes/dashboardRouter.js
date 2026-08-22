@@ -157,11 +157,34 @@
  *         $ref: '#/components/responses/Forbidden'
  *       404:
  *         $ref: '#/components/responses/NotFound'
+ *
+ * /dashboard/proScout:
+ *   get:
+ *     summary: Get the logged-in proScout's dashboard statistics (professional-league scope only)
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: ProScout dashboard data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   $ref: '#/components/schemas/ProScoutDashboard'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
  */
 import express from "express";
 import {
     getCoachDashboard,
     getObserverDashboard,
+    getProScoutDashboard,
     adminDashboard,
     getAllCoachesStats,
 } from "../controllers/dashboardController.js";
@@ -215,6 +238,14 @@ dashboardRouter.get(
     allowedTo(ROLES.ADMIN),
     observerIdValidator,
     getObserverDashboard
+);
+
+// ✅ Stage 5 — proScout يشوف داشبورد بتاعه بس. مفيش نسخة أدمن (زي /admin/:coachId)
+// لغياب أي احتياج مذكور لها في نطاق المرحلة دي.
+dashboardRouter.get(
+    "/proScout",
+    allowedTo(ROLES.PRO_SCOUT),
+    getProScoutDashboard
 );
 
 export default dashboardRouter;

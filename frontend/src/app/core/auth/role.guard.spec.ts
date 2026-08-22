@@ -81,11 +81,12 @@ describe('roleGuard', () => {
   // administration areas is refused via the same single RoleLandingService used
   // above, not a new hand-written condition (FR-013).
   //
-  // ⚠️ Updated in Stage 4 (DF-001). These previously asserted `/unauthorized`,
-  // which was correct only while proScout had no landing destination and fell
-  // into the unknown-role default. It now has one (`/players`, temporary until
-  // Stage 5), so a refusal bounces it to its own landing — exactly what already
-  // happens to a coach or observer refused an admin-only route.
+  // ⚠️ Updated in Stage 4 (DF-001), then again in Stage 5 once the role got its
+  // own dashboard. These previously asserted `/unauthorized` (Stage 1, while
+  // proScout had no landing and fell into the unknown-role default), then
+  // `/players` (Stage 4's temporary landing). Stage 5 gave the role a real
+  // dashboard destination, so a refusal now bounces there — exactly what
+  // already happens to a coach or observer refused an admin-only route.
   //
   // The security property under test is unchanged and is what these assert:
   // **the guard does not grant access.** Which page the refusal lands on is a UX
@@ -98,15 +99,15 @@ describe('roleGuard', () => {
   };
 
   it('refuses proScout on /users (admin-only) and bounces it to its landing', async () => {
-    expect(await refusedProScout()).toBe('/players');
+    expect(await refusedProScout()).toBe('/dashboard/proScout');
   });
 
   it('refuses proScout on /observers (admin-only) and bounces it to its landing', async () => {
-    expect(await refusedProScout()).toBe('/players');
+    expect(await refusedProScout()).toBe('/dashboard/proScout');
   });
 
   it('refuses proScout on /age-groups (admin-only) and bounces it to its landing', async () => {
-    expect(await refusedProScout()).toBe('/players');
+    expect(await refusedProScout()).toBe('/dashboard/proScout');
   });
 
   it('never returns true for proScout on an admin-only route, whatever the landing is', async () => {

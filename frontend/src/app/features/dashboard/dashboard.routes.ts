@@ -32,6 +32,11 @@ export const dashboardRoutes: Routes = [
     canActivate: [roleGuard(['admin'])],
   },
   {
+    path: 'proScout',
+    loadComponent: () => import('./pro-scout-dashboard/pro-scout-dashboard.component').then(m => m.ProScoutDashboardComponent),
+    canActivate: [roleGuard(['proScout'])],
+  },
+  {
     path: '',
     canActivate: [() => {
       const role = inject(AuthService).currentUser()?.role;

@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Subject } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { ApiResponse } from '../../../core/models/api-response.model';
-import { CoachDashboard, AdminDashboard, ObserverDashboard } from '../../../core/models/dashboard.model';
+import { CoachDashboard, AdminDashboard, ObserverDashboard, ProScoutDashboard } from '../../../core/models/dashboard.model';
 
 @Injectable({ providedIn: 'root' })
 export class DashboardService {
@@ -38,5 +38,9 @@ export class DashboardService {
 
   getObserverDashboardByAdmin(observerId: string) {
     return this.http.get<ApiResponse<ObserverDashboard>>(`${this.base}/admin/observer/${observerId}`);
+  }
+
+  getProScoutDashboard() {
+    return this.http.get<ApiResponse<ProScoutDashboard>>(`${this.base}/proScout`);
   }
 }

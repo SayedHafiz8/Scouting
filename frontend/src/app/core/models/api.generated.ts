@@ -2851,6 +2851,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dashboard/proScout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the logged-in proScout's dashboard statistics (professional-league scope only) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description ProScout dashboard data */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: components["schemas"]["ProScoutDashboard"];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/coachEvaluations": {
         parameters: {
             query?: never;
@@ -4002,6 +4044,46 @@ export interface components {
             totalReports?: number;
             totalMedia?: number;
             totalMatches?: number;
+        };
+        ProScoutMatchTeamRef: {
+            _id?: string;
+            name?: string;
+            clubName?: string;
+        };
+        ProScoutMatchResult: {
+            homeScore?: number;
+            awayScore?: number;
+        } | null;
+        ProScoutMatch: {
+            _id?: string;
+            /** Format: date-time */
+            matchDate?: string;
+            homeTeam?: components["schemas"]["ProScoutMatchTeamRef"];
+            awayTeam?: components["schemas"]["ProScoutMatchTeamRef"];
+            venue?: string | null;
+            /** @enum {string} */
+            status?: "scheduled" | "completed" | "cancelled" | "postponed";
+            result?: components["schemas"]["ProScoutMatchResult"];
+        };
+        ProScoutReportPlayerRef: {
+            _id?: string;
+            name?: string;
+            position?: string;
+        };
+        ProScoutReport: {
+            _id?: string;
+            player?: components["schemas"]["ProScoutReportPlayerRef"];
+            /** Format: date-time */
+            matchDate?: string;
+            overallRating?: number;
+        };
+        ProScoutDashboard: {
+            totalPlayers?: number;
+            upcomingMatchesCount?: number;
+            totalReports?: number;
+            upcomingMatches?: components["schemas"]["ProScoutMatch"][];
+            latestResults?: components["schemas"]["ProScoutMatch"][];
+            recentReports?: components["schemas"]["ProScoutReport"][];
         };
         ReportStatistics: {
             totalReports?: number;

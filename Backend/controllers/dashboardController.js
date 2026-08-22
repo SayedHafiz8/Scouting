@@ -12,6 +12,7 @@ import {
 } from "../socket/handlers/notification.js";
 import { getConnectedUsers } from "../socket/index.js";
 import { ROLES } from "../constants/roles.js";
+import { playerScopeFor, seasonMatchScopeFor } from "../services/scope.js";
 
 // ============================
 // §11 — كاش TTL في الذاكرة لداشبورد الأدمن
@@ -240,6 +241,87 @@ const getObserverDashboardData = async (observerId) => {
     return { totalPlayersObserved, totalReports, totalMedia, totalMatches };
 };
 
+// Stage 5 — proScout dashboard.
+//
+// عايزة req كاملة مش userId زي التلاتة فوق: النطاق بيتحسب من playerScopeFor/
+// seasonMatchScopeFor اللي بياخدوا req (وبيكاشوا professionalTeamIds عليه لكل
+// طلب، مش على مستوى العملية). ممنوع أي فلتر يدوي هنا بمفتاح "professional" —
+// الطبقة المركزية هي مصدر الحقيقة الوحيد (Constitution Principle IV).
+//
+// كل تركيب بين النطاق وشرط تاريخ لازم يتلفّ في $and مش spread: الاسبريد بيتصادم
+// بصمت لو الاستدعاء ضاف $and تاني ويمسح النطاق بالكامل (مقيس، services/scope.js
+// أعلى الملف). مفيش كاش هنا عمداً — البيانات ده مسكوبة لكل مستخدم، ومفتاح كاش
+// مشترك عليها بيبقى تسريب بين الرولات بالظبط زي تحذير §11 فوق.
+const getProScoutDashboardData = async (req) => {
+    const playerScope = await playerScopeFor(req);
+    const matchScope = await seasonMatchScopeFor(req);
+
+    // نهاية اليوم النهاردة — نفس حد المقارنة المستخدم في التلات دوال فوق بالظبط،
+    // عشان matchDate المخزنة UTC-midnight (من <input type="date">) متتصنفش
+    // "لسه ماجاش" غلط لمعظم اليوم. مباراة النهاردة بتتحسب "نتيجة"، مش "قادمة".
+    const endOfToday = new Date(new Date().setHours(23, 59, 59, 999));
+
+    const upcomingMatchFilter = { $and: [matchScope, { matchDate: { $gt: endOfToday } }] };
+    const pastMatchFilter = { $and: [matchScope, { matchDate: { $lte: endOfToday } }] };
+
+    // محور التقارير: تأليف **و** نطاق اللاعب مع بعض، مش تأليف بس — نفس اللي
+    // getAverageRatingsForPlayers عملته في المرحلة 2 لنفس السبب: تقرير على لاعب
+    // خرج من النطاق (اتنقل لفريق تاني) بيكشف اسم لاعب برّه سكوب الرول لو
+    // اتسمحله يفضل. الفلتر ده بيتحط في متغير واحد ويتستخدم للعدّ والقايمة مع
+    // بعض، عشان الاتنين يقصدوا نفس المجموعة بالظبط.
+    const scopedPlayerIds = await Player.find(playerScope).distinct("_id");
+    const reportFilter = { coach: req.user._id, player: { $in: scopedPlayerIds } };
+
+    const [
+        totalPlayers,
+        upcomingMatchesCount,
+        totalReports,
+        upcomingMatches,
+        latestResults,
+        recentReports,
+    ] = await Promise.all([
+        Player.countDocuments(playerScope),
+        // العدّ ده مستقل عن upcomingMatches.length لأن القايمة مقصوصة بـlimit(5) —
+        // كارت الإحصائية لازم يعرض الرقم الحقيقي مش الحد الأقصى.
+        SeasonMatch.countDocuments(upcomingMatchFilter),
+        ScoutingReport.countDocuments(reportFilter),
+        // skipPopulate بيوقف hook الـpre(/^find/) اللي بيعمل populate تلقائي على
+        // ageGroup/homeTeam/awayTeam/attendees — ageGroup ممنوع تماماً هنا (FR-005)،
+        // والـpopulate الصريح تحت بيجيب homeTeam/awayTeam بس بالحقول المطلوبة.
+        SeasonMatch.find(upcomingMatchFilter)
+            .setOptions({ skipPopulate: true })
+            .select("matchDate homeTeam awayTeam venue status result")
+            .populate({ path: "homeTeam", select: "name clubName" })
+            .populate({ path: "awayTeam", select: "name clubName" })
+            .sort({ matchDate: 1 })
+            .limit(5)
+            .lean(),
+        SeasonMatch.find(pastMatchFilter)
+            .setOptions({ skipPopulate: true })
+            .select("matchDate homeTeam awayTeam venue status result")
+            .populate({ path: "homeTeam", select: "name clubName" })
+            .populate({ path: "awayTeam", select: "name clubName" })
+            .sort({ matchDate: -1 })
+            .limit(5)
+            .lean(),
+        ScoutingReport.find(reportFilter)
+            .select("player matchDate overallRating")
+            .populate({ path: "player", select: "name position" })
+            .sort({ matchDate: -1 })
+            .limit(5)
+            .lean(),
+    ]);
+
+    return {
+        totalPlayers,
+        upcomingMatchesCount,
+        totalReports,
+        upcomingMatches,
+        latestResults,
+        recentReports,
+    };
+};
+
 // ============================
 // Coach Dashboard
 // ✅ الكوتش يشوف بتاعه — الأدمن يشوف كوتش معين
@@ -269,6 +351,18 @@ export const getObserverDashboard = asyncHandler(async (req, res, next) => {
             : req.user._id;
 
     const data = await getObserverDashboardData(observerId);
+
+    res.status(200).json({
+        status: "success",
+        data,
+    });
+});
+
+// ============================
+// ProScout Dashboard — بيتاعه هو بس، مفيش نسخة أدمن (Stage 5 assumption)
+// ============================
+export const getProScoutDashboard = asyncHandler(async (req, res, next) => {
+    const data = await getProScoutDashboardData(req);
 
     res.status(200).json({
         status: "success",

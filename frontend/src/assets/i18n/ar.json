@@ -282,7 +282,16 @@
     "TOP_COACHES": "أفضل المدربين بالاختيارات",
     "RANK": "#",
     "COACH": "المدرب",
-    "NO_DATA": "لا توجد بيانات"
+    "NO_DATA": "لا توجد بيانات",
+    "PROSCOUT_TITLE": "لوحة التحكم",
+    "PROSCOUT_SUBTITLE": "نظرة عامة على نشاط الكشف الخاص بك في دوري المحترفين",
+    "UPCOMING_PRO_LEAGUE_MATCHES": "مباريات دوري المحترفين القادمة",
+    "UPCOMING_MATCHES_SECTION": "المباريات القادمة",
+    "LATEST_RESULTS": "آخر النتائج",
+    "RECENT_REPORTS": "أحدث التقارير",
+    "NO_UPCOMING_MATCHES": "لا توجد مباريات قادمة بعد",
+    "NO_RESULTS_YET": "لا توجد نتائج بعد",
+    "NO_REPORTS_YET": "لا توجد تقارير بعد"
   },
   "PLAYERS": {
     "TITLE": "اللاعبون",
