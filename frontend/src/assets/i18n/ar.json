@@ -396,7 +396,9 @@
       "NO_COACHES": "مفيش كباتن متاحين",
       "COACH_UPDATED": "تم تعيين الكوتش بنجاح"
     },
-    "NO_COACH": "بدون كوتش"
+    "NO_COACH": "بدون كوتش",
+    "PROFESSIONAL_LEAGUE": "دوري المحترفين",
+    "ALL_TEAMS": "كل الفرق"
   },
   "REPORTS": {
     "COUNT": "{{count}} تقرير",

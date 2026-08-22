@@ -10,6 +10,7 @@ import { BehaviorSubject, of } from 'rxjs';
 import { PlayerListComponent } from './player-list.component';
 import { PlayerService } from '../services/player.service';
 import { ScoutingReportService } from '../../scouting-reports/services/scouting-report.service';
+import { TeamService } from '../../teams/services/team.service';
 import { AuthService } from '../../../core/auth/auth.service';
 
 // §9 — عدسة "اللاعبين اليتامى" في قايمة اللاعبين. أدمن-فقط، وبتبعت ?coach=none
@@ -24,9 +25,14 @@ let queryParams$: BehaviorSubject<any>;
 type TestRole = 'admin' | 'coach' | 'observer' | 'proScout';
 
 let countsSpy: jasmine.Spy;
+let teamsGetAllSpy: jasmine.Spy;
 let httpMock: HttpTestingController;
 
-async function setup(role: TestRole = 'admin', params: Record<string, string> = {}) {
+async function setup(
+  role: TestRole = 'admin',
+  params: Record<string, string> = {},
+  countsResponse: { counts: Record<string, number>; total: number; professional: number } = { counts: {}, total: 0, professional: 0 }
+) {
   queryParams$ = new BehaviorSubject(convertToParamMap(params));
 
   getAllSpy = jasmine
@@ -34,7 +40,10 @@ async function setup(role: TestRole = 'admin', params: Record<string, string> = 
     .and.returnValue(of({ status: 'success', count: 0, pagination: null, data: { documents: [] } }));
   countsSpy = jasmine
     .createSpy('countsByAgeGroup')
-    .and.returnValue(of({ status: 'success', data: { counts: {}, total: 0 } }));
+    .and.returnValue(of({ status: 'success', data: countsResponse }));
+  teamsGetAllSpy = jasmine
+    .createSpy('getAll')
+    .and.returnValue(of({ status: 'success', count: 0, pagination: null, data: { documents: [] } }));
 
   const playerServiceStub = {
     getAll: getAllSpy,
@@ -43,6 +52,9 @@ async function setup(role: TestRole = 'admin', params: Record<string, string> = 
   };
   const reportServiceStub = {
     getAverageRatings: () => of({ status: 'success', data: { averages: {} } }),
+  };
+  const teamServiceStub = {
+    getAll: teamsGetAllSpy,
   };
   const authStub = {
     isAdmin: signal(role === 'admin'),
@@ -63,6 +75,7 @@ async function setup(role: TestRole = 'admin', params: Record<string, string> = 
       provideTranslateService({ lang: 'en', fallbackLang: 'en' }),
       { provide: PlayerService, useValue: playerServiceStub },
       { provide: ScoutingReportService, useValue: reportServiceStub },
+      { provide: TeamService, useValue: teamServiceStub },
       { provide: AuthService, useValue: authStub },
       {
         provide: ActivatedRoute,
@@ -122,7 +135,13 @@ describe('PlayerListComponent — orphaned players filter visibility', () => {
 });
 
 describe('PlayerListComponent — orphaned players filter behaviour', () => {
-  it('navigates with coach=none when switched on', async () => {
+  // specs/006-admin-professional-lens PC-1 — owner-directed change: both
+  // chips now clear the whole view on toggle instead of merging, so they
+  // behave symmetrically. Was `queryParamsHandling: 'merge'` and
+  // `{ coach: null }` on switch-off; updated in place with this reason,
+  // following the project's established precedent for updating pre-existing
+  // assertions when a stage deliberately changes behavior.
+  it('navigates with coach=none and no other params when switched on', async () => {
     const comp = await setup('admin');
     expect(comp.orphanedOnly()).toBeFalse();
 
@@ -131,17 +150,26 @@ describe('PlayerListComponent — orphaned players filter behaviour', () => {
     expect(navigateSpy).toHaveBeenCalled();
     const [, extras] = navigateSpy.calls.mostRecent().args;
     expect(extras.queryParams).toEqual({ coach: 'none' });
-    expect(extras.queryParamsHandling).toBe('merge');
+    expect(extras.queryParamsHandling).toBeUndefined();
   });
 
-  it('clears the param when switched off', async () => {
+  it('clears every param (a full reset, not just coach) when switched off', async () => {
     const comp = await setup('admin', { coach: 'none' });
     expect(comp.orphanedOnly()).toBeTrue();
 
     comp.toggleOrphaned();
 
     const [, extras] = navigateSpy.calls.mostRecent().args;
-    expect(extras.queryParams).toEqual({ coach: null });
+    expect(extras.queryParams).toEqual({});
+  });
+
+  it('clears the keyword on toggle (it lives outside the URL, so no navigation would clear it on its own)', async () => {
+    const comp = await setup('admin');
+    comp.keyword = 'mo salah';
+
+    comp.toggleOrphaned();
+
+    expect(comp.keyword).toBe('');
   });
 
   it('sends coach=none to the API when the param is active', async () => {
@@ -182,6 +210,188 @@ describe('PlayerListComponent — orphaned players filter behaviour', () => {
     expect(comp.orphanedOnly()).toBeFalse();
     // وبيفضل على تصفّح الفئات زي ما كان — الـflat view لليتامى بس
     expect(comp.flatView()).toBeFalse();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// specs/006-admin-professional-lens — Stage 4c. Gap-fix for a regression
+// Stage 4b introduced (professional players carry no ageGroup, so they had
+// no card and no intentional route on this page), not part of the original
+// scout-pro plan. Mirrors the orphaned-filter test blocks above by design —
+// same interaction pattern (US1 scenario 1), deliberately symmetric behavior
+// with it (PC-1, tested above on the orphaned chip itself).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const professionalChip = () => compiled.querySelector('[data-testid="professional-filter"]');
+const teamDropdown = () => compiled.querySelector('[data-testid="professional-team-filter"]');
+
+describe('PlayerListComponent — professional league filter visibility (FR-010)', () => {
+  it('is offered to an admin', async () => {
+    await setup('admin');
+    expect(professionalChip()).toBeTruthy();
+  });
+
+  it('is hidden from a coach', async () => {
+    await setup('coach');
+    expect(professionalChip()).toBeNull();
+  });
+
+  it('is hidden from an observer', async () => {
+    await setup('observer');
+    expect(professionalChip()).toBeNull();
+  });
+
+  it('is hidden from a proScout — their entire scope is already professional', async () => {
+    await setup('proScout');
+    expect(professionalChip()).toBeNull();
+  });
+});
+
+describe('PlayerListComponent — professional league filter behaviour (FR-013, FR-013a, PC-1)', () => {
+  it('navigates with isProfessional=true and no other params when switched on', async () => {
+    const comp = await setup('admin');
+    expect(comp.professionalOnly()).toBeFalse();
+
+    comp.toggleProfessional();
+
+    expect(navigateSpy).toHaveBeenCalled();
+    const [, extras] = navigateSpy.calls.mostRecent().args;
+    expect(extras.queryParams).toEqual({ isProfessional: 'true' });
+    expect(extras.queryParamsHandling).toBeUndefined();
+  });
+
+  it('clears every param when switched off', async () => {
+    const comp = await setup('admin', { isProfessional: 'true' });
+    expect(comp.professionalOnly()).toBeTrue();
+
+    comp.toggleProfessional();
+
+    const [, extras] = navigateSpy.calls.mostRecent().args;
+    expect(extras.queryParams).toEqual({});
+  });
+
+  it('clears the keyword on toggle', async () => {
+    const comp = await setup('admin');
+    comp.keyword = 'mo salah';
+
+    comp.toggleProfessional();
+
+    expect(comp.keyword).toBe('');
+  });
+
+  it('sends isProfessional=true to the API when the param is active', async () => {
+    await setup('admin', { isProfessional: 'true' });
+
+    const filters = getAllSpy.calls.mostRecent().args[0];
+    expect(filters.isProfessional).toBe('true');
+  });
+
+  it('shows a flat list instead of the age-group picker', async () => {
+    const comp = await setup('admin', { isProfessional: 'true' });
+    expect(comp.flatView()).toBeTrue();
+    expect(comp.selectedGroup()).toBeNull();
+  });
+
+  it('activating Professional League while No coach is active clears No coach (FR-013 scenario 4)', async () => {
+    const comp = await setup('admin', { coach: 'none' });
+    expect(comp.orphanedOnly()).toBeTrue();
+
+    comp.toggleProfessional();
+
+    const [, extras] = navigateSpy.calls.mostRecent().args;
+    expect(extras.queryParams).toEqual({ isProfessional: 'true' });
+  });
+
+  it('activating No coach while Professional League is active clears Professional League (FR-013a scenario 5)', async () => {
+    const comp = await setup('admin', { isProfessional: 'true' });
+    expect(comp.professionalOnly()).toBeTrue();
+
+    comp.toggleOrphaned();
+
+    const [, extras] = navigateSpy.calls.mostRecent().args;
+    expect(extras.queryParams).toEqual({ coach: 'none' });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US2 — search/sort/pagination behave identically in this lens (FR-004)
+// ═══════════════════════════════════════════════════════════════════════════
+describe('PlayerListComponent — professional lens composes with search (US2, FR-004)', () => {
+  it('typing a keyword while the lens is active still carries isProfessional=true', async () => {
+    const comp = await setup('admin', { isProfessional: 'true' });
+    comp.keyword = 'salah';
+
+    comp.resetAndLoad();
+
+    const filters = getAllSpy.calls.mostRecent().args[0];
+    expect(filters.isProfessional).toBe('true');
+    expect(filters.keyword).toBe('salah');
+  });
+
+  it('deactivating the lens with a keyword set does not leave a stale isProfessional param behind', async () => {
+    const comp = await setup('admin', { isProfessional: 'true' });
+    comp.keyword = 'salah';
+
+    comp.toggleProfessional();
+
+    const [, extras] = navigateSpy.calls.mostRecent().args;
+    expect(extras.queryParams).toEqual({});
+    expect(comp.keyword).toBe('');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// US3 — the chip badge shows the professional count while the grid (not the
+// flat view) is visible — the INVERSE of every other chip badge in this
+// file, which shows its count only while its own chip is active. FR-011.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('PlayerListComponent — professional count badge on the grid (US3, FR-011)', () => {
+  it('shows the professional count on the chip while the grid is visible', async () => {
+    await setup('admin', {}, { counts: { ag1: 3 }, total: 5, professional: 2 });
+    fixture.detectChanges();
+
+    const badge = professionalChip()?.querySelector('.chip-badge');
+    expect(badge?.textContent?.trim()).toBe('2');
+  });
+
+  it('shows no badge when there are no professional players', async () => {
+    await setup('admin', {}, { counts: { ag1: 5 }, total: 5, professional: 0 });
+    fixture.detectChanges();
+
+    expect(professionalChip()?.querySelector('.chip-badge')).toBeNull();
+  });
+
+  it('shows no badge while the chip itself is active (flat view) — inverted vs. every other chip badge', async () => {
+    await setup('admin', { isProfessional: 'true' }, { counts: {}, total: 2, professional: 2 });
+    fixture.detectChanges();
+
+    expect(professionalChip()?.querySelector('.chip-badge')).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PC-2 — team dropdown, scoped to the professional lens only (D-4)
+// ═══════════════════════════════════════════════════════════════════════════
+describe('PlayerListComponent — professional-only team dropdown (PC-2, FR-013b)', () => {
+  it('is hidden outside the professional lens', async () => {
+    await setup('admin');
+    expect(teamDropdown()).toBeNull();
+    expect(teamsGetAllSpy).not.toHaveBeenCalled();
+  });
+
+  it('is shown once the lens is active, populated from professional-league teams only', async () => {
+    await setup('admin', { isProfessional: 'true' });
+
+    expect(teamDropdown()).toBeTruthy();
+    expect(teamsGetAllSpy).toHaveBeenCalledWith(undefined, 'professional');
+  });
+
+  it('is hidden for a coach even if they somehow reached a flat view', async () => {
+    // The lens itself is admin-only (FR-010), so this dropdown — which only
+    // ever renders inside it — is unreachable for every other role by
+    // construction. Asserted directly rather than assumed.
+    await setup('coach');
+    expect(teamDropdown()).toBeNull();
   });
 });
 

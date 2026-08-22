@@ -61,4 +61,7 @@ export interface PlayerFilters {
   coach?: string;
   observer?: string;
   team?: string;
+  // Stage 4c — admin lens for professional-league players (specs/006-admin-professional-lens).
+  // Sent as the string 'true'/'false', matched against server-side query casting.
+  isProfessional?: string;
 }

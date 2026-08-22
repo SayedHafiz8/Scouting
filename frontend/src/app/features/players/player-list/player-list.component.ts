@@ -7,9 +7,11 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { environment } from '../../../../environments/environment';
 import { PlayerService } from '../services/player.service';
 import { ScoutingReportService } from '../../scouting-reports/services/scouting-report.service';
+import { TeamService } from '../../teams/services/team.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { Player, PlayerFilters, PlayerPosition, PlayerStatus, PLAYER_POSITIONS } from '../../../core/models/player.model';
 import { AgeGroup } from '../../../core/models/age-group.model';
+import { Team } from '../../../core/models/team.model';
 import { Pagination, PaginatedResponse } from '../../../core/models/api-response.model';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
@@ -106,6 +108,28 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
             {{ 'PLAYERS.NO_COACH' | translate }}
             @if (orphanedOnly()) {
               <span class="chip-badge">{{ total() }}</span>
+            }
+          </button>
+
+          <!-- specs/006-admin-professional-lens — Stage 4c. Gap-fix, not part
+               of the original scout-pro plan: Stage 4b left professional
+               players with no ageGroup at all, so they had no card and no
+               search route on this page. This chip is their only intentional
+               route (FR-007/FR-008), admin-only (FR-010) since proScout's
+               entire scope is already professional. -->
+          <button class="status-chip status-chip-professional" [class.status-chip-on]="professionalOnly()"
+                  data-testid="professional-filter"
+                  [attr.aria-pressed]="professionalOnly()"
+                  (click)="toggleProfessional()">
+            <span class="chip-dot" style="background:#38bdf8"></span>
+            {{ 'PLAYERS.PROFESSIONAL_LEAGUE' | translate }}
+            <!-- FR-011 — inverted vs. every badge above: those show a count
+                 while their OWN chip is active (echoing the current total).
+                 This one shows while the chip is INACTIVE — i.e. while the
+                 grid is visible — so the admin sees, on the grid itself, the
+                 count the cards don't include (header total = Σ cards + this). -->
+            @if (!professionalOnly() && professionalCount() > 0) {
+              <span class="chip-badge">{{ professionalCount() }}</span>
             }
           </button>
         }
@@ -280,6 +304,30 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
               }
             </select>
           </div>
+
+          <!-- specs/006-admin-professional-lens PC-2 — team filter scoped to
+               professional-league teams, shown only while this lens is
+               active. Convenience over the server-side isProfessional filter
+               (D-1/Principle I): choosing a non-professional team here would
+               simply return nothing, it cannot widen what the lens shows. -->
+          @if (professionalOnly()) {
+            <div class="flex items-center px-4 gap-3" style="border-inline-end:1px solid var(--border-color)">
+              <svg style="width:14px;height:14px;flex-shrink:0;color:var(--text-muted)"
+                   fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              <select [(ngModel)]="teamFilter" (ngModelChange)="resetAndLoad()"
+                      data-testid="professional-team-filter"
+                      style="background:transparent;border:none;outline:none;padding:14px 0;
+                             font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;min-width:140px">
+                <option value="" style="background:var(--bg-card)">{{ 'PLAYERS.ALL_TEAMS' | translate }}</option>
+                @for (t of professionalTeams(); track t._id) {
+                  <option [value]="t._id" style="background:var(--bg-card)">{{ t.name }}</option>
+                }
+              </select>
+            </div>
+          }
 
         </div>
       </div>
@@ -528,6 +576,7 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
 export class PlayerListComponent implements OnInit {
   readonly playerService = inject(PlayerService);
   readonly reportService = inject(ScoutingReportService);
+  private readonly teamService = inject(TeamService);
   readonly auth = inject(AuthService);
   readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -550,6 +599,9 @@ export class PlayerListComponent implements OnInit {
   readonly countsLoading = signal(false);
   readonly selectedGroup = signal<AgeGroup | null>(null);
   readonly groupCounts = signal<Record<string, number | undefined>>({});
+  // Stage 4c (FR-011) — count of professional players within scope, shown on
+  // the chip while the grid is visible so header total = Σ cards + this.
+  readonly professionalCount = signal(0);
   // Skip the "pick an age group" step entirely and show a flat player list —
   // used when an observer views their own assigned players, or when the admin
   // opens "View Assigned Players" for a specific observer (?observer=id).
@@ -584,11 +636,20 @@ export class PlayerListComponent implements OnInit {
   statusFilter: PlayerStatus | '' = '';
   coachFilter = '';
   observerFilter = '';
+  // Stage 4c (PC-2) — team dropdown scoped to the professional lens only.
+  // Convenience over the server-side isProfessional filter (D-1), never the
+  // thing that confines the result: a non-professional team id here would
+  // simply return nothing under the active isProfessional=true condition.
+  teamFilter = '';
+  readonly professionalTeams = signal<Team[]>([]);
+  private professionalTeamsLoaded = false;
 
   readonly positions = PLAYER_POSITIONS;
   readonly playerIcon = `<svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
 
   private pendingGroupId = '';
+
+  professionalFilter = '';
 
   ngOnInit(): void {
     this.route.queryParamMap.subscribe(qp => {
@@ -597,6 +658,9 @@ export class PlayerListComponent implements OnInit {
       this.observerFilter = qp.get('observer') ?? '';
       this.positionFilter = (qp.get('position') as PlayerPosition | null) ?? '';
       this.pendingGroupId = qp.get('ageGroup') ?? '';
+      // Stage 4c — عدسة "دوري المحترفين" للأدمن. isProfessional بتتقرا زي
+      // أي بارام تاني في الـURL، نفس نمط coachFilter/observerFilter.
+      this.professionalFilter = qp.get('isProfessional') ?? '';
       this.currentPage.set(1);
       this.resolveView();
     });
@@ -610,11 +674,32 @@ export class PlayerListComponent implements OnInit {
     return this.coachFilter === 'none';
   }
 
+  // Stage 4c — عدسة "دوري المحترفين". isProfessional=true بيفتح flat view
+  // فيها كل لاعبي المحترفين، بنفس نمط orphanedOnly() فوق.
+  professionalOnly(): boolean {
+    return this.professionalFilter === 'true';
+  }
+
+  // specs/006-admin-professional-lens PC-1 — الاتنين (بدون كوتش، ودوري
+  // المحترفين) بيبدأوا الـview نضيف تماماً عند أي ضغطة، مش دمج. ده تغيير سلوك
+  // متعمّد على toggleOrphaned() القائم (بالتنسيق مع المالك)، مش أثر جانبي:
+  // كانت queryParamsHandling: 'merge' بتسيب status/position/keyword شغالين.
+  // navigate() من غير queryParamsHandling = استبدال كامل (سلوك Angular
+  // الافتراضي)، وkeyword بيتصفّر يدوي لأنه عايش بره الـURL أصلاً فمفيش
+  // navigation بيلمسه لوحده.
   toggleOrphaned(): void {
+    this.keyword = '';
     this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { coach: this.orphanedOnly() ? null : 'none' },
-      queryParamsHandling: 'merge',
+      queryParams: this.orphanedOnly() ? {} : { coach: 'none' },
+    });
+  }
+
+  toggleProfessional(): void {
+    this.keyword = '';
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: this.professionalOnly() ? {} : { isProfessional: 'true' },
     });
   }
 
@@ -632,7 +717,7 @@ export class PlayerListComponent implements OnInit {
   // flat-list path is the whole of FR-002 — no parallel template, no per-element
   // @if, and it reuses a code path that already has test coverage.
   private skipGroupsView(): boolean {
-    return !!this.observerFilter || this.auth.isObserver() || this.auth.isProScout() || this.orphanedOnly();
+    return !!this.observerFilter || this.auth.isObserver() || this.auth.isProScout() || this.orphanedOnly() || this.professionalOnly();
   }
 
   // Decide which view to show based on the ageGroup query param
@@ -646,6 +731,7 @@ export class PlayerListComponent implements OnInit {
     } else if (this.skipGroupsView()) {
       this.selectedGroup.set(null);
       this.flatView.set(true);
+      if (this.professionalOnly()) this.loadProfessionalTeams();
       this.load();
     } else {
       // Groups view — reload per-group counts for the active status
@@ -686,6 +772,18 @@ export class PlayerListComponent implements OnInit {
     });
   }
 
+  // Stage 4c (D-4) — fetched once on first activation of the lens, not per
+  // keystroke. Same call player-form.component.ts already makes for the
+  // proScout team picker, so no new service surface.
+  private loadProfessionalTeams(): void {
+    if (this.professionalTeamsLoaded) return;
+    this.professionalTeamsLoaded = true;
+    this.teamService.getAll(undefined, 'professional').subscribe({
+      next: res => this.professionalTeams.set(res.data?.documents ?? []),
+      error: () => this.professionalTeams.set([]),
+    });
+  }
+
   private loadGroupCounts(groups: AgeGroup[]): void {
     if (groups.length === 0) return;
     this.countsLoading.set(true);
@@ -696,6 +794,10 @@ export class PlayerListComponent implements OnInit {
         const counts = res.data?.counts ?? {};
         this.groupCounts.set(counts);
         if (!this.selectedGroup()) this.total.set(res.data?.total ?? 0);
+        // Stage 4c (FR-011) — rides the same request as the age-group buckets,
+        // so it honours the same status/coach/observer conditions by
+        // construction (FR-006), not a separately-maintained call.
+        this.professionalCount.set(res.data?.professional ?? 0);
         this.countsLoading.set(false);
       },
       error: () => this.countsLoading.set(false),
@@ -732,6 +834,8 @@ export class PlayerListComponent implements OnInit {
       coach: this.coachFilter || undefined,
       observer: this.observerFilter || undefined,
       ageGroup: this.pendingGroupId || this.selectedGroup()?._id || undefined,
+      isProfessional: this.professionalOnly() ? 'true' : undefined,
+      team: this.professionalOnly() ? (this.teamFilter || undefined) : undefined,
     };
     this.playerService.getAll(filters).subscribe({
       next: res => {

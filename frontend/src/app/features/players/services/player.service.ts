@@ -26,7 +26,7 @@ export class PlayerService {
     if (status) params['status'] = status;
     if (coach) params['coach'] = coach;
     if (observer) params['observer'] = observer;
-    return this.http.get<ApiResponse<{ counts: Record<string, number>; total: number }>>(
+    return this.http.get<ApiResponse<{ counts: Record<string, number>; total: number; professional: number }>>(
       `${this.base}/counts`, { params }
     );
   }

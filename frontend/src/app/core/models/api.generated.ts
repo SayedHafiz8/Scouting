@@ -1378,6 +1378,8 @@ export interface paths {
                     position?: "GK" | "CB" | "LB" | "RB" | "CM" | "AM" | "LW" | "RW" | "ST";
                     preferredFoot?: "right" | "left" | "both";
                     ageGroup?: string;
+                    /** @description Admin-facing lens for professional-league players (Stage 4c). Available to every role but narrows only within that role's existing scope — it grants no new access. */
+                    isProfessional?: boolean;
                     page?: number;
                     limit?: number;
                     sort?: string;
@@ -1720,6 +1722,8 @@ export interface paths {
                                     [key: string]: number;
                                 };
                                 total?: number;
+                                /** @description Stage 4c — count of isProfessional:true players within the caller's scope, honouring the same status/coach/observer conditions as `counts`. Derived from the flag, never from total minus the sum of counts. */
+                                professional?: number;
                             };
                         };
                     };

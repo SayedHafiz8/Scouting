@@ -30,6 +30,11 @@
  *         schema:
  *           type: string
  *       - in: query
+ *         name: isProfessional
+ *         schema:
+ *           type: boolean
+ *         description: Admin-facing lens for professional-league players (Stage 4c). Available to every role but narrows only within that role's existing scope — it grants no new access.
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer
@@ -354,6 +359,7 @@
  *                       type: object
  *                       additionalProperties: { type: integer }
  *                     total: { type: integer }
+ *                     professional: { type: integer, description: "Stage 4c — count of isProfessional:true players within the caller's scope, honouring the same status/coach/observer conditions as `counts`. Derived from the flag, never from total minus the sum of counts." }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *
  * /players/reports/average-ratings:
