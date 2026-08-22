@@ -71,8 +71,15 @@ youth player. Delivers the missing route on its own, with no other story impleme
    returns and shows the same cards and counts it showed before the chip was ever touched.
 3. **Given** an admin with the chip active, **When** they open a player from the list, **Then** the
    player detail page opens normally, with no behavior specific to this lens.
-4. **Given** the chip is active and the **No coach** chip is also active, **When** the list loads,
-   **Then** both conditions apply together and neither chip cancels the other.
+4. **Given** the **No coach** chip is active, **When** the admin activates the Professional League
+   chip, **Then** the view starts clean — the No coach condition, the keyword and the position
+   filter are all cleared, and only the professional condition applies.
+5. **Given** the Professional League chip is active, **When** the admin activates the **No coach**
+   chip, **Then** the view starts clean the other way — the professional condition, the keyword and
+   the position filter are all cleared, and only the No coach condition applies. Both chips clear on
+   activation, symmetrically (`plan.md` **PC-1**, owner-directed change to the existing chip).
+6. **Given** the lens is active, **When** the admin uses the team filter, **Then** the choices
+   offered are professional-league teams only.
 
 ---
 
@@ -179,8 +186,21 @@ total reads N+M, the cards sum to M, and the chip carries N — so the arithmeti
 - **FR-011**: The chip MUST display the count from FR-005 while the age-group grid is visible, so the
   difference between the header total and the sum of the cards is visibly accounted for.
 - **FR-012**: The chip's label MUST be available in both English and Arabic.
-- **FR-013**: The chip MUST be independent of the **No coach** chip: either may be active alone, both
-  may be active together, and toggling one MUST NOT alter the other.
+- **FR-013**: Activating the chip MUST start the view clean: every other active filter — keyword,
+  position, status, the **No coach** condition — is cleared, and only the professional condition
+  applies. Deactivating it MUST **likewise** return the view to that same clean state (grid visible,
+  keyword/position/status all cleared) — not merely remove the professional condition while leaving
+  other filters as they were. This is stricter than a plain toggle, and is stated explicitly because
+  nothing else in this document implies it.
+- **FR-013a**: The **No coach** chip MUST be changed to match: both activating and deactivating it
+  MUST clear every other active filter (keyword, position, status, the Professional League
+  condition), exactly as FR-013 requires for its own chip. Both chips behave identically on both
+  transitions, symmetrically. This is a deliberate, owner-directed change to an existing control —
+  `plan.md` **PC-1** — not a side effect, and it is the one behavior change in this stage that is not
+  scoped to the new filter itself.
+- **FR-013b**: While the lens is active, the admin MUST be offered a team filter whose choices are
+  professional-league teams only. It MUST NOT appear outside this lens, and it is a convenience over
+  the filter of FR-001 — never the thing that confines the result (Principle I).
 
 **Non-regression**
 
@@ -229,7 +249,7 @@ total reads N+M, the cards sum to M, and the chip carries N — so the arithmeti
 |---|---|
 | **Principle I** — server-side first | The filter is enforced in the query layer. The chip is a reflection of it. Hiding the chip from non-admins is **not** the access control; FR-003 is. |
 | **Principle II** — deny by default | The filter grants no new access. It narrows an existing, already-scoped result set. No role can see a player through this filter that it could not already see. |
-| **Principle III** — no behavior change (NON-NEGOTIABLE) | FR-014, FR-015, SC-005. `tests/isolation.test.js` MUST pass **unmodified**. |
+| **Principle III** — no behavior change (NON-NEGOTIABLE) | FR-014, FR-015, SC-005. `tests/isolation.test.js` MUST pass **unmodified**. FR-013a changes the **No coach** chip's client-side navigation (which query params a click clears) — not the data an existing role receives from any endpoint, and not a scope, ownership, or mask. Principle III binds the latter; see `plan.md` PC-1 for why the former is out of its scope. |
 | **Principle IV** — single central scope layer | The scope layer is **not modified**. The filter joins the existing whitelist and is merged by the existing precedence rule (client query < route param < ownership scope). No hand-written condition in any controller. |
 | **Principle V** — independently deployable | Self-contained. Depends on Stage 4b being merged (the flag must exist); depends on nothing after it. |
 | **Principle VI** — positive + negative per permission | This stage grants **no new permission**, so the endpoint inventory is unchanged from Stage 4. It still owes the negative tests in FR-003 / SC-006. |

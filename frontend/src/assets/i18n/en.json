@@ -396,7 +396,9 @@
       "NO_COACHES": "No coaches available",
       "COACH_UPDATED": "Coach assigned successfully"
     },
-    "NO_COACH": "No coach assigned"
+    "NO_COACH": "No coach assigned",
+    "PROFESSIONAL_LEAGUE": "Professional league",
+    "ALL_TEAMS": "All teams"
   },
   "REPORTS": {
     "COUNT": "{{count}} report(s)",

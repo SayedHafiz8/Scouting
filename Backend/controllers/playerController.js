@@ -161,19 +161,33 @@ export const getCountsByAgeGroup = asyncHandler(async (req, res, next) => {
 
     const rows = await Player.aggregate([
         { $match: finalMatch },
-        { $group: { _id: "$ageGroup", count: { $sum: 1 } } },
+        {
+            $group: {
+                _id: "$ageGroup",
+                count: { $sum: 1 },
+                // Stage 4c — عدّاد صريح للاعبين المحترفين، مشتق من الفلاج مش
+                // من الطرح (total - Σ counts). الطرح كان هيلزّق "محترف" على أي
+                // لاعب فئته العمرية ناقصة لسبب تاني (داتا قديمة/تالفة) ويخبّيه
+                // مرة تانية. بيركب على نفس finalMatch اللي بيبني buckets الفئات
+                // فبيفضل مطابق لنفس شروط status/coach/observer تلقائياً
+                // (FR-006)، مش استعلام متوازي لازم يتزبط يدوي.
+                professional: { $sum: { $cond: ["$isProfessional", 1, 0] } },
+            },
+        },
     ]);
 
     const counts = {};
     let total = 0;
+    let professional = 0;
     rows.forEach((r) => {
         if (r._id) counts[r._id.toString()] = r.count;
         total += r.count;
+        professional += r.professional;
     });
 
     res.status(200).json({
         status: "success",
-        data: { counts, total },
+        data: { counts, total, professional },
     });
 });
 
@@ -206,9 +220,16 @@ const maskCoachForObserver = (doc) => {
 // فعكس ترتيب الدمج في ApiFeature لوحده مش بيقفلهم — لازم يتشالوا هنا قبل ما يوصلوا للفلتر.
 const PLAYER_ADMIN_ONLY_LENSES = ["coach", "observer", "observers"];
 
+// Stage 4c — isProfessional هنا وليس في PLAYER_ADMIN_ONLY_LENSES فوق: القايمة
+// دي فلترة عادية مش عدسة أوراكل. الفرق: coach/observer/observers بيكشفوا
+// *هوية* مستخدم تاني ضد بيانات الرول نفسه (زي ما التعليق فوق شارح)، أما
+// isProfessional مبيسمّيش حد — أي رول يبعتها بيتقاطع مع سكوب ملكيته هو زي
+// ما هو (AND عادي في ApiFeature.filter()، سكوب الملكية بيتطبق آخراً دايماً).
+// كوتش يبعت ?isProfessional=true هيرجّعله تقاطع لاعبينه هو مع الفلاج ده —
+// مفيش أي كشف مش موجود أصلاً. (specs/006-admin-professional-lens D-1)
 const PLAYER_FILTERS = [
     "status", "position", "preferredFoot", "ageGroup", "team", "nationality",
-    "coach", "observers",
+    "coach", "observers", "isProfessional",
 ];
 
 // @desc    Get all players (coach sees own with "observed" masked to "pending")
