@@ -307,6 +307,9 @@ const options = {
           type: "object",
           properties: {
             totalPlayers:          { type: "integer" },
+            selectedPlayers:       { type: "integer" },
+            pendingPlayers:        { type: "integer" },
+            rejectedPlayers:       { type: "integer" },
             upcomingMatchesCount:  { type: "integer" },
             totalReports:          { type: "integer" },
             upcomingMatches:       { type: "array", items: { $ref: "#/components/schemas/ProScoutMatch" } },

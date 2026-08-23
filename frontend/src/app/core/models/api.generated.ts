@@ -4088,6 +4088,9 @@ export interface components {
         };
         ProScoutDashboard: {
             totalPlayers?: number;
+            selectedPlayers?: number;
+            pendingPlayers?: number;
+            rejectedPlayers?: number;
             upcomingMatchesCount?: number;
             totalReports?: number;
             upcomingMatches?: components["schemas"]["ProScoutMatch"][];

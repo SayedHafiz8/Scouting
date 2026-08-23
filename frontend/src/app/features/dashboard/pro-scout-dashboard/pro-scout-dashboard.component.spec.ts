@@ -10,6 +10,9 @@ import { ApiResponse } from '../../../core/models/api-response.model';
 
 const EMPTY_DATA: ProScoutDashboard = {
   totalPlayers: 0,
+  selectedPlayers: 0,
+  pendingPlayers: 0,
+  rejectedPlayers: 0,
   upcomingMatchesCount: 0,
   totalReports: 0,
   upcomingMatches: [],
@@ -19,6 +22,9 @@ const EMPTY_DATA: ProScoutDashboard = {
 
 const FILLED_DATA: ProScoutDashboard = {
   totalPlayers: 4,
+  selectedPlayers: 2,
+  pendingPlayers: 1,
+  rejectedPlayers: 1,
   upcomingMatchesCount: 2,
   totalReports: 3,
   upcomingMatches: [
@@ -91,6 +97,18 @@ describe('ProScoutDashboardComponent', () => {
     expect(text).toContain('3');   // totalReports
     expect(text).toContain('Al Ahly A');
     expect(text).toContain('Ahmed Ali');
+  });
+
+  it('renders the Selected/Pending/Rejected status cards with the correct values and labels (Stage 12)', async () => {
+    await setup(FILLED_DATA);
+    const cards = Array.from(fixture.nativeElement.querySelectorAll('app-stat-card')) as HTMLElement[];
+    const valueFor = (labelKey: string) => {
+      const card = cards.find(c => c.textContent?.includes(labelKey));
+      return card?.querySelector('.text-3xl')?.textContent?.trim();
+    };
+    expect(valueFor('DASHBOARD.SELECTED')).toBe('2');
+    expect(valueFor('DASHBOARD.PENDING')).toBe('1');
+    expect(valueFor('DASHBOARD.REJECTED')).toBe('1');
   });
 
   it('shows the empty-state message in each list section when all three arrays are empty (FR-006, SC-003)', async () => {

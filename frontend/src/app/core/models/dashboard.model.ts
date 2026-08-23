@@ -46,6 +46,9 @@ export interface ProScoutReport {
 // array element types).
 export interface ProScoutDashboard {
   totalPlayers: number;
+  selectedPlayers: number;
+  pendingPlayers: number;
+  rejectedPlayers: number;
   upcomingMatchesCount: number;
   totalReports: number;
   upcomingMatches: ProScoutMatch[];
