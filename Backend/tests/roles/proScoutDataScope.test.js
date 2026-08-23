@@ -82,7 +82,9 @@ describe('scope module — return shape (scenario 1, FR-007, SC-002a)', () => {
 
     expect(match.$and[0]).toEqual({ league: 'professional' });
     expect(team.$and[0]).toEqual({ league: 'professional' });
-    expect(player.$and[0]).toHaveProperty('$or');
+    // Stage 11 — player scope dropped the $or (team-membership branch removed
+    // entirely); it's a bare createdBy equality now.
+    expect(player.$and[0]).toEqual({ createdBy: user._id });
   });
 
   it('every existing role gets a bare {} — not { $and: [] }, which Mongo rejects', async () => {
@@ -108,18 +110,16 @@ describe('scope module — return shape (scenario 1, FR-007, SC-002a)', () => {
     expect(await teamScopeFor(req)).toEqual({ _id: { $in: [] } });
   });
 
-  it('player scope carries real ObjectIds, never strings (aggregate $match does not cast)', async () => {
+  it('player scope carries a real ObjectId, never a string (aggregate $match does not cast)', async () => {
+    // Stage 11 — this used to assert the shape of the (now-removed) team.$in
+    // branch. The scope's only remaining condition is createdBy, so this
+    // proves that one is a real ObjectId instead.
     const { user } = await createProScout();
-    const pro = await createTeam(ageGroup._id, { league: 'professional' });
 
     const scope = await playerScopeFor(asReq(user));
-    const [byTeam] = scope.$and[0].$or;
 
-    expect(byTeam.team.$in.length).toBeGreaterThan(0);
-    byTeam.team.$in.forEach((id) => {
-      expect(id).toBeInstanceOf(mongoose.Types.ObjectId);
-    });
-    expect(byTeam.team.$in.map(String)).toContain(String(pro._id));
+    expect(scope.$and[0].createdBy).toBeInstanceOf(mongoose.Types.ObjectId);
+    expect(String(scope.$and[0].createdBy)).toBe(String(user._id));
   });
 
   it('professionalTeamIds INCLUDES a deactivated professional team', async () => {
@@ -165,7 +165,14 @@ describe('proScout — player scope (US1, FR-003)', () => {
     proTeam = await createTeam(ageGroup._id, { league: 'professional' });
     premierTeam = await createTeam(ageGroup._id, { league: 'premier' });
 
-    onPro = await createPlayerDoc({ name: 'Pro Player', coach: coach.user._id, createdBy: coach.user._id, team: proTeam._id });
+    // Stage 11 — createdBy is now the ONLY scope condition; team membership no
+    // longer grants visibility by itself. onPro is created by `scout` (not
+    // `coach`) so the rest of this block still exercises general in-scope
+    // behavior (filters, pagination, masks) against a real in-scope fixture.
+    // The cross-proScout denial this fixture used to mask (a professional-team
+    // player NOT created by the requester) is covered explicitly in
+    // proScoutCreatedByScope.test.js instead (Stage 11, research.md R8).
+    onPro = await createPlayerDoc({ name: 'Pro Player', coach: coach.user._id, createdBy: scout.user._id, team: proTeam._id });
     onPremier = await createPlayerDoc({ name: 'Premier Player', coach: coach.user._id, createdBy: coach.user._id, team: premierTeam._id });
     mineNoTeam = await createPlayerDoc({ name: 'Mine Unassigned', coach: coach.user._id, createdBy: scout.user._id, team: null });
     theirsNoTeam = await createPlayerDoc({ name: 'Theirs Unassigned', coach: coach.user._id, createdBy: coach.user._id, team: null });
@@ -273,7 +280,7 @@ describe('proScout — player scope (US1, FR-003)', () => {
 
   it('scenario 8: search only ever returns in-scope matches', async () => {
     await createPlayerDoc({ name: 'Zed Premier', coach: coach.user._id, createdBy: coach.user._id, team: premierTeam._id });
-    await createPlayerDoc({ name: 'Zed Pro', coach: coach.user._id, createdBy: coach.user._id, team: proTeam._id });
+    await createPlayerDoc({ name: 'Zed Pro', coach: coach.user._id, createdBy: scout.user._id, team: proTeam._id });
 
     const res = await list(scout, '?keyword=zed');
     expect(res.status).toBe(200);
@@ -449,7 +456,9 @@ describe('proScout — scoped aggregates (US1, FR-012, FR-013)', () => {
     coach = await createCoach();
     proTeam = await createTeam(ageGroup._id, { league: 'professional' });
     premierTeam = await createTeam(ageGroup._id, { league: 'premier' });
-    onPro = await createPlayerDoc({ name: 'Pro P', coach: coach.user._id, createdBy: coach.user._id, team: proTeam._id });
+    // Stage 11 — createdBy: scout so onPro is genuinely in this scout's scope;
+    // see the identical note in the "player scope" describe block above.
+    onPro = await createPlayerDoc({ name: 'Pro P', coach: coach.user._id, createdBy: scout.user._id, team: proTeam._id });
     onPremier = await createPlayerDoc({ name: 'Premier P', coach: coach.user._id, createdBy: coach.user._id, team: premierTeam._id });
   });
 

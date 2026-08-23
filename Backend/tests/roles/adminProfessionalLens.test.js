@@ -160,7 +160,11 @@ describe('US1 — a coach sending ?isProfessional=true stays inside their own sc
 // ═══════════════════════════════════════════════════════════════════════════
 describe('US1 — the filter is a no-op for proScout — FR-010, FR-015', () => {
   it('?isProfessional=true returns the same result as no filter — every player in scope already carries the flag', async () => {
-    await professionalPlayer({ name: 'League Player', team: proTeam._id });
+    // Stage 11 — proScout scope is createdBy-only now (team membership alone
+    // no longer grants visibility), so this fixture must be created by
+    // `scout` to actually land in their scope; see the identical note in
+    // proScoutDataScope.test.js.
+    await professionalPlayer({ name: 'League Player', team: proTeam._id, createdBy: scout.user._id });
     await createPlayerDoc({ name: 'Scouts Own Orphan', team: null, createdBy: scout.user._id, isProfessional: true });
 
     const noFilter = await request(app).get('/api/v1/players').set(...auth(scout.token));

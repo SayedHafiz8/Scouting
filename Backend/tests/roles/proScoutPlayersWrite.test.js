@@ -60,8 +60,12 @@ beforeEach(async () => {
 // ⚠️ ageGroup **مشتق** من dateOfBirth في pre('save') (playedModel.js:165) —
 // تمريره صراحةً بيتكتب فوقه بصمت. فالتستات بتقراه من اللاعب بعد الإنشاء بدل ما
 // تفترض إنه الـageGroup اللي seedAgeGroups رجّعته.
+// Stage 11 — createdBy: scout added to the default: scope is createdBy-only
+// now (team membership alone no longer grants visibility), so "in scope"
+// means "this scout created it", not just "on a professional team". See the
+// identical fix in proScoutDataScope.test.js.
 const inScopePlayer = (overrides = {}) =>
-  createPlayerDoc({ team: proTeam._id, ...overrides });
+  createPlayerDoc({ team: proTeam._id, createdBy: scout.user._id, ...overrides });
 
 const outOfScopePlayer = (overrides = {}) =>
   createPlayerDoc({ team: premierTeam._id, ...overrides });
@@ -559,23 +563,32 @@ describe('US4 — scouting reports (FR-010, FR-011a)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('⚠️ the SCOPE axis is load-bearing: a player leaving the league locks its own report', async () => {
+  it('⚠️ the SCOPE axis is load-bearing: a player leaving the requester\'s scope locks its own report', async () => {
     // research R6 — /reports/:id مافيهوش checkPlayerOwnership في السلسلة، فلو
-    // الحارس فحص الملكية بس، التقرير كان هيفضل قابل للتعديل بعد ما اللاعب يخرج
-    // من دوري المحترفين. ده التست اللي بيفرق بين حارس بمحور واحد واتنين.
+    // الحارس فحص الملكية بس، التقرير كان هيفضل قابل للتعديل بعد ما اللاعب
+    // يخرج من نطاق الـproScout. ده التست اللي بيفرق بين حارس بمحور واحد واتنين.
+    //
+    // Stage 11 — الآلية اتغيّرت: السكوب بقى createdBy فقط، مش الفريق/الدوري.
+    // نقل اللاعب لفريق تاني (premier) معادش بيأثر على السكوب خالص — التست
+    // القديم كان بيثبت المحور الغلط بعد المرحلة دي. المحاكاة دلوقتي: تغيير
+    // createdBy مباشرة في الداتابيز (نفس أسلوب "الأدمن بينقل اللاعب" القديم،
+    // بس على الحقل اللي فعلاً بيحكم السكوب دلوقتي) — createdBy مقفول
+    // (lockField) على مستوى الـAPI، فمفيش طريق عميل يعمل ده، لكن القيمة نفسها
+    // ممكن تتغيّر بأي مسار مستقبلي (migration، أداة أدمن) والحارس لازم يفضل
+    // يحترمها.
     const player = await inScopePlayer();
     const created = await createReportAs(player._id, scout.token);
     const reportId = created.body.data.document._id;
 
-    // قبل النقل: مسموح
+    // قبل تغيير createdBy: مسموح
     const before = await request(app)
       .patch(`/api/v1/players/${player._id}/reports/${reportId}`)
       .set(...auth(scout.token))
       .send({ notes: 'still mine' });
     expect(before.status).toBe(200);
 
-    // الأدمن ينقل اللاعب لدوري تاني
-    await Player.findByIdAndUpdate(player._id, { team: premierTeam._id });
+    // محاكاة إعادة إسناد اللاعب لـproScout تاني (مش مسار API — createdBy مقفول)
+    await Player.findByIdAndUpdate(player._id, { createdBy: otherScout.user._id });
 
     const after = await request(app)
       .patch(`/api/v1/players/${player._id}/reports/${reportId}`)
