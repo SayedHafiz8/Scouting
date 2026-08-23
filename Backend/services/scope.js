@@ -68,16 +68,20 @@ export async function professionalTeamIds(req) {
 }
 
 /**
- * نطاق اللاعبين. فرعين:
- *   1) لاعبي فرق المحترفين
- *   2) لاعبينه هو اللي لسه بلا فريق (team: null)
+ * نطاق اللاعبين — Stage 11 (specs/011-proscout-createdby-scope): createdBy فقط،
+ * بلا استثناء. القرار القديم (Stage 2) كان بيضيف فرع "كل لاعبي فرق المحترفين"
+ * فوق فرع createdBy — ده اتلغى بالكامل، مش وُسِّع: عضوية اللاعب في فريق دوري
+ * محترفين معادش بتمنح أي proScout رؤية له وحدها. السبب: أي proScout كان يقدر
+ * يشوف ويعدّل لاعبين proScout تاني بمجرد اشتراكهم في نفس الفريق — فجوة عزل
+ * بيانات حقيقية، اتقفلت بقرار مالك صريح (constitution.md C-4، v1.1.0).
  *
- * الفرع التاني موجود لأن Player.team قيمته default: null، فاللاعب الجديد ممكن
- * مايبقاش تابع لأي فريق ومن ثَم لأي دوري — من غيره الرول بيفقد لاعبينه لحظة
- * إنشائهم.
+ * لاعب بفريق دوري محترفين لكن createdBy بتاعه مش proScout (بيانات قبل هذه
+ * المرحلة، أو استيراد أدمن، أو لاعب كوتش اتحول لفريق محترف) بيفضل مرئي للأدمن
+ * بس — قرار مقصود، بلا migration أو backfill (specs/011، Option A).
  *
- * لو مفيش ولا فريق محترفين، الفرع الأول بيبقى { team: { $in: [] } } وبيطابق
- * صفر، والفرع التاني بيفضل شغال. بيفشل مقفول من غير أي حالة خاصة.
+ * professionalTeamIds() ماعادتش تتنادى من هنا، لكنها لسه لازمة لـteamScopeFor
+ * تحت ولـcheckTeamScope (التحقق وقت إنشاء/تعديل اللاعب) — الملغى هو استخدامها
+ * في سكوب *قراءة* اللاعبين تحديداً، مش الدالة نفسها.
  */
 export async function playerScopeFor(req) {
     // code-review high fix #2 — فشل مقفول لو req.user غايب (زي buildOwnerScope
@@ -87,13 +91,7 @@ export async function playerScopeFor(req) {
     if (!req?.user) return { ...MATCH_NOTHING };
     if (req.user.role !== ROLES.PRO_SCOUT) return {};
 
-    const teamIds = await professionalTeamIds(req);
-    return wrap({
-        $or: [
-            { team: { $in: teamIds } },
-            { team: null, createdBy: req.user._id },
-        ],
-    });
+    return wrap({ createdBy: req.user._id });
 }
 
 /**

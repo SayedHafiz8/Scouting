@@ -244,8 +244,9 @@ const getObserverDashboardData = async (observerId) => {
 // Stage 5 — proScout dashboard.
 //
 // عايزة req كاملة مش userId زي التلاتة فوق: النطاق بيتحسب من playerScopeFor/
-// seasonMatchScopeFor اللي بياخدوا req (وبيكاشوا professionalTeamIds عليه لكل
-// طلب، مش على مستوى العملية). ممنوع أي فلتر يدوي هنا بمفتاح "professional" —
+// seasonMatchScopeFor اللي بياخدوا req. playerScopeFor بقى createdBy فقط منذ
+// Stage 11 (مفيش professionalTeamIds تتكاش هنا بقى)، وseasonMatchScopeFor لسه
+// league فقط زي ما كانت. ممنوع أي فلتر يدوي هنا بمفتاح "professional" —
 // الطبقة المركزية هي مصدر الحقيقة الوحيد (Constitution Principle IV).
 //
 // كل تركيب بين النطاق وشرط تاريخ لازم يتلفّ في $and مش spread: الاسبريد بيتصادم

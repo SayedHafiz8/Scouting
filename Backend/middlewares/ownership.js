@@ -9,7 +9,7 @@ import SeasonMatch from "../models/seasonMatchModel.js";
 import Team from "../models/teamModel.js";
 import AppError from "../utils/appError.js";
 import { ROLES } from "../constants/roles.js";
-import { professionalTeamIds, seasonMatchScopeFor, teamScopeFor } from "../services/scope.js";
+import { seasonMatchScopeFor, teamScopeFor } from "../services/scope.js";
 import { logScopeDenial } from "../utils/accessLog.js";
 
 export const checkPlayerOwnership = asyncHandler(async (req, res, next) => {
@@ -47,16 +47,11 @@ export const checkPlayerOwnership = asyncHandler(async (req, res, next) => {
         return next();
     }
 
-    // Stage 2 — proScout: نفس منطق playerScopeFor بالظبط، لكن مقارَن في الذاكرة
-    // مش باستعلام تاني. code-review high fix #4: المستند أصلاً اتجاب فوق في
-    // findById، فاستدعاء Player.exists({...}) هنا كان round-trip تاني للداتابيز
-    // لنفس المستند بعينه — professionalTeamIds(req) بترجع الـids ذات الكاش على
-    // req (نفس القيمة اللي playerScopeFor كانت هتحسبها)، فالمقارنة بتبقى محلية.
+    // Stage 11 — proScout: نفس منطق playerScopeFor بالظبط (createdBy فقط، بلا
+    // فرع فريق)، لكن مقارَن في الذاكرة مش باستعلام تاني. المستند أصلاً اتجاب
+    // فوق في findById (createdBy ضمن الـselect)، فمفيش round-trip زيادة.
     if (req.user.role === ROLES.PRO_SCOUT) {
-        const teamIds = await professionalTeamIds(req);
-        const inScope =
-            (player.team && teamIds.some((t) => t.equals(player.team))) ||
-            (!player.team && player.createdBy && player.createdBy.equals(req.user._id));
+        const inScope = Boolean(player.createdBy && player.createdBy.equals(req.user._id));
 
         if (!inScope) {
             logScopeDenial({ req, resource: "player", resourceId: id });
@@ -70,21 +65,16 @@ export const checkPlayerOwnership = asyncHandler(async (req, res, next) => {
     return next(new AppError("You are not allowed to access this player's data", 403));
 });
 
-// Stage 4 — فحص "اللاعب ده جوه نطاق الـproScout؟" على مستند لاعب واحد، بنفس منطق
-// playerScopeFor بالظبط لكن مقارَن في الذاكرة مش باستعلام تاني (code-review high
-// fix #4 المتبع في checkPlayerOwnership). professionalTeamIds(req) عندها كاش على
-// الـreq، فلو الحارس اتنده بعد checkPlayerOwnership في نفس الطلب مفيش round-trip
-// زيادة أصلاً.
+// Stage 4/11 — فحص "اللاعب ده جوه نطاق الـproScout؟" على مستند لاعب واحد، بنفس
+// منطق playerScopeFor بالظبط (createdBy فقط منذ Stage 11)، لكن مقارَن في الذاكرة
+// مش باستعلام تاني — لا round-trip زيادة لو الحارس اتنده بعد checkPlayerOwnership
+// في نفس الطلب.
 //
 // مصدر الحقيقة الوحيد لشكل النطاق هو services/scope.js — الدالة دي بتعيد تقييم
-// **نفس** الفرعين ($or) على مستند محمّل، مش بتخترع شرط جديد (Principle IV).
+// **نفس** الشرط على مستند محمّل، مش بتخترع شرط جديد (Principle IV).
 const playerInProScoutScope = async (req, player) => {
     if (!player) return false;
-    const teamIds = await professionalTeamIds(req);
-    return Boolean(
-        (player.team && teamIds.some((t) => t.equals(player.team))) ||
-        (!player.team && player.createdBy && player.createdBy.equals(req.user._id))
-    );
+    return Boolean(player.createdBy && player.createdBy.equals(req.user._id));
 };
 
 export const checkReportOwnership = asyncHandler(async (req, res, next) => {

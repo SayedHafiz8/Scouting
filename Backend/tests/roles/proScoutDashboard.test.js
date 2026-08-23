@@ -40,7 +40,9 @@ describe('proScout dashboard — G-1: totalPlayers (Stage 5, spec.md SC-001/FR-0
     const proTeam = await createTeam(ageGroup._id, { league: 'professional' });
     const premierTeam = await createTeam(ageGroup._id, { league: 'premier' });
 
-    const onPro = await createPlayerDoc({ team: proTeam._id, coach: scout.user._id });
+    // Stage 11 — createdBy: scout added; team membership alone no longer
+    // grants scope, so "mine" must mean "I created it" here too.
+    const onPro = await createPlayerDoc({ team: proTeam._id, coach: scout.user._id, createdBy: scout.user._id });
     const mineNoTeam = await createPlayerDoc({ team: null, createdBy: scout.user._id });
     await createPlayerDoc({ team: null, createdBy: otherScout.user._id }); // not mine — excluded
     await createPlayerDoc({ team: premierTeam._id, coach: scout.user._id }); // premier — excluded
@@ -164,7 +166,11 @@ describe('proScout dashboard — G-5: totalReports / recentReports', () => {
     const scout = await createProScout();
     const otherScout = await createProScout({ email: 'writer2@test.com' });
     const proTeam = await createTeam(ageGroup._id, { league: 'professional' });
-    const player = await createPlayerDoc({ team: proTeam._id });
+    // Stage 11 — createdBy: scout so this player is genuinely in scout's
+    // scope; otherwise the assertion (0 reports) would pass for the wrong
+    // reason (player out of scope) instead of the one this test claims to
+    // isolate (report authored by someone else).
+    const player = await createPlayerDoc({ team: proTeam._id, createdBy: scout.user._id });
 
     await ScoutingReport.create({
       ...reportPayload(), player: player._id, coach: otherScout.user._id,
@@ -196,7 +202,9 @@ describe('proScout dashboard — G-5: totalReports / recentReports', () => {
   it('positive: includes a report by the caller on an in-scope player, with exact count and content', async () => {
     const scout = await createProScout();
     const proTeam = await createTeam(ageGroup._id, { league: 'professional' });
-    const player = await createPlayerDoc({ team: proTeam._id });
+    // Stage 11 — createdBy: scout; team membership alone no longer puts this
+    // player in scope.
+    const player = await createPlayerDoc({ team: proTeam._id, createdBy: scout.user._id });
 
     const report = await ScoutingReport.create({
       ...reportPayload(), player: player._id, coach: scout.user._id,
