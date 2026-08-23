@@ -248,6 +248,70 @@ describe('proScout dashboard — G-6: no ageGroup anywhere in the response (FR-0
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// G-8 — تقسيم اللاعبين بالحالة (Stage 12, spec.md FR-001..006, SC-002/SC-003)
+// ═══════════════════════════════════════════════════════════════════════════
+describe('proScout dashboard — G-8: selectedPlayers / pendingPlayers / rejectedPlayers', () => {
+  it('positive: selected/selected/pending/observed/rejected → {selected:2, pending:2 (observed folded in), rejected:1}, summing to totalPlayers', async () => {
+    const scout = await createProScout();
+
+    await createPlayerDoc({ createdBy: scout.user._id, status: 'selected' });
+    await createPlayerDoc({ createdBy: scout.user._id, status: 'selected' });
+    await createPlayerDoc({ createdBy: scout.user._id, status: 'pending' });
+    await createPlayerDoc({ createdBy: scout.user._id, status: 'observed' });
+    await createPlayerDoc({ createdBy: scout.user._id, status: 'rejected' });
+
+    const res = await dashboardFor(scout.token);
+    expect(res.status).toBe(200);
+    expect(res.body.data.totalPlayers).toBe(5);
+    expect(res.body.data.selectedPlayers).toBe(2);
+    expect(res.body.data.pendingPlayers).toBe(2);
+    expect(res.body.data.rejectedPlayers).toBe(1);
+    expect(
+      res.body.data.selectedPlayers + res.body.data.pendingPlayers + res.body.data.rejectedPlayers
+    ).toBe(res.body.data.totalPlayers);
+  });
+
+  it('a proScout never sees another proScout\'s players reflected in their own status counts', async () => {
+    const scoutA = await createProScout();
+    const scoutB = await createProScout({ email: 'other_scout_g8@test.com' });
+
+    await createPlayerDoc({ createdBy: scoutA.user._id, status: 'selected' });
+    await createPlayerDoc({ createdBy: scoutA.user._id, status: 'pending' });
+    await createPlayerDoc({ createdBy: scoutA.user._id, status: 'rejected' });
+
+    await createPlayerDoc({ createdBy: scoutB.user._id, status: 'selected' });
+    await createPlayerDoc({ createdBy: scoutB.user._id, status: 'selected' });
+    await createPlayerDoc({ createdBy: scoutB.user._id, status: 'selected' });
+    await createPlayerDoc({ createdBy: scoutB.user._id, status: 'rejected' });
+
+    const res = await dashboardFor(scoutA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.data.totalPlayers).toBe(3);
+    expect(res.body.data.selectedPlayers).toBe(1);
+    expect(res.body.data.pendingPlayers).toBe(1);
+    expect(res.body.data.rejectedPlayers).toBe(1);
+  });
+
+  it('a report the caller authored on a player outside their createdBy scope does not count that player in any status field', async () => {
+    const scout = await createProScout();
+    const owner = await createProScout({ email: 'owner_g8@test.com' });
+    const outsidePlayer = await createPlayerDoc({ createdBy: owner.user._id, status: 'selected' });
+
+    await ScoutingReport.create({
+      ...reportPayload(), player: outsidePlayer._id, coach: scout.user._id,
+      matchType: 'training', matchDate: new Date(),
+    });
+
+    const res = await dashboardFor(scout.token);
+    expect(res.status).toBe(200);
+    expect(res.body.data.totalPlayers).toBe(0);
+    expect(res.body.data.selectedPlayers).toBe(0);
+    expect(res.body.data.pendingPlayers).toBe(0);
+    expect(res.body.data.rejectedPlayers).toBe(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // G-7 — الرفض السلبي وعدم المساس بالداشبوردات الأخرى
 // ═══════════════════════════════════════════════════════════════════════════
 describe('proScout dashboard — G-7: negative permission and sibling-dashboard regression (Principle I & III)', () => {
@@ -304,6 +368,9 @@ describe('proScout dashboard — empty state (SC-003)', () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
       totalPlayers: 0,
+      selectedPlayers: 0,
+      pendingPlayers: 0,
+      rejectedPlayers: 0,
       upcomingMatchesCount: 0,
       totalReports: 0,
       upcomingMatches: [],

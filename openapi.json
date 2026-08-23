@@ -733,6 +733,15 @@
           "totalPlayers": {
             "type": "integer"
           },
+          "selectedPlayers": {
+            "type": "integer"
+          },
+          "pendingPlayers": {
+            "type": "integer"
+          },
+          "rejectedPlayers": {
+            "type": "integer"
+          },
           "upcomingMatchesCount": {
             "type": "integer"
           },

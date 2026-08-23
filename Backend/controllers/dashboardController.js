@@ -270,18 +270,41 @@ const getProScoutDashboardData = async (req) => {
     // خرج من النطاق (اتنقل لفريق تاني) بيكشف اسم لاعب برّه سكوب الرول لو
     // اتسمحله يفضل. الفلتر ده بيتحط في متغير واحد ويتستخدم للعدّ والقايمة مع
     // بعض، عشان الاتنين يقصدوا نفس المجموعة بالظبط.
-    const scopedPlayerIds = await Player.find(playerScope).distinct("_id");
+    //
+    // Stage 12 — نفس $match (playerScope) بيرجّع كمان تقسيم الحالة (byStatus)
+    // وقايمة الـids في رحلة واحدة (facet)، بدل استعلامين منفصلين (count +
+    // distinct) زي قبل كده. totalPlayers/selectedPlayers/pendingPlayers/
+    // rejectedPlayers كلهم مشتقين من نفس الـfacet ده — مفيش فلتر تاني مبني يدوي
+    // (Constitution Principle IV)، فمجموعهم بيساوي totalPlayers دايماً بالبناء.
+    // observed بتتطوى في pending بنفس سطر getCoachDashboardData بالظبط.
+    const [playerFacet] = await Player.aggregate([
+        { $match: playerScope },
+        {
+            $facet: {
+                byStatus: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+                ids: [{ $project: { _id: 1 } }],
+            },
+        },
+    ]);
+
+    const scopedPlayerIds = playerFacet.ids.map((p) => p._id);
+    const statusMap = {};
+    playerFacet.byStatus.forEach((s) => { statusMap[s._id] = s.count; });
+
+    const totalPlayers = scopedPlayerIds.length;
+    const selectedPlayers = statusMap["selected"] ?? 0;
+    const pendingPlayers  = (statusMap["pending"] ?? 0) + (statusMap["observed"] ?? 0);
+    const rejectedPlayers = statusMap["rejected"] ?? 0;
+
     const reportFilter = { coach: req.user._id, player: { $in: scopedPlayerIds } };
 
     const [
-        totalPlayers,
         upcomingMatchesCount,
         totalReports,
         upcomingMatches,
         latestResults,
         recentReports,
     ] = await Promise.all([
-        Player.countDocuments(playerScope),
         // العدّ ده مستقل عن upcomingMatches.length لأن القايمة مقصوصة بـlimit(5) —
         // كارت الإحصائية لازم يعرض الرقم الحقيقي مش الحد الأقصى.
         SeasonMatch.countDocuments(upcomingMatchFilter),
@@ -315,6 +338,9 @@ const getProScoutDashboardData = async (req) => {
 
     return {
         totalPlayers,
+        selectedPlayers,
+        pendingPlayers,
+        rejectedPlayers,
         upcomingMatchesCount,
         totalReports,
         upcomingMatches,

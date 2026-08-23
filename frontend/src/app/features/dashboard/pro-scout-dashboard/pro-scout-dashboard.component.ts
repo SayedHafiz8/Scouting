@@ -30,14 +30,15 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
       </div>
 
       @if (loading()) {
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <app-skeleton-loader type="stat" [count]="3" />
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <app-skeleton-loader type="stat" [count]="4" />
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <app-skeleton-loader type="stat" [count]="2" />
         </div>
       } @else if (data(); as d) {
-        <!-- Stat cards. Match count is labelled "professional league", never "attended" —
-             this figure is league-scoped (services/scope.js seasonMatchScopeFor), unlike
-             the coach/observer dashboards' attendance-scoped counts (research.md R3). -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <!-- Primary row: total players + status breakdown (createdBy-scoped, Stage 12). -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <app-stat-card
             [label]="'DASHBOARD.TOTAL_PLAYERS' | translate"
             [value]="d.totalPlayers"
@@ -46,6 +47,39 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
             iconName="players"
             link="/players"
           />
+          <app-stat-card
+            [label]="'DASHBOARD.SELECTED' | translate"
+            [value]="d.selectedPlayers"
+            iconBg="rgba(16,185,129,0.18)"
+            iconColor="#10b981"
+            iconName="selected"
+            link="/players"
+            [queryParams]="{status: 'selected'}"
+          />
+          <app-stat-card
+            [label]="'DASHBOARD.PENDING' | translate"
+            [value]="d.pendingPlayers"
+            iconBg="rgba(245,158,11,0.18)"
+            iconColor="#f59e0b"
+            iconName="pending"
+            link="/players"
+            [queryParams]="{status: 'pending'}"
+          />
+          <app-stat-card
+            [label]="'DASHBOARD.REJECTED' | translate"
+            [value]="d.rejectedPlayers"
+            iconBg="rgba(244,63,94,0.18)"
+            iconColor="#f43f5e"
+            iconName="rejected"
+            link="/players"
+            [queryParams]="{status: 'rejected'}"
+          />
+        </div>
+
+        <!-- Secondary row. Match count is labelled "professional league", never "attended" —
+             this figure is league-scoped (services/scope.js seasonMatchScopeFor), unlike
+             the coach/observer dashboards' attendance-scoped counts (research.md R3). -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <app-stat-card
             [label]="'DASHBOARD.UPCOMING_PRO_LEAGUE_MATCHES' | translate"
             [value]="d.upcomingMatchesCount"
