@@ -808,7 +808,11 @@ proScout لسه يقدر يعمل create/patch للاعب على أي فريق �
 
 ## Tech debt مسجّل (خارج نطاق الخطة)
 
-1. `ageGroupRouter.js:112-116` — `GET /ages` و `GET /ages/:id` بدون `protect` إطلاقاً، متاحين لغير المسجّلين.
+1. ~~`ageGroupRouter.js:112-116` — `GET /ages` و `GET /ages/:id` بدون `protect` إطلاقاً، متاحين لغير المسجّلين.~~
+   **اتحلّت — دستور v1.3.0 (`TODO(AGES_UNAUTHENTICATED_READ)` مقفول).** المسارين بقوا
+   `protect` + `allowedTo(admin, coach, observer)`؛ proScout بيترفض 403 صراحة، وأي طلب
+   بلا توكن بيترفض 401. راجع `docs/audit-backend-2026-08.md` §S2 للتحليل الأصلي و
+   `.specify/memory/constitution.md` (Constraint C-3) للتعديل الدستوري.
 2. `teamRouter.js:18` — `GET /teams` بـ `protect` بدون `allowedTo`.
 3. `userValidation.js` — مافيهاش تحقق من `role` (اتحلّت في المرحلة 0).
 4. `Player.teamName` كنص حر بديل عن `Player.team` (`playedModel.js:50`) — مصدر تشوّش في السكوب.

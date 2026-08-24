@@ -839,19 +839,20 @@ describe('Denial sweep — whole domains this stage grants nothing in (T058)', (
   });
 });
 
-describe('C-3 — /ages is NOT denied to anyone, including proScout (T052)', () => {
-  // ⚠️ ageGroupRouter مافيهوش protect إطلاقاً، فallowedTo مالهاش req.user تشتغل
-  // عليها. اختفاء عنصر Age Groups من القائمة (المرحلة 3) وإيقاف طلب /ages من
-  // صفحة اللاعبين (المرحلة 4) الاتنين تغيير **نية** مش قفل باب.
-  // TODO(AGES_UNAUTHENTICATED_READ) — بند tech debt خارج نطاق الخطة بقرار المالك.
-  it('answers 200 to a proScout token', async () => {
+// audit fix S2 — T052 revised. ageGroupRouter now carries protect + allowedTo
+// on both GET routes (constitution v1.3.0, C-3, TODO(AGES_UNAUTHENTICATED_READ)
+// closed). The Age Groups menu item and the /ages request from the player list
+// were already withheld from proScout by intent (Stage 3/4) — the server now
+// enforces the same boundary it was always supposed to.
+describe('C-3 — /ages IS denied to proScout, and to anyone unauthenticated (T052, revised by S2)', () => {
+  it('answers 403 to a proScout token', async () => {
     const res = await request(app).get('/api/v1/ages').set(...auth(scout.token));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
-  it('answers 200 with no token at all', async () => {
+  it('answers 401 with no token at all', async () => {
     const res = await request(app).get('/api/v1/ages');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
   });
 });
 

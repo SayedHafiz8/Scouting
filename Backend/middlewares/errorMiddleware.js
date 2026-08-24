@@ -1,4 +1,22 @@
+import fs from "fs";
+
 import AppError from "../utils/appError.js";
+
+// audit fix S3 — أي ملف رفعه multer على الديسك (uploads/) لازم يتمسح لو الطلب
+// انتهى بخطأ، بصرف النظر مين رفض الطلب أو فين في السلسلة. من غيره: multer بيكتب
+// الملف على الديسك **قبل** ما أي middleware بعده (فحص صلاحية، فحص حجم، فاليديشن)
+// يشتغل، وكل واحد فيهم بيرمي بـnext(err) لغير الـcontroller نفسه — يعني الـ
+// `finally { unlink }` اللي جوه الـcontroller (playerController.uploadProfileImg
+// مثلاً) عمره ما بيوصله الدور. النتيجة كانت ملف متسرّب على كل رفض (403/400/...).
+//
+// نقطة واحدة هنا بتغطي كل route رفع حالي ومستقبلي — بدل ما كل مطوّر يفتكر يرتب
+// middleware الرفع بعد فحص الصلاحية، أو يحط finally في كل controller.
+// best-effort: فشل المسح (الملف مش موجود أصلاً، صلاحيات...) ما يوقفش الرد بالخطأ.
+const cleanupUploadedFile = (req) => {
+    const path = req.file?.path;
+    if (!path) return;
+    fs.unlink(path, () => {});
+};
 
 // Error Handeler in development mode
 const devErrors = (res, error) => {
@@ -58,6 +76,8 @@ const prodErrors = (res, error) => {
 }
 
 export default (error, req, res, next) => {
+    cleanupUploadedFile(req);
+
     error.statusCode = error.statusCode || 500;
     error.status = error.status || 'error';
 

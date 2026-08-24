@@ -418,9 +418,11 @@ describe('PlayerListComponent — proScout has no age-group dimension (FR-002)',
   });
 
   it('issues NO request to /ages', async () => {
-    // Principle I — this is an intent fix, not a lock. GET /ages has no `protect`
-    // and answers 200 to anyone (C-3, still open). The assertion is that the role
-    // does not *consume* the category, not that the endpoint refuses it.
+    // Backend audit fix S2 (constitution v1.3.0, C-3) closed
+    // TODO(AGES_UNAUTHENTICATED_READ): GET /ages now denies proScout with 403.
+    // This assertion still matters on its own terms — the component must not
+    // even *attempt* the request for a role with no age-group dimension,
+    // regardless of what the server would say back.
     await setup('proScout');
     httpMock.expectNone(r => r.url.endsWith('/ages'));
   });

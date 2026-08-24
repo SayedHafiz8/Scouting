@@ -536,8 +536,10 @@ export class PlayerFormComponent implements OnInit {
     // adults, for whom the server skips the derivation entirely. So it neither needs
     // nor requests /ages, and its team list does not depend on one.
     //
-    // ⚠️ Same caveat as the players list: this is an INTENT fix, not access control.
-    // GET /ages has no `protect` and answers 200 to anyone (C-3 still open).
+    // Backend audit fix S2 (constitution v1.3.0, C-3) closed
+    // TODO(AGES_UNAUTHENTICATED_READ): GET /ages now requires auth and denies
+    // proScout with 403. This early-return stays regardless — the role has no
+    // age-group dimension to request in the first place.
     if (this.auth.isProScout()) {
       this.syncTeamsForDob();
     } else {

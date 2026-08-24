@@ -173,30 +173,29 @@ describe('proScout — GET /teams is now league-scoped (US3, FR-005, Stage-1 con
   });
 });
 
-// Phase 3 (docs/scout-pro-plan-v2.md, navigation) — US4/FR-014, Constitution C-3 /
-// TODO(AGES_UNAUTHENTICATED_READ). Unlike every other area behind the sidebar, the
-// age-groups area's GET /ages and GET /ages/:id (Backend/routes/ageGroupRouter.js:113,116)
-// carry NO `protect` at all, so there is no req.user for allowedTo to reject.
-// This is a KNOWN, ACCEPTED gap tracked as tech debt outside this plan's scope by
-// owner decision (docs/scout-pro-plan-v2.md, "Tech debt مسجّل", item 1) — it is
-// recorded here, not fixed, so the removal of the Age Groups menu entry for
-// proScout is never mistaken for a locked door. If a future change adds `protect`
-// here, this test will fail loudly and the tech-debt item should be closed
-// deliberately at that point, not silently.
-describe('proScout — GET /ages is NOT refused (documented gap, Constitution C-3)', () => {
-  it('returns 200 for a proScout token — ageGroupRouter has no protect/allowedTo to deny it', async () => {
+// Phase 3 (docs/scout-pro-plan-v2.md, navigation) — US4/FR-014, Constitution C-3.
+//
+// audit fix S2 — TODO(AGES_UNAUTHENTICATED_READ) is now CLOSED (constitution
+// v1.3.0). GET /ages and GET /ages/:id (Backend/routes/ageGroupRouter.js) now
+// carry protect + allowedTo(admin, coach, observer), same as every other area
+// behind the sidebar. This is exactly the deliberate closure the comment this
+// block used to carry called for: the removal of the Age Groups menu entry for
+// proScout (Phase 3) was always an *intent* fix pending this door actually being
+// locked — it is locked now, so the test asserts the lock, not its absence.
+describe('proScout — GET /ages IS refused (Constitution C-3, closed by audit fix S2)', () => {
+  it('returns 403 for a proScout token — protect + allowedTo now deny it explicitly', async () => {
     const { token } = await createProScout();
 
     const res = await request(app)
       .get('/api/v1/ages')
       .set('Authorization', `Bearer ${token}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
-  it('returns 200 with NO token at all — the route has no protect, for any caller', async () => {
+  it('returns 401 with NO token at all — the route now requires authentication like every other', async () => {
     const res = await request(app).get('/api/v1/ages');
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
   });
 });

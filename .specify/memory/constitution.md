@@ -1,66 +1,72 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.1.0 → 1.2.0
-Bump rationale: MINOR, by owner decision. Constraint C-4's `SeasonMatch.ageGroup` clause —
-previously locked as `required: true` "بلا استثناء... هذا الاستثناء يخص Player وحده" (no
-exception, Player's is the only one) — gains a second, narrowly-scoped exception for
-professional-league fixtures, mirroring the existing `Player.isProfessional` mechanism
-exactly. This is a materially binding constraint change (a MUST NOT that forbade this exact
-shape is now permitted, under explicit conditions), not a wording clarification, so PATCH
-does not fit; it adds to and narrowly qualifies existing guidance rather than removing or
-incompatibly redefining a Core Principle (I–VII unchanged), so MAJOR does not fit either.
-MINOR under "توسيع جوهري في الإرشاد" (substantial expansion/revision of binding guidance),
-the same classification used for the v1.1.0 amendment.
+Version change: 1.2.0 → 1.3.0
+Bump rationale: MINOR, by owner decision, closing a previously-deferred item into a
+binding requirement. Constraint C-3's `GET /ages` / `GET /ages/:id` behavior — previously
+grouped under "القراءات المفتوحة: تبقى مفتوحة" (open reads stay open) alongside `GET /teams`
+/ `GET /teams/:id`, with the mismatch between that framing and the routes' actual
+unauthenticated-access reality tracked separately as `TODO(AGES_UNAUTHENTICATED_READ)` —
+is now split out: `/ages` and `/ages/:id` require `protect` + `allowedTo(admin, coach,
+observer)`, same as the rest of the project, and the deferred TODO is closed. This is a
+materially binding constraint change (a route that answered 200 to anonymous callers now
+answers 401; a route that answered 200 to any registered role, including future ones, now
+explicitly denies a role by design) — not a wording clarification, so PATCH does not fit.
+It resolves a `Known Enforcement Gaps`-style deferral into enforced behavior rather than
+adding a new principle or redefining an existing one incompatibly (I–VII unchanged), so
+MAJOR does not fit either. MINOR under "توسيع جوهري في الإرشاد", the same classification
+used for the v1.1.0 and v1.2.0 amendments — consistent with this document's own precedent
+that resolving a previously-open question into a binding rule is a substantive expansion of
+guidance, not a mere clarification.
 
 Modified principles: none (I–VII unchanged in title, wording, and force)
 
 Modified sections:
-  - Constraint C-4 — the `ageGroup` sub-section is restructured from a single allowed
-    exception (`Player.isProfessional` only) to two: `Player.isProfessional` (unchanged)
-    and a new `SeasonMatch` exception for fixtures between two professional-league teams.
-    The line "`ageGroup` يبقى `required: true` على `SeasonMatch` **بلا استثناء**" is
-    removed — it is no longer true. The shared "قيود تنفيذية على الاستثناء" (binding
-    implementation constraints) block is generalized to cover both exceptions under one
-    set of rules (server-only determination, `lockField` on create+patch, scope limited to
-    the `ageGroup` derivation/requirement clause only, non-professional path unchanged and
-    regression-tested) rather than duplicating it per-entity.
-  - Constraint C-4 also gains a short, explicitly-non-binding note that `Team.ageGroup` is
-    cleared for professional-league teams (Stage 13) — recorded here for a reader's
-    completeness since it is the precondition for the `SeasonMatch` exception above, not
-    because `Team.ageGroup` was previously locked by this document (it was not named in
-    C-4 before this amendment, so clearing it needed no constitutional change).
+  - Constraint C-3 is restructured. It no longer groups `/ages` with `/teams` under one
+    "open reads stay open" umbrella — the two routes never actually shared a security
+    posture (`GET /teams` has carried `protect` since §10, scoped per role via
+    `baseFilterFn`; `GET /ages` carried no `protect` at all until this amendment). The
+    two are now stated as separate, independently-justified rules:
+      1. `GET /teams` / `GET /teams/:id` — UNCHANGED. Still open to every authenticated
+         role (current and future) behind `protect`, scoped by `league` via the central
+         scope layer. Principle III's precedence over Principle II for this route is
+         preserved verbatim, because closing it would still break existing filters/
+         dropdowns for `admin`/`coach`/`observer` — that reasoning was never in question.
+      2. `GET /ages` / `GET /ages/:id` — CHANGED. Now behind `protect` +
+         `allowedTo(admin, coach, observer)`, denying any role outside that set
+         (including `proScout`) explicitly, per Principle II. This is what the
+         pre-existing sub-bullet ("الرول الجديد MUST يُمنَع من `/ages` و`/ages/:id`
+         صراحةً عبر `allowedTo`") already required in principle; it was mechanically
+         unenforceable without `protect` first, so it could not be satisfied until now.
+  - `TODO(AGES_UNAUTHENTICATED_READ)` is REMOVED from the `Known Enforcement Gaps`
+    deferred-items list. It is not carried forward — it is resolved. Reading it as still
+    open after this amendment is itself a constitutional violation.
 
 Added sections: none
 Removed sections: none
 
-Motivating context: Stage 13 (`specs/013-professional-league-admin/`) decided, by owner
-sign-off, that professional-league teams should carry no `ageGroup` at all — mirroring
-`Player.isProfessional` — rather than the arbitrary value teams received by accident
-(whichever age-group page they happened to be created under) up to that point. This was
-discovered, during that stage's `/speckit-plan`, to conflict directly with this
-constitution: with `Team.ageGroup` now `undefined` for professional teams, and
-`SeasonMatch.ageGroup` still `required: true` with no exception, `teamBelongsToMatchAgeGroup`
-in `Backend/utils/validation/seasonMatchValidation.js` (`team.ageGroup.toString()`) would
-throw on every attempt to create or edit a professional-league fixture — not a hypothetical
-gap, a guaranteed crash on the exact capability that stage exists to deliver. Three options
-were presented to the owner (a single canonical placeholder `AgeGroup` for all professional
-fixtures; extending the `Player.isProfessional`-style exception to `SeasonMatch`; or asking
-the admin to still pick an `ageGroup` only for fixtures). The owner chose the second,
-explicitly by reference to the existing `Player.isProfessional`/Stage 4b precedent, over a
-canonical-placeholder workaround or a partial UI exception. See
-`specs/013-professional-league-admin/spec.md` and `docs/scout-pro-plan-v2.md` ("المرحلة 13")
-for the full investigation.
+Motivating context: `docs/audit-backend-2026-08.md` (S2), a full-codebase production
+readiness review, flagged the unauthenticated `/ages` reads as a High-severity finding
+independent of the proScout work that originally deferred it — the tech-debt deferral
+predates the proScout stages and was never proScout-specific; it was carried forward
+through Stages 2–13 as "known, accepted, out of scope" each time it was touched (see the
+now-removed test comments in `Backend/tests/roles/proScoutDataScope.test.js`,
+`proScoutHardeningNegative.test.js`, `proScoutPlayersWrite.test.js`, and
+`proScoutRoleDefinition.test.js`, each of which said, verbatim, that closing this gap
+should trigger a deliberate constitutional update rather than a silent behavior change —
+this is that update). The owner, presented with the finding as part of a batch of six
+production-critical fixes, chose to close the gap now rather than continue deferring it:
+see `docs/audit-backend-2026-08.md` §S2 for the original analysis and
+`Backend/routes/ageGroupRouter.js` for the implementation.
 
-Deferred items / TODOs (carried forward, unchanged):
-  - TODO(AGES_UNAUTHENTICATED_READ): `GET /ages` and `GET /ages/:id` carry no `protect`
-    at all. Logged as tech debt outside the plan's scope by owner decision; see C-3.
+Deferred items / TODOs (carried forward):
   - No migration/backfill is planned for professional-league players whose `createdBy`
     is not a `proScout` (v1.1.0, unchanged by this amendment).
 
-New deferred item: none — the professional-league `Team.ageGroup` migration (clearing the
-field on pre-existing professional-league team documents) is an implementation task tracked
-in `specs/013-professional-league-admin/`, not a constitutional deferral.
+Resolved deferred item (removed from the list by this amendment):
+  - TODO(AGES_UNAUTHENTICATED_READ) — closed. See Constraint C-3 above.
+
+New deferred item: none.
 
 Templates read at runtime (plan/spec/tasks/checklist) are unmodified by design — the
 Scope Guard limits this command to the constitution itself.
@@ -241,19 +247,27 @@ Scope Guard limits this command to the constitution itself.
 هذه قرارات نهائية من مالك المشروع. MUST تُتَّبع كما هي، و MUST NOT يُعاد فتحها في أي
 spec أو plan دون تعديل دستوري:
 
-- **C-3 — القراءات المفتوحة: تبقى مفتوحة.** `GET /ages` و `GET /ages/:id` و
-  `GET /teams` و `GET /teams/:id` MUST يبقى سلوكها كما هو تماماً لـ `admin` و `coach`
-  و `observer`. **Principle III له الأسبقية على Principle II هنا**، لأن إغلاقها يكسر
-  الفلاتر والـ dropdowns في صفحات قائمة ويُعد تغيير سلوك لرول قائم.
-  - الرول الجديد MUST يُمنَع من `/ages` و `/ages/:id` صراحةً عبر `allowedTo` — المنع
-    صريح لا ضمني، تطبيقاً لـ Principle II.
-  - `GET /teams` و `GET /teams/:id` MUST تُسكَب للرول الجديد بـ `league` عبر
-    `baseFilterFn` في الطبقة المركزية (Principle IV). ملاحظة تنفيذية: `Team` لا تملك
-    `ownerFields` عمداً (داتا مرجعية مشتركة) و `TEAM_FILTERS` تسمح بـ `league` بالفعل،
-    فالسكوب إضافة على `gettingAll(Team, …)` لا تعديل في سلوك قائم.
-  - غياب `protect` كلياً عن `/ages` (قراءة متاحة لغير المسجّلين) MUST يُسجَّل كـ tech
-    debt منفصل خارج نطاق هذه الخطة، ولا يُعالَج ضمن مراحلها —
-    TODO(AGES_UNAUTHENTICATED_READ).
+- **C-3 — قراءات الفرق تبقى مفتوحة لكل الأدوار المسجّلة؛ قراءات الفئات العمرية
+  مقفولة على `admin`/`coach`/`observer` (مُعدَّل v1.3.0 — راجع Sync Impact Report
+  أعلى الملف).**
+
+  **`GET /teams` و `GET /teams/:id` (بلا تغيير):** MUST يبقى سلوكها كما هو تماماً
+  لـ `admin` و `coach` و `observer`، ومفتوحة لأي رول مسجَّل حالي أو مستقبلي خلف
+  `protect` وحده (بلا `allowedTo` مقيِّد) — النطاق بيتحكم فيه `league` عبر
+  `baseFilterFn` في الطبقة المركزية (Principle IV)، لا بوابة رول. **Principle III
+  له الأسبقية على Principle II هنا**، لأن إغلاقها يكسر الفلاتر والـ dropdowns في
+  صفحات قائمة ويُعد تغيير سلوك لرول قائم. ملاحظة تنفيذية: `Team` لا تملك
+  `ownerFields` عمداً (داتا مرجعية مشتركة) و `TEAM_FILTERS` تسمح بـ `league`
+  بالفعل، فالسكوب إضافة على `gettingAll(Team, …)` لا تعديل في سلوك قائم.
+
+  **`GET /ages` و `GET /ages/:id` (مُقفَلة v1.3.0):** MUST تحمل `protect` +
+  `allowedTo(admin, coach, observer)`. الرول الجديد (أو أي رول برّه الثلاثة
+  المعدودين، وأي طلب بلا توكن) MUST يُرفَض صراحةً — 403 للرول المسجَّل غير
+  المسموح، 401 لغياب التوكن. هذا تنفيذ للبند اللي كان مكتوباً هنا أصلاً ("الرول
+  الجديد MUST يُمنَع من `/ages` و`/ages/:id` صراحةً عبر `allowedTo`") ومستحيل
+  التنفيذ من غير `protect` — لم يكن استثناءً مقصوداً، كان فجوة تنفيذ. TODO
+  (AGES_UNAUTHENTICATED_READ) اتقفل بهذا التعديل ولا يُعتبر tech debt قائماً بعد
+  الآن؛ أي إشارة له في كود أو تعليق قديم MUST تُصحَّح عند لمسها.
 
 - **C-4 — تعريف "القسم الثاني": `league: "professional"`.** هذا هو التعريف الوحيد
   المعتمد لسكوب المباريات والفرق، و MUST يُطبَّق بالأشكال التالية حصراً من الطبقة
@@ -437,4 +451,4 @@ MUST NOT يُفترَض أنها آمنة:
 - التعقيد MUST يُبرَّر. الحل الأبسط الذي يحقق المبادئ هو الحل المطلوب.
 - `CLAUDE.md` هو مرجع التوجيه أثناء التطوير اليومي، ويظل تابعاً لهذا الدستور.
 
-**Version**: 1.2.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-23
+**Version**: 1.3.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-24
