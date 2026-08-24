@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ScoutingReportService } from '../services/scouting-report.service';
 import { AuthService } from '../../../core/auth/auth.service';
+import { PlayerContextService } from '../../../core/services/player-context.service';
 import { ScoutingReport, ReportStatistics } from '../../../core/models/scouting-report.model';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
@@ -306,14 +307,18 @@ export class ReportListComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly reportService = inject(ScoutingReportService);
   private readonly translate = inject(TranslateService);
+  private readonly playerContext = inject(PlayerContextService);
   readonly auth = inject(AuthService);
 
   readonly reports = signal<ScoutingReport[]>([]);
   readonly loading = signal(true);
   readonly deleteTarget = signal<ScoutingReport | null>(null);
 
-  // متوسط تقارير اللاعب — التقييم الكلي + متوسط كل مهارة، بيظهر فوق الليستة
-  readonly statistics = signal<ReportStatistics | null>(null);
+  // متوسط تقارير اللاعب — التقييم الكلي + متوسط كل مهارة، بيظهر فوق الليستة.
+  // بيتحط من PlayerDetailComponent (نفس الريكوست بالظبط)، مش من ريكوست منفصل هنا —
+  // عشان الاتنين كانوا بيتنفذوا مع بعض بسبب redirectTo على مسار reports وبيسببوا
+  // تكرار في التوست لما اللاعب لسه ملوش تقارير
+  readonly statistics = this.playerContext.reportStatistics;
 
   // Filter state — must be signals so computed() reacts to changes
   readonly filterMinRating = signal(0);
@@ -360,15 +365,6 @@ export class ReportListComponent implements OnInit {
       this.authorRoleFilter.set(queryAuthorRole);
     }
     this.load();
-    this.loadStatistics();
-  }
-
-  private loadStatistics(): void {
-    this.reportService.getStatistics(this.playerId).subscribe({
-      // مفيش تقارير للاعب ده لسه → 404، بيفضل statistics فاضي والكارد مش بيظهر
-      next: res => this.statistics.set(res.data?.statistics ?? null),
-      error: () => this.statistics.set(null),
-    });
   }
 
   load(): void {

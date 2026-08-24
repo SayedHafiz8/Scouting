@@ -131,10 +131,9 @@
  *                   properties:
  *                     statistics:
  *                       $ref: '#/components/schemas/ReportStatistics'
+ *         # No reports yet for this player still returns 200 with zeroed-out statistics — not a 404.
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
- *       404:
- *         $ref: '#/components/responses/NotFound'
  *
  * /players/{playerId}/reports/{id}:
  *   get:

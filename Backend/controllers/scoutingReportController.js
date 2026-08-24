@@ -263,14 +263,22 @@ export const getPlayerStatistics = asyncHandler(async (req, res, next) => {
         },
     ]);
 
-    if (!stats.length) {
-        return next(new AppError("No reports found for this player", 404));
-    }
+    // مفيش تقارير للاعب ده لسه — دي حالة طبيعية (لاعب جديد)، مش خطأ صلاحيات
+    // ولا بيانات ناقصة، فبترجع 200 بإحصائيات فاضية بدل 404. نفس المبدأ المتبع
+    // في proScout: "مفيش بيانات" = 200 بجسم فارغ، مش رفض
+    const empty = {
+        totalReports: 0,
+        lastReport: null,
+        overallRating: 0,
+        passing: 0, dribbling: 0, shooting: 0, ballControl: 0,
+        speed: 0, stamina: 0, strength: 0, agility: 0,
+        positioning: 0, decisionMaking: 0, teamwork: 0, attitude: 0,
+    };
 
     res.status(200).json({
         status: "success",
         data: {
-            statistics: stats[0],
+            statistics: stats.length ? stats[0] : empty,
         },
     });
 });

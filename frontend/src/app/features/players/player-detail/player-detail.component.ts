@@ -690,10 +690,24 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
 
   private loadStatistics(playerId: string): void {
     this.statsLoading.set(true);
+    this.playerContext.reportStatisticsLoading.set(true);
     this.reportService.getStatistics(playerId).subscribe({
-      // مفيش تقارير للاعب ده لسه → 404، بيفضل statistics فاضي وبيظهر "—"
-      next: res => { this.statistics.set(res.data?.statistics ?? null); this.statsLoading.set(false); },
-      error: () => this.statsLoading.set(false),
+      // الباك إند بيرجع 200 بـtotalReports: 0 لما مفيش تقارير لسه (مش 404) —
+      // نفس معاملة الحالتين هنا: لا تقارير = statistics فاضي وبيظهر "—".
+      // بنحط النتيجة في PlayerContextService كمان عشان ReportListComponent
+      // يقراها من هنا بدل ما يعمل ريكوست تاني لنفس الـendpoint
+      next: res => {
+        const stats = res.data?.statistics;
+        const normalized = stats && stats.totalReports > 0 ? stats : null;
+        this.statistics.set(normalized);
+        this.playerContext.setReportStatistics(normalized);
+        this.statsLoading.set(false);
+        this.playerContext.reportStatisticsLoading.set(false);
+      },
+      error: () => {
+        this.statsLoading.set(false);
+        this.playerContext.reportStatisticsLoading.set(false);
+      },
     });
   }
 
