@@ -1,5 +1,14 @@
 import { Component, input, output } from '@angular/core';
 
+// Frontend audit fix B1 — this used to accept a raw SVG markup string via
+// [innerHTML]. Angular's HTML sanitizer only allows a fixed HTML element
+// allowlist (VALID_ELEMENTS in @angular/core) which does NOT include svg,
+// path, circle, or polyline — so every icon was silently stripped to an
+// empty <span> in production. A closed set of names rendered via @switch,
+// matching the pattern already used correctly in stat-card.component.ts
+// and sidebar.component.ts, can't be sanitized away.
+export type EmptyStateIcon = 'default' | 'players' | 'reports' | 'media';
+
 @Component({
   selector: 'app-empty-state',
   standalone: true,
@@ -7,7 +16,22 @@ import { Component, input, output } from '@angular/core';
     <div class="flex flex-col items-center justify-center py-16 px-4 text-center">
       <div class="w-20 h-20 rounded-2xl flex items-center justify-center mb-5"
            style="background:var(--bg-card-hover)">
-        <span [innerHTML]="icon()" class="w-10 h-10" style="color:var(--text-muted)"></span>
+        <svg class="w-10 h-10" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          @switch (icon()) {
+            @case ('players') {
+              <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            }
+            @case ('reports') {
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            }
+            @case ('media') {
+              <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+            }
+            @default {
+              <path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7m16 0v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-5m16 0h-2.586a1 1 0 0 0-.707.293l-2.414 2.414a1 1 0 0 1-.707.293h-3.172a1 1 0 0 1-.707-.293l-2.414-2.414A1 1 0 0 0 6.586 13H4"/>
+            }
+          }
+        </svg>
       </div>
       <h3 class="text-base font-semibold mb-2" style="color:var(--text-primary)">{{ title() }}</h3>
       <p class="text-sm max-w-xs mb-6" style="color:var(--text-secondary)">{{ message() }}</p>
@@ -20,7 +44,7 @@ import { Component, input, output } from '@angular/core';
   `,
 })
 export class EmptyStateComponent {
-  readonly icon = input<string>(`<svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7m16 0v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-5m16 0h-2.586a1 1 0 0 0-.707.293l-2.414 2.414a1 1 0 0 1-.707.293h-3.172a1 1 0 0 1-.707-.293l-2.414-2.414A1 1 0 0 0 6.586 13H4"/></svg>`);
+  readonly icon = input<EmptyStateIcon>('default');
   readonly title = input<string>('Nothing here yet');
   readonly message = input<string>('Get started by adding your first item.');
   readonly actionLabel = input<string | null>(null);

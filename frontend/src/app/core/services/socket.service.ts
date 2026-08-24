@@ -24,6 +24,13 @@ export class SocketService {
 
   connect(token: string): void {
     if (this.socket?.connected) return;
+    // A previous socket may exist but be disconnected (e.g. after logout) — tear
+    // it down explicitly instead of letting it leak with duplicate listeners
+    // once a new one is created below.
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+    }
 
     const url = environment.socketUrl || window.location.origin;
     this.socket = io(url, {
@@ -68,16 +75,17 @@ export class SocketService {
   }
 
   disconnect(): void {
+    // Deliberately do NOT .complete() the Subjects below — this service is
+    // providedIn: 'root' and lives for the whole tab, so a Subject.complete()
+    // here is permanent: any logout followed by a login in the same tab would
+    // leave every subscriber (ShellComponent's notification/dashboard feeds)
+    // silently dead for the rest of the session, since a completed Subject
+    // drops all future .next() calls and immediately completes new subscribers.
+    // Only the socket connection itself needs tearing down.
+    this.socket?.removeAllListeners();
     this.socket?.disconnect();
     this.socket = null;
     this.connectionState.set('disconnected');
-    this.notification$.complete();
-    this.adminDashboardUpdate$.complete();
-    this.coachDashboardUpdate$.complete();
-    this.observerDashboardUpdate$.complete();
-    this.playerStatusUpdated$.complete();
-    this.observerEvaluationPublished$.complete();
-    this.coachEvaluationPublished$.complete();
   }
 
   getNotifications() { return this.notification$.asObservable(); }

@@ -102,7 +102,7 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
 
     // §7 — sign media URLs on read; strip internal storage keys
     const out = document.toObject();
-    out.media = (out.media || []).map(decorateMedia);
+    out.media = (out.media || []).map((m) => decorateMedia(m, req.user.role));
 
     res.status(200).json({
         status: "success",

@@ -54,7 +54,7 @@ import type { MediaRejectionReason } from '../../../core/models/player-media.mod
           [message]="'MEDIA.EMPTY_ALL' | translate"
           [actionLabel]="(auth.isCoach() || auth.isObserver()) ? ('MEDIA.UPLOAD_MEDIA' | translate) : null"
           (actionClicked)="showUpload.set(true)"
-          [icon]="mediaIcon"
+          icon="media"
         />
       } @else {
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -297,7 +297,6 @@ export class MediaGalleryComponent implements OnInit, OnDestroy {
     return map;
   });
 
-  readonly mediaIcon = `<svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
 
   get playerId(): string {
     return this.route.snapshot.pathFromRoot

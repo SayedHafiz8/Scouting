@@ -34,8 +34,19 @@ import { resolveVideoUploadGate } from "../services/mediaMatchGate.js";
 // Read-path decoration — never trust the stored `url`; generate a signed URL on
 // read (§7). Videos → Bunny Stream token URLs; images → media-zone token URL
 // (or legacy Cloudinary passthrough). Internal storage keys are stripped.
-// ============================
-export const decorateMedia = (mediaDoc) => {
+//
+// Frontend audit fix S1 — video playback (`url`/`embedUrl`/`download`) is
+// admin-only by product decision (bandwidth control). That was previously
+// enforced only in the Angular template (media-gallery, my-matches,
+// age-group-detail all gate on auth.isAdmin() before rendering a play
+// affordance) while the API signed and shipped the playable URLs to every
+// role regardless — a coach or observer could read them straight out of the
+// Network tab. `url` is not a lesser leak than `embedUrl`: streamHlsUrl()
+// returns a directly playable signed HLS manifest (3h TTL), not just an
+// iframe embed. Both are now withheld for anyone but the admin; `thumbnail`
+// stays for everyone (the grid card needs it) and image URLs are untouched
+// (images were never gated in the UI).
+export const decorateMedia = (mediaDoc, viewerRole) => {
     const obj = typeof mediaDoc.toObject === "function" ? mediaDoc.toObject() : { ...mediaDoc };
 
     // player may be a raw id or a populated doc (season-match detail)
@@ -43,10 +54,14 @@ export const decorateMedia = (mediaDoc) => {
 
     if (obj.type === "video") {
         if (obj.status === "ready" && obj.bunnyVideoId) {
-            obj.url = streamHlsUrl(obj.bunnyVideoId);
-            obj.embedUrl = streamEmbedUrl(obj.bunnyVideoId);
             obj.thumbnail = streamThumbnailUrl(obj.bunnyVideoId);
-            obj.download = `/api/v1/players/${playerId}/media/${obj._id}/download`;
+            if (viewerRole === ROLES.ADMIN) {
+                obj.url = streamHlsUrl(obj.bunnyVideoId);
+                obj.embedUrl = streamEmbedUrl(obj.bunnyVideoId);
+                obj.download = `/api/v1/players/${playerId}/media/${obj._id}/download`;
+            } else {
+                obj.url = null;
+            }
         } else {
             // processing / failed → no playable URL yet
             obj.url = null;
@@ -132,7 +147,7 @@ export const uploadMedia = asyncHandler(async (req, res, next) => {
 
         res.status(201).json({
             status: "success",
-            data: { document: decorateMedia(media) },
+            data: { document: decorateMedia(media, req.user.role) },
         });
     } finally {
         await fs.promises.unlink(req.file.path).catch(() => {});
@@ -159,7 +174,7 @@ export const getAll = asyncHandler(async (req, res, next) => {
         status: "success",
         count: documents.length,
         pagination: features.pagination,
-        data: { documents: documents.map(decorateMedia) },
+        data: { documents: documents.map((d) => decorateMedia(d, req.user.role)) },
     });
 });
 
@@ -171,7 +186,7 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
     }
     res.status(200).json({
         status: "success",
-        data: { document: decorateMedia(media) },
+        data: { document: decorateMedia(media, req.user.role) },
     });
 });
 
@@ -306,7 +321,7 @@ export const createVideo = asyncHandler(async (req, res, next) => {
         return res.status(200).json({
             status: "success",
             data: {
-                document: decorateMedia(inFlight),
+                document: decorateMedia(inFlight, req.user.role),
                 upload: tusUploadEnvelope(inFlight.bunnyVideoId, { mediaId: inFlight._id }),
             },
         });
@@ -357,7 +372,7 @@ export const createVideo = asyncHandler(async (req, res, next) => {
     res.status(201).json({
         status: "success",
         data: {
-            document: decorateMedia(media),
+            document: decorateMedia(media, req.user.role),
             upload: tusUploadEnvelope(bunnyVideo.guid, { mediaId: media._id }),
         },
     });

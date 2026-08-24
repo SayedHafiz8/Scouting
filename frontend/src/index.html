@@ -7,6 +7,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/png" sizes="512x512" href="favicon.png?v=42">
   <link rel="shortcut icon" href="favicon.png?v=42">
+  <!-- Frontend audit fix P4 — self-hosted font, preloaded so it starts
+       downloading alongside the HTML instead of waiting on the CSS. -->
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="assets/fonts/inter-latin.woff2">
 </head>
 <body>
   <app-root></app-root>

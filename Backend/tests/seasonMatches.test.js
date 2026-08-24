@@ -1033,7 +1033,13 @@ describe('GET /api/v1/seasonMatches/:id — per-scout scoping of reports & media
     // بيشوف اللي هو رفعه بس — صورة الأوبزيرفر على نفس الماتش مش بتبان له
     expect(doc.media).toHaveLength(1);
     expect(doc.media[0].title).toBe('B PRIVATE VIDEO');
-    expect(doc.media[0].url).toBeTruthy(); // الـ signed URL لسه بيتولد لصاحبها
+    // Frontend audit fix S1 (policy change) — video playback is admin-only now,
+    // even for the coach who uploaded it themselves. `url`/`embedUrl`/`download`
+    // must all stay withheld; `thumbnail` still renders the media card.
+    expect(doc.media[0].url).toBeFalsy();
+    expect(doc.media[0].embedUrl).toBeUndefined();
+    expect(doc.media[0].download).toBeUndefined();
+    expect(doc.media[0].thumbnail).toBeTruthy();
   });
 
   it("an observer sees only the media they uploaded, not the coach's", async () => {
