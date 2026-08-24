@@ -92,9 +92,14 @@ describe('GET /api/v1/teams requires authentication', () => {
     expect(res.status).toBe(401);
   });
 
-  it('/ages itself stays public on purpose (security: [] in its swagger block)', async () => {
+  // audit fix S2 — /ages closed TODO(AGES_UNAUTHENTICATED_READ) (constitution v1.3.0,
+  // C-3). It no longer stays public; it now requires the same authentication as
+  // every other endpoint. See tests/teams.test.js's own 'GET /api/v1/ages' describe
+  // block below for the full behavior, and proScoutHardeningNegative.test.js for the
+  // explicit-deny assertion this closes for the new role.
+  it('401s the anonymous /ages listing too, now that TODO(AGES_UNAUTHENTICATED_READ) is closed', async () => {
     const res = await request(app).get('/api/v1/ages');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
   });
 });
 
@@ -133,15 +138,30 @@ describe('GET /api/v1/ages/:id/teams (nested mount)', () => {
   });
 });
 
-describe('GET /api/v1/ages', () => {
+// audit fix S2 — TODO(AGES_UNAUTHENTICATED_READ) closed (constitution v1.3.0, C-3).
+// GET /ages and GET /ages/:id now require protect + allowedTo(admin, coach, observer),
+// same as every other read in the project. Existing roles keep the exact same
+// response for the exact same request — only "no token at all" and "proScout"
+// behavior changed, and both changes were the point (Principle II: the new role
+// was always supposed to be denied here; it just couldn't be, mechanically,
+// without `protect` first).
+describe('GET /api/v1/ages (authenticated — S2/C-3)', () => {
   beforeEach(seedAgeGroups);
 
-  it('returns all age groups sorted by birthYear', async () => {
-    const res = await request(app).get('/api/v1/ages');
+  it('returns all age groups sorted by birthYear, for an authenticated coach', async () => {
+    const { token } = await createCoach();
+    const res = await request(app)
+      .get('/api/v1/ages')
+      .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.documents.length).toBe(11);
     const years = res.body.data.documents.map((g) => g.birthYear);
     expect(years).toEqual([...years].sort((x, y) => x - y));
+  });
+
+  it('401s with no token at all', async () => {
+    const res = await request(app).get('/api/v1/ages');
+    expect(res.status).toBe(401);
   });
 });

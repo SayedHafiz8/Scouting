@@ -46,28 +46,33 @@ describe('age-groups domain (FR-005)', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FR-006 — GET /ages, GET /ages/:id: 200 for everyone, flat fact, not a gate
+// FR-006, revised by audit fix S2 — GET /ages, GET /ages/:id now carry
+// protect + allowedTo(admin, coach, observer) (constitution v1.3.0, C-3,
+// TODO(AGES_UNAUTHENTICATED_READ) closed). proScout is explicitly denied —
+// this is FR-006's original intent finally enforceable, not a new restriction
+// invented here. Existing roles (admin here) see the exact same 200 as before,
+// just now requiring the auth they already send on every other endpoint.
 // ═══════════════════════════════════════════════════════════════════════════
-describe('age-groups reads carry no protect at all (FR-006 — documents a known gap, not a pass/fail gate)', () => {
-  it('GET /ages returns 200 for a proScout token, for another role, and for no token at all', async () => {
+describe('age-groups reads now require authentication (FR-006 / S2 — TODO(AGES_UNAUTHENTICATED_READ) closed)', () => {
+  it('GET /ages: 200 for admin (unchanged), 403 for proScout, 401 for no token at all', async () => {
     const withScout = await request(app).get('/api/v1/ages').set(...auth(scout.token));
     const withAdmin = await request(app).get('/api/v1/ages').set(...auth(admin.token));
     const withNoToken = await request(app).get('/api/v1/ages');
 
-    expect(withScout.status).toBe(200);
+    expect(withScout.status).toBe(403);
     expect(withAdmin.status).toBe(200);
-    expect(withNoToken.status).toBe(200);
+    expect(withNoToken.status).toBe(401);
   });
 
-  it('GET /ages/:id returns 200 for a proScout token and for no token at all', async () => {
+  it('GET /ages/:id: 403 for proScout, 401 for no token at all', async () => {
     const ageGroup = (await request(app).get('/api/v1/ages').set(...auth(admin.token)))
       .body.data.documents[0];
 
     const withScout = await request(app).get(`/api/v1/ages/${ageGroup._id}`).set(...auth(scout.token));
     const withNoToken = await request(app).get(`/api/v1/ages/${ageGroup._id}`);
 
-    expect(withScout.status).toBe(200);
-    expect(withNoToken.status).toBe(200);
+    expect(withScout.status).toBe(403);
+    expect(withNoToken.status).toBe(401);
   });
 });
 

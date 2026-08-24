@@ -757,10 +757,11 @@ export class PlayerListComponent implements OnInit {
     // fetch age groups either. Hiding a grid while still requesting the data behind
     // it is theatre; the role simply has no business consuming this category.
     //
-    // ⚠️ This is an INTENT fix, not access control. GET /ages carries no `protect`
-    // at all (ageGroupRouter.js) — it answers 200 to anonymous callers, let alone to
-    // a signed-in proScout. Constraint C-3 stays open; see TODO(AGES_UNAUTHENTICATED_READ).
-    // Nobody should read this early-return as "the door is closed".
+    // Backend audit fix S2 (constitution v1.3.0, C-3) closed
+    // TODO(AGES_UNAUTHENTICATED_READ): GET /ages now carries `protect` +
+    // `allowedTo(admin, coach, observer)` and denies proScout with 403. This
+    // early-return stays as the primary guard regardless — a proScout browser
+    // simply has no business requesting this category, 403 or not.
     if (this.auth.isProScout()) {
       this.loadingGroups.set(false);
       this.resolveView();

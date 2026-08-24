@@ -912,6 +912,12 @@ describe('T043 — deny-by-default sweep across the endpoint matrix (scenario 26
     ['GET', '/api/v1/dashboard/observer'],
     ['GET', '/api/v1/coachEvaluations'],
     ['GET', '/api/v1/observerEvaluations'],
+    // audit fix S2 — /ages moved IN to the sweep. It used to be excluded here
+    // because it carried no protect at all (TODO(AGES_UNAUTHENTICATED_READ)),
+    // so allowedTo could never run on it. Now that protect + allowedTo(admin,
+    // coach, observer) guard both routes, it belongs in the same 403 sweep as
+    // every other admin/coach/observer-only endpoint proScout has no mandate in.
+    ['GET', '/api/v1/ages'],
   ];
 
   it.each(forbidden)('%s %s → 403 for proScout', async (method, url) => {
@@ -922,25 +928,16 @@ describe('T043 — deny-by-default sweep across the endpoint matrix (scenario 26
     expect(res.status).toBe(403);
   });
 
-  // ⚠️ /ages مستثناة من الكنس فوق عن قصد، والسبب مهم يتسجّل:
-  //
-  // الدستور (C-3) بيطلب إن الرول الجديد "يُمنَع من /ages و /ages/:id صراحةً عبر
-  // allowedTo". ده **غير قابل للتنفيذ** كما هو: ageGroupRouter بيعرّف
-  // `.get(getAll)` من غير `protect` إطلاقاً — مفيش req.user أصلاً عشان allowedTo
-  // تشتغل عليه. المسارات دي متاحة لغير المسجّلين، وده بند tech debt مسجّل
-  // ومستثنى صراحةً من نطاق الخطة بقرار المالك — TODO(AGES_UNAUTHENTICATED_READ).
-  //
-  // إضافة protect هنا كانت هتغيّر سلوك قائم برّه نطاق المرحلة دي، فاتسابت كما هي.
-  // التست ده بيوثّق الوضع الفعلي عشان ماحدش يفتكر إن المنع موجود وهو مش موجود.
-  it('GET /ages is PUBLIC — not denied to proScout, because it has no protect at all', async () => {
-    const withToken = await request(app)
-      .get('/api/v1/ages')
-      .set('Authorization', 'Bearer ' + scout.token);
-    expect(withToken.status).toBe(200);
-
-    // ومن غير أي توكن كمان — ده جوهر بند الـtech debt
+  // audit fix S2 — TODO(AGES_UNAUTHENTICATED_READ) closed (constitution v1.3.0,
+  // C-3). /ages now carries protect + allowedTo(admin, coach, observer), so it
+  // is denied to proScout the same way as every other endpoint above — covered
+  // by the sweep's ['GET', '/api/v1/ages'] entry now. This block used to
+  // document the opposite (public, undeniable) behavior; it now documents the
+  // 401 for "no token at all", which the sweep itself can't express (it only
+  // ever calls with the proScout token).
+  it('GET /ages: 401 with no token at all, now that TODO(AGES_UNAUTHENTICATED_READ) is closed', async () => {
     const anonymous = await request(app).get('/api/v1/ages');
-    expect(anonymous.status).toBe(200);
+    expect(anonymous.status).toBe(401);
   });
 });
 

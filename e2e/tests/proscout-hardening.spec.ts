@@ -47,12 +47,12 @@ test.describe('proScout hardening — denial is enforced end-to-end', () => {
 
       const apiResponse = await apiResponsePromise;
       if (apiResponse) {
-        // /ages is the known, documented exception (Constitution C-3) — it is
-        // NOT protect-gated at all, so it legitimately returns 200 even here.
-        // /users and /observers must be 403.
-        if (!/\/api\/v1\/ages(\?|$)/.test(apiResponse.url())) {
-          expect(apiResponse.status()).toBe(403);
-        }
+        // audit fix S2 — /ages carried no protect at all before (Constitution
+        // C-3, TODO(AGES_UNAUTHENTICATED_READ)) and used to be exempt from this
+        // assertion for that reason. It now carries protect + allowedTo(admin,
+        // coach, observer), same as /users and /observers, so it is denied to
+        // proScout the same way — no carve-out needed anymore.
+        expect(apiResponse.status()).toBe(403);
       }
     }
   });

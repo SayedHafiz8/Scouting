@@ -48,7 +48,16 @@ const seasonMatchBelongsToPlayerAgeGroup = body("seasonMatch")
         const playerId = req.params.playerId;
         if (playerId) {
             const player = await Player.findById(playerId).select("ageGroup");
-            if (player && player.ageGroup.toString() !== match.ageGroup.toString()) {
+            // audit fix B1 — نفس الحراسة المطبَّقة في seasonMatchValidation.js
+            // (teamBelongsToMatchAgeGroup) لنفس سبب Stage 13/C-4 بالظبط: لاعب محترف
+            // (isProfessional) أو مباراة دوري محترفين مالهمش ageGroup خالص —
+            // بيبقى undefined بحكم التصميم (playedModel.js pre-save hook،
+            // seasonMatchModel.js pre-save hook). من غير الحراسة دي، أي proScout
+            // بيحاول يربط تقرير بمباراة كان بيكسر بـTypeError على .toString() لقيمة
+            // undefined بدل قرار نطاق واضح — يعني الرول ده كان عاجز عن كتابة أي
+            // تقرير على لاعبه المحترف. مسار اللاعب الناشئ يفضل مطابق حرفياً
+            // (Principle III): لو الاتنين عندهم ageGroup، المقارنة بتحصل زي ما كانت.
+            if (player?.ageGroup && match.ageGroup && player.ageGroup.toString() !== match.ageGroup.toString()) {
                 throw new Error("seasonMatch must belong to the player's age group");
             }
         }
@@ -106,7 +115,11 @@ const teamBelongsToPlayerAgeGroup = (fieldName) =>
             const playerId = req.params.playerId;
             if (playerId) {
                 const player = await Player.findById(playerId).select("ageGroup");
-                if (player && player.ageGroup.toString() !== team.ageGroup.toString()) {
+                // audit fix B1 — نفس الحراسة فوق بالظبط: لاعب محترف أو فريق دوري
+                // محترفين (team.ageGroup === undefined، teamModel.js pre-save hook)
+                // مالهمش ageGroup، فمقارنة .toString() كانت بترمي TypeError بدل ما
+                // ترفض أو تعدّي بقرار واضح.
+                if (player?.ageGroup && team.ageGroup && player.ageGroup.toString() !== team.ageGroup.toString()) {
                     throw new Error(`${fieldName} must belong to the player's age group`);
                 }
             }

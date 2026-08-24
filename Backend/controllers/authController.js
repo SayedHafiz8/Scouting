@@ -8,6 +8,7 @@ import User from "../models/userModel.js";
 import sendEmail from "../utils/sendEmail.js";
 import { ROLES } from "../constants/roles.js";
 import { logRoleDenial } from "../utils/accessLog.js";
+import { BCRYPT_SALT_ROUNDS } from "../constants/security.js";
 
 // ============================
 // helpers
@@ -113,7 +114,19 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
     if (user.refreshTokenExpires < Date.now()) {
         return next(new AppError("Refresh token expired, please login again", 401));
     }
-    
+
+    // audit fix S1 — دفاع في العمق. changePassword بيصفّر refreshToken صراحة
+    // دلوقتي (userController.js)، فالفحص فوق (`user.refreshToken !== token`) بيقفل
+    // المسار ده لوحده. الفحص ده بيقفل *أي مسار تاني مستقبلي* بيغيّر الباسورد
+    // وينسى يصفّر التوكن — نفس الحارس اللي protect() بيعمله بالظبط على access
+    // token (authController.js:201)، منقول هنا لـrefresh token.
+    if (user.passwordChangedAt) {
+        const passChangedTimestamp = parseInt(user.passwordChangedAt.getTime() / 1000);
+        if (passChangedTimestamp > decoded.iat) {
+            return next(new AppError("Password changed recently, please login again", 401));
+        }
+    }
+
     // ✅ جنرت access token جديد وبرجع بيانات اليوزر عشان الـ frontend يستعيد الـ session
     const newAccessToken = generateAccessToken(user._id);
 
@@ -241,7 +254,12 @@ export const forgotPassword = asyncHandler(async (req, res, next) => {
         });
     }
 
-    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // audit fix S5 — Math.random() في V8 مولّد xorshift128+ غير تشفيري: مراقبة
+    // عدد قليل من مخرجاته (زي طلب أكواد لحسابات المهاجم بنفسه) كافية لاستنتاج
+    // حالته الداخلية والتنبؤ بمخرجاته الجاية — بحث منشور ومطبَّق عملياً على V8.
+    // crypto.randomInt مبني على CSPRNG (نفس مصدر العشوائية المستخدم أصلاً في
+    // crypto.randomUUID جوه المشروع)، فمفيش أي مخرج سابق يقدر يتنبأ بالتالي منه.
+    const resetCode = String(crypto.randomInt(100000, 1000000));
 
     const hashedResetCode = crypto
         .createHash("sha256")
@@ -342,7 +360,7 @@ export const changeLoggedUserPass = asyncHandler(async (req, res, next) => {
     const user = await User.findByIdAndUpdate(
         req.user._id,
         {
-            password: await bcrypt.hash(req.body.password, 12),
+            password: await bcrypt.hash(req.body.password, BCRYPT_SALT_ROUNDS),
             passwordChangedAt: Date.now(),
         },
         { returnDocument: "after", runValidators: true }

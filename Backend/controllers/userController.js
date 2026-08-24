@@ -22,6 +22,7 @@ import {
 } from "../services/userDeletion.js";
 import { resolveImageUrl } from "../utils/mediaUrl.js";
 import AppError from "../utils/appError.js";
+import { BCRYPT_SALT_ROUNDS } from "../constants/security.js";
 
 
 
@@ -174,15 +175,28 @@ export const update = asyncHandler(async (req, res ,next) => {
     })
 });
 
-// @desc    Change password specific User 
+// @desc    Change password specific User
 // @route   DELTE api/v1/users/:id/changePassword
 // @access  private
+//
+// audit fix S1 — لازم يقفل جلسة الضحية القديمة، مش يغيّر الباسورد بس.
+//
+// المشكلة اللي كانت هنا: الـupdate كان بيحط password و passwordChangedAt بس،
+// ومفيش أي مكان تاني بيفحص passwordChangedAt عند الـrefresh (راجع التعديل في
+// authController.refreshToken تحت). يعني refreshToken القديم يفضل صالح في
+// الداتابيز، وبيعرف يجدّد access token جديد لمدة 7 أيام كاملة بعد ما الأدمن
+// "غيّر" الباسورد — أول إجراء في أي حادثة أمنية كان مابيعملش حاجة فعلياً.
+//
+// null مش undefined (زي logout بالظبط في authController.js) — Mongoose بيتجاهل
+// undefined في $set، فمكانش بيمسح التوكن فعلياً.
 export const changePassword = asyncHandler(async (req, res ,next) => {
     const id = req.params.id;
     const document = await User.findByIdAndUpdate(id,
         {
-            password: await bcrypt.hash(req.body.password, 12),
-            passwordChangedAt: Date.now()
+            password: await bcrypt.hash(req.body.password, BCRYPT_SALT_ROUNDS),
+            passwordChangedAt: Date.now(),
+            refreshToken: null,
+            refreshTokenExpires: null,
         },
         {returnDocument :"after", runValidators: true}
     )
