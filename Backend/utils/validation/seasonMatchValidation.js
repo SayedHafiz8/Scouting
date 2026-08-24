@@ -61,8 +61,13 @@ const teamBelongsToMatchAgeGroup = (fieldName) =>
             }
 
             const { ageGroup: matchAgeGroup, league: matchLeague } = await resolveMatchContext(req);
-            if (matchAgeGroup && team.ageGroup.toString() !== matchAgeGroup.toString()) {
-                throw new Error(`${fieldName} must belong to the match's age group`);
+            // Stage 13 (R6) — مباريات/فرق دوري المحترفين مالهمش ageGroup خالص، فمفيش
+            // مقارنة تُعمل هنا أصلاً؛ الفحص بيتخطّى صراحة لـleague: "professional"،
+            // وبشكل دفاعي كمان لو team.ageGroup مش موجود لأي سبب (بدل كراش .toString()).
+            if (matchLeague !== 'professional' && matchAgeGroup && team.ageGroup) {
+                if (team.ageGroup.toString() !== matchAgeGroup.toString()) {
+                    throw new Error(`${fieldName} must belong to the match's age group`);
+                }
             }
             if (matchLeague && team.league !== matchLeague) {
                 throw new Error(`${fieldName} must belong to the match's league`);
@@ -94,7 +99,9 @@ const noDuplicateFixture = body().custom(async (_, { req }) => {
             .select("ageGroup matchDate homeTeam awayTeam league")
             .setOptions({ skipPopulate: true });
         if (existing) {
-            ageGroup = ageGroup ?? existing.ageGroup.toString();
+            // Stage 13 — مباريات professional مالهاش ageGroup أصلاً؛ فضل undefined
+            // بدل ما نكراش على .toString() (نفس منطق R6).
+            ageGroup = ageGroup ?? existing.ageGroup?.toString();
             matchDate = matchDate ?? existing.matchDate.toISOString();
             homeTeam = homeTeam ?? existing.homeTeam.toString();
             awayTeam = awayTeam ?? existing.awayTeam.toString();
@@ -102,7 +109,8 @@ const noDuplicateFixture = body().custom(async (_, { req }) => {
         }
     }
 
-    if (!ageGroup || !matchDate || !homeTeam || !awayTeam || !league) return true;
+    if (!matchDate || !homeTeam || !awayTeam || !league) return true;
+    if (league !== 'professional' && !ageGroup) return true;
 
     const dayStart = new Date(matchDate);
     dayStart.setHours(0, 0, 0, 0);
@@ -137,7 +145,7 @@ const alternateHomeAway = body().custom(async (_, { req }) => {
             .select("ageGroup homeTeam awayTeam league season")
             .setOptions({ skipPopulate: true });
         if (existing) {
-            ageGroup = ageGroup ?? existing.ageGroup.toString();
+            ageGroup = ageGroup ?? existing.ageGroup?.toString();
             homeTeam = homeTeam ?? existing.homeTeam.toString();
             awayTeam = awayTeam ?? existing.awayTeam.toString();
             league = league ?? existing.league;
@@ -145,7 +153,8 @@ const alternateHomeAway = body().custom(async (_, { req }) => {
         }
     }
 
-    if (!ageGroup || !homeTeam || !awayTeam || !league || !season) return true;
+    if (!homeTeam || !awayTeam || !league || !season) return true;
+    if (league !== 'professional' && !ageGroup) return true;
 
     const rematchWithSameHost = await SeasonMatch.findOne({
         ageGroup,
@@ -198,15 +207,17 @@ export const getSpecificValidate = [
 ];
 
 export const createValidate = [
-    check("ageGroup")
-        .isMongoId().withMessage("Invalid ageGroup id")
-        .custom((val) =>
-            AgeGroup.findById(val).then((ageGroup) => {
-                if (!ageGroup) {
-                    return Promise.reject(new Error(`No age group for this id: ${val}`));
-                }
-            })
-        ),
+    // Stage 13 — مباريات دوري المحترفين (league: "professional") مالهاش ageGroup
+    // خالص، بنفس نمط Team.ageGroup: الفحص ده بالكامل بيتخطّى ليها؛ غير كده لسه
+    // مطلوب صراحة زي ما كان بالظبط.
+    check("ageGroup").custom(async (val, { req }) => {
+        if (req.body.league === 'professional') return true;
+        if (!val) throw new Error("Invalid ageGroup id");
+        if (!/^[0-9a-fA-F]{24}$/.test(val)) throw new Error("Invalid ageGroup id");
+        const ageGroup = await AgeGroup.findById(val);
+        if (!ageGroup) throw new Error(`No age group for this id: ${val}`);
+        return true;
+    }),
     seasonFormat(check("season").trim().notEmpty().withMessage("Season is required")),
     leagueValid(check("league").notEmpty().withMessage("league is required")),
     matchDateNotPast(
@@ -245,7 +256,7 @@ export const updateValidate = [
         const team = await Team.findById(val);
         if (!team) throw new Error(`No team for this id: ${val}`);
         const { ageGroup: matchAgeGroup, league: matchLeague } = await resolveMatchContext(req);
-        if (matchAgeGroup && team.ageGroup.toString() !== matchAgeGroup.toString()) {
+        if (matchLeague !== 'professional' && matchAgeGroup && team.ageGroup && team.ageGroup.toString() !== matchAgeGroup.toString()) {
             throw new Error("homeTeam must belong to the match's age group");
         }
         if (matchLeague && team.league !== matchLeague) {
@@ -257,7 +268,7 @@ export const updateValidate = [
         const team = await Team.findById(val);
         if (!team) throw new Error(`No team for this id: ${val}`);
         const { ageGroup: matchAgeGroup, league: matchLeague } = await resolveMatchContext(req);
-        if (matchAgeGroup && team.ageGroup.toString() !== matchAgeGroup.toString()) {
+        if (matchLeague !== 'professional' && matchAgeGroup && team.ageGroup && team.ageGroup.toString() !== matchAgeGroup.toString()) {
             throw new Error("awayTeam must belong to the match's age group");
         }
         if (matchLeague && team.league !== matchLeague) {

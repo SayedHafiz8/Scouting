@@ -497,7 +497,8 @@ export class MyMatchesComponent implements OnInit {
     return typeof team === 'string' ? team : team.name;
   }
 
-  ageGroupName(ageGroup: AgeGroup | string): string {
+  ageGroupName(ageGroup: AgeGroup | string | undefined): string {
+    if (!ageGroup) return '—'; // professional-league fixtures carry no ageGroup (Stage 13)
     return typeof ageGroup === 'string' ? ageGroup : ageGroup.name;
   }
 

@@ -80,7 +80,7 @@ const options = {
           properties: {
             _id:      { type: "string" },
             name:     { type: "string" },
-            ageGroup: { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/AgeGroup" }] },
+            ageGroup: { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/AgeGroup" }], nullable: true, description: "Absent for league: \"professional\" teams (Stage 13)" },
             league:   { type: "string", enum: ["premier", "professional"] },
             clubName: { type: "string" },
             active:   { type: "boolean" },
@@ -233,6 +233,8 @@ const options = {
               properties: {
                 totalMedia:         { type: "integer" },
                 totalCoaches:       { type: "integer" },
+                totalObservers:     { type: "integer" },
+                totalProScouts:     { type: "integer" },
                 totalMatchesPlayed: { type: "integer" },
                 topCoaches:         { type: "array", items: { $ref: "#/components/schemas/TopCoach" } },
               },

@@ -21,7 +21,7 @@ export class TeamService {
     return this.http.get<ApiResponse<{ document: Team }>>(`${this.base}/${id}`);
   }
 
-  create(payload: { name: string; clubName: string; ageGroup: string; league: SeasonMatchLeague }) {
+  create(payload: { name: string; clubName: string; ageGroup?: string; league: SeasonMatchLeague }) {
     return this.http.post<ApiResponse<{ document: Team }>>(this.base, payload);
   }
 

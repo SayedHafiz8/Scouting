@@ -18,8 +18,8 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
 
       <!-- Breadcrumb -->
       <nav class="flex items-center gap-2 text-sm" style="color:var(--text-muted)">
-        <a [routerLink]="isObserverCtx() ? '/observers' : '/users'" class="hover:text-primary-600 transition-colors">
-          {{ (isObserverCtx() ? 'OBSERVERS.TITLE' : 'COACHES.TITLE') | translate }}
+        <a [routerLink]="isObserverCtx() ? '/observers' : (isProScoutCtx() ? '/professional-league' : '/users')" class="hover:text-primary-600 transition-colors">
+          {{ (isObserverCtx() ? 'OBSERVERS.TITLE' : (isProScoutCtx() ? 'PROFESSIONAL_LEAGUE.TITLE' : 'COACHES.TITLE')) | translate }}
         </a>
         <span>/</span>
         <span style="color:var(--text-primary)">{{ user()?.name ?? ('COMMON.LOADING' | translate) }}</span>
@@ -146,26 +146,28 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
 
             <!-- Action buttons -->
             <div class="w-full border-t pt-4 space-y-2" style="border-color:var(--border-color)">
-              <a [routerLink]="[isObserverCtx() ? '/observers' : '/users', user()!._id, 'edit']" class="btn btn-secondary btn-sm w-full">
+              <a [routerLink]="[isObserverCtx() ? '/observers' : (isProScoutCtx() ? '/professional-league/pro-scouts' : '/users'), user()!._id, 'edit']" class="btn btn-secondary btn-sm w-full">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
                 {{ 'COACHES.DETAIL.EDIT' | translate }}
               </a>
-              <a [routerLink]="dashboardLink()" class="btn btn-secondary btn-sm w-full">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                  <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-                </svg>
-                {{ 'COACHES.DETAIL.VIEW_DASHBOARD' | translate }}
-              </a>
-              <a [routerLink]="['/players']" [queryParams]="playersQueryParams()" class="btn btn-secondary btn-sm w-full">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-                </svg>
-                {{ isObserverCtx() ? ('OBSERVERS.DETAIL.VIEW_PLAYERS' | translate) : ('COACHES.DETAIL.VIEW_PLAYERS' | translate) }}
-              </a>
+              @if (!isProScoutCtx()) {
+                <a [routerLink]="dashboardLink()" class="btn btn-secondary btn-sm w-full">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                  </svg>
+                  {{ 'COACHES.DETAIL.VIEW_DASHBOARD' | translate }}
+                </a>
+                <a [routerLink]="['/players']" [queryParams]="playersQueryParams()" class="btn btn-secondary btn-sm w-full">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                  </svg>
+                  {{ isObserverCtx() ? ('OBSERVERS.DETAIL.VIEW_PLAYERS' | translate) : ('COACHES.DETAIL.VIEW_PLAYERS' | translate) }}
+                </a>
+              }
               @if (isObserverCtx()) {
                 <a [routerLink]="['/observer-evaluations']" [queryParams]="{ observer: user()!._id }" class="btn btn-secondary btn-sm w-full">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -390,8 +392,10 @@ export class UserDetailComponent implements OnInit, OnDestroy {
   // Route tells us up-front whether we're in the Observers area; user().role confirms it
   // once loaded (covers the rare case of navigating to /users/:id for an observer record).
   private readonly routeIsObserver = this.router.url.startsWith('/observers');
+  private readonly routeIsProScout = this.router.url.startsWith('/professional-league');
   readonly isObserverCtx = computed(() => this.routeIsObserver || this.user()?.role === 'observer');
-  readonly isCoachCtx = computed(() => !this.isObserverCtx() && this.user()?.role === 'coach');
+  readonly isProScoutCtx = computed(() => !this.isObserverCtx() && (this.routeIsProScout || this.user()?.role === 'proScout'));
+  readonly isCoachCtx = computed(() => !this.isObserverCtx() && !this.isProScoutCtx() && this.user()?.role === 'coach');
 
   playersQueryParams() {
     const id = this.user()!._id;
@@ -407,6 +411,7 @@ export class UserDetailComponent implements OnInit, OnDestroy {
     const role = this.user()!.role;
     if (role === 'admin') return 'bg-purple-100 text-purple-700';
     if (role === 'observer') return 'bg-indigo-100 text-indigo-700';
+    if (role === 'proScout') return 'bg-pink-100 text-pink-700';
     return 'bg-green-100 text-green-700';
   }
 
@@ -419,7 +424,7 @@ export class UserDetailComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.loading.set(false);
-        this.router.navigate([this.isObserverCtx() ? '/observers' : '/users']);
+        this.router.navigate([this.isObserverCtx() ? '/observers' : (this.isProScoutCtx() ? '/professional-league' : '/users')]);
       },
     });
   }

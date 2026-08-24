@@ -31,6 +31,11 @@ export const routes: Routes = [
         loadChildren: () => import('./features/profile/profile.routes').then(m => m.profileRoutes),
       },
       {
+        path: 'professional-league',
+        loadChildren: () => import('./features/professional-league/professional-league.routes').then(m => m.professionalLeagueRoutes),
+        canActivate: [roleGuard(['admin'])],
+      },
+      {
         path: 'age-groups',
         loadChildren: () => import('./features/age-groups/age-groups.routes').then(m => m.ageGroupRoutes),
         canActivate: [roleGuard(['admin'])],

@@ -158,7 +158,9 @@
               {
                 "$ref": "#/components/schemas/AgeGroup"
               }
-            ]
+            ],
+            "nullable": true,
+            "description": "Absent for league: \"professional\" teams (Stage 13)"
           },
           "league": {
             "type": "string",
@@ -605,6 +607,12 @@
               "totalCoaches": {
                 "type": "integer"
               },
+              "totalObservers": {
+                "type": "integer"
+              },
+              "totalProScouts": {
+                "type": "integer"
+              },
               "totalMatchesPlayed": {
                 "type": "integer"
               },
@@ -861,7 +869,8 @@
           },
           "ageGroup": {
             "type": "string",
-            "description": "AgeGroup id (populated on read)"
+            "nullable": true,
+            "description": "AgeGroup id (populated on read); absent for league: 'professional' fixtures (Stage 13)"
           },
           "season": {
             "type": "string",

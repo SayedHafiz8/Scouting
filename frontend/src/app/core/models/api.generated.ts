@@ -3907,7 +3907,8 @@ export interface components {
         Team: {
             _id?: string;
             name?: string;
-            ageGroup?: string | components["schemas"]["AgeGroup"];
+            /** @description Absent for league: "professional" teams (Stage 13) */
+            ageGroup?: (string | components["schemas"]["AgeGroup"]) | null;
             /** @enum {string} */
             league?: "premier" | "professional";
             clubName?: string;
@@ -4045,6 +4046,8 @@ export interface components {
         AdminDashboard: components["schemas"]["CoachDashboard"] & {
             totalMedia?: number;
             totalCoaches?: number;
+            totalObservers?: number;
+            totalProScouts?: number;
             totalMatchesPlayed?: number;
             topCoaches?: components["schemas"]["TopCoach"][];
         };
@@ -4129,8 +4132,8 @@ export interface components {
         };
         SeasonMatch: {
             _id?: string;
-            /** @description AgeGroup id (populated on read) */
-            ageGroup?: string;
+            /** @description AgeGroup id (populated on read); absent for league: 'professional' fixtures (Stage 13) */
+            ageGroup?: string | null;
             /** @example 2025/2026 */
             season?: string;
             /**

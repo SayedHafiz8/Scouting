@@ -37,8 +37,8 @@ function passwordMatchValidator(control: AbstractControl) {
     <div class="max-w-xl mx-auto space-y-5">
 
       <nav class="flex items-center gap-2 text-sm" style="color:var(--text-muted)">
-        <a [routerLink]="isObserverCtx() ? '/observers' : '/users'" class="hover:text-primary-600">
-          {{ (isObserverCtx() ? 'OBSERVERS.TITLE' : 'COACHES.TITLE') | translate }}
+        <a [routerLink]="isObserverCtx() ? '/observers' : (isProScoutCtx() ? '/professional-league' : '/users')" class="hover:text-primary-600">
+          {{ (isObserverCtx() ? 'OBSERVERS.TITLE' : (isProScoutCtx() ? 'PROFESSIONAL_LEAGUE.TITLE' : 'COACHES.TITLE')) | translate }}
         </a>
         <span>/</span>
         <span style="color:var(--text-primary)">{{ formTitleKey() | translate }}</span>
@@ -211,7 +211,7 @@ function passwordMatchValidator(control: AbstractControl) {
             <button type="submit" class="btn btn-primary" [disabled]="loading()">
               {{ loading() ? ('COACHES.FORM.SAVING' | translate) : (isEdit() ? ('COACHES.FORM.SAVE' | translate) : ('COACHES.FORM.ADD_BTN' | translate)) }}
             </button>
-            <a [routerLink]="isObserverCtx() ? '/observers' : '/users'" class="btn btn-secondary">{{ 'COMMON.CANCEL' | translate }}</a>
+            <a [routerLink]="isObserverCtx() ? '/observers' : (isProScoutCtx() ? '/professional-league' : '/users')" class="btn btn-secondary">{{ 'COMMON.CANCEL' | translate }}</a>
           </div>
         </form>
       </div>
@@ -236,6 +236,7 @@ export class UserFormComponent implements OnInit {
   readonly loading = signal(false);
   readonly isEdit = signal(false);
   readonly isObserverCtx = signal(false);
+  readonly isProScoutCtx = signal(false);
   readonly imagePreview = signal<string | null>(null);
   readonly idCardFrontPreview = signal<string | null>(null);
   readonly idCardBackPreview = signal<string | null>(null);
@@ -336,13 +337,16 @@ export class UserFormComponent implements OnInit {
   }
 
   formTitleKey(): string {
-    const group = this.isObserverCtx() ? 'OBSERVERS' : 'COACHES';
+    const group = this.isObserverCtx() ? 'OBSERVERS' : (this.isProScoutCtx() ? 'PROSCOUTS' : 'COACHES');
     return `${group}.FORM.${this.isEdit() ? 'EDIT_TITLE' : 'ADD_TITLE'}`;
   }
 
   ngOnInit(): void {
-    // Keep the observer-context flag in sync with the selected role
-    this.form.get('role')!.valueChanges.subscribe(r => this.isObserverCtx.set(r === 'observer'));
+    // Keep the observer/proScout-context flags in sync with the selected role
+    this.form.get('role')!.valueChanges.subscribe(r => {
+      this.isObserverCtx.set(r === 'observer');
+      this.isProScoutCtx.set(r === 'proScout');
+    });
 
     this.userId = this.route.snapshot.paramMap.get('userId') ?? '';
     if (this.userId) {
@@ -363,6 +367,7 @@ export class UserFormComponent implements OnInit {
           });
           this.syncDobPartsFromControl(birthDate);
           this.isObserverCtx.set(u.role === 'observer');
+          this.isProScoutCtx.set(u.role === 'proScout');
           if (u.profileImg) this.imagePreview.set(u.profileImg);
           // ملاحظة: صور البطاقة الشخصية محمية بباسورد الخزنة ومش بترجع مع بيانات اليوزر العادية،
           // فمعاينتها هنا بتفضل فاضية إلا لو الأدمن رفع صورة جديدة في نفس الجلسة
@@ -371,9 +376,10 @@ export class UserFormComponent implements OnInit {
     } else {
       // Preselect role from query param (e.g. coming from the Observers page)
       const roleParam = this.route.snapshot.queryParamMap.get('role');
-      if (roleParam === 'observer' || roleParam === 'admin' || roleParam === 'coach') {
+      if (roleParam === 'observer' || roleParam === 'admin' || roleParam === 'coach' || roleParam === 'proScout') {
         this.form.patchValue({ role: roleParam });
         this.isObserverCtx.set(roleParam === 'observer');
+        this.isProScoutCtx.set(roleParam === 'proScout');
       }
       this.form.get('password')?.setValidators([Validators.required, Validators.minLength(8)]);
       this.form.get('passwordConfirm')?.setValidators(Validators.required);
@@ -416,10 +422,12 @@ export class UserFormComponent implements OnInit {
       ? this.userService.update(this.userId, { name: v.name!, email: v.email!, phoneNumber: v.phoneNumber || undefined, address: v.address || undefined, birthDate: v.birthDate || undefined, role: v.role as any })
       : this.userService.create({ name: v.name!, email: v.email!, password: v.password!, passwordConfirm: v.passwordConfirm!, phoneNumber: v.phoneNumber || undefined, address: v.address || undefined, birthDate: v.birthDate || undefined, role: v.role as any });
 
-    // Observers belong to their own page; coaches/admins go back to the users area
+    // Observers/proScouts belong to their own pages; coaches/admins go back to the users area
     const dest = (targetId?: string): any[] =>
       v.role === 'observer'
         ? ['/observers']
+        : v.role === 'proScout'
+        ? ['/professional-league']
         : (targetId ? ['/users', targetId] : ['/users']);
 
     req$.subscribe({

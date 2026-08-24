@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideTranslateService, TranslateService } from '@ngx-translate/core';
@@ -98,5 +98,32 @@ describe('UserFormComponent — role selector (FR-017)', () => {
     comp.form.get('role')!.setValue('proScout');
     fixture.detectChanges();
     expect(comp.isObserverCtx()).toBeFalse();
+  });
+});
+
+// Stage 13 (US1, R2) — /professional-league/pro-scouts/new?role=proScout must preselect
+// the role and redirect to /professional-league on submit, mirroring how ?role=observer
+// already works for /observers/new.
+describe('UserFormComponent — proScout query param (Stage 13)', () => {
+  it('?role=proScout preselects the proScout role and sets proScout context', async () => {
+    const comp = await setup({}, { role: 'proScout' });
+    expect(comp.form.get('role')!.value).toBe('proScout');
+    expect(comp.isProScoutCtx()).toBeTrue();
+    expect(comp.isObserverCtx()).toBeFalse();
+  });
+
+  it('submitting a proScout creation redirects to /professional-league', async () => {
+    const comp = await setup({}, { role: 'proScout' });
+    const router = TestBed.inject(Router);
+    const navigateSpy = spyOn(router, 'navigate').and.resolveTo(true);
+    const userService = TestBed.inject(UserService) as unknown as { create: jasmine.Spy };
+    userService.create.and.returnValue(of({ status: 'success', data: { document: { _id: 'ps1' } } }));
+
+    comp.form.patchValue({
+      name: 'Scout One', email: 's1@test.com', password: 'password1', passwordConfirm: 'password1', role: 'proScout',
+    });
+    comp.submit();
+
+    expect(navigateSpy).toHaveBeenCalledWith(['/professional-league']);
   });
 });

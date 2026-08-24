@@ -827,3 +827,191 @@ proScout لسه يقدر يعمل create/patch للاعب على أي فريق �
 ومابقاش عند الأدمن طريق مقصود يوصلهم بيه — الطريق الوحيد اللي كان شغال كان بالصدفة (عدسة "بدون كوتش"،
 أثر جانبي لقرار R14 في المرحلة 4). التفاصيل والتنفيذ الكامل في `specs/006-admin-professional-lens/`
 و`PR-DESCRIPTION.md` بتاعتها.
+
+---
+
+## المرحلة 13 — صفحة إدارة دوري المحترفين للأدمن + عدد proScouts في الداشبورد
+
+**هذا القسم مبني على فحص الكود الفعلي (2026-08-23) قبل أي `/speckit-specify`.** يحل جزئياً
+Backlog البند رقم 1 المسجّل فوق ("صفحة المدربين تعرض الكوتشز والـproScouts مع بعض") — القرار هنا:
+proScouts ياخدوا صفحة/قايمة مستقلة جوه المكان الجديد ده، مش يتدمجوا في `/users`.
+
+### القرار المحسوم (من المالك)
+
+| البند | القرار |
+|---|---|
+| القائمة الجانبية | عنصر جديد "دوري المحترفين" بعد "المتابعون" وقبل "الفئات العمرية" |
+| محتوى الصفحة | إدارة proScouts + إدارة فرق دوري المحترفين + إدارة مباريات دوري المحترفين — مكان واحد |
+| داشبورد الأدمن | كارد "المدربون/المتابعون" الحالي يتوسّع لعمود تالت "proScouts" في نفس الكارد |
+| مستوى التصميم | احترافي، متسق تماماً مع هوية النظام القائمة — جزء أصيل من التصميم مش ملحق |
+
+### نتائج الفحص الفعلي (الأسئلة الخمسة)
+
+**1. كارد "المدربون/المتابعون" — البنية التقنية وسهولة الإضافة**
+
+مش مكوّن مشترك — HTML مكتوب يدوياً جوه
+[`admin-dashboard.component.ts:83-106`](../frontend/src/app/features/dashboard/admin-dashboard/admin-dashboard.component.ts#L83-L106)،
+كارد واحد بعمودين (`flex` + فاصل رأسي واحد `width:1px`) بياخد قيمته من
+`AdminDashboard.totalCoaches`/`totalObservers`. المصدر:
+[`dashboardController.js:102-103`](../Backend/controllers/dashboardController.js#L102-L103) —
+سطرين `User.countDocuments({ role: ROLES.COACH })` / `role: ROLES.OBSERVER` جوه
+`computeAdminDashboardData`. إضافة `totalProScouts` **بسيطة فعلياً على الباك إند** (سطر
+`countDocuments({ role: ROLES.PRO_SCOUT })` واحد + حقل في schema
+[`swagger.js` `AdminDashboard`](../Backend/utils/swagger.js#L228-L241) + `dump-spec`/`gen:types`،
+بنفس نمط المرحلة 12 بالظبط). على الفرونت إند: **مش "ضيف كارد" — لازم تعديل تخطيط** الكارد الحالي
+من عمودين لتلاتة (فاصل تاني بدل الواحد)، لأنه مش `app-stat-card` قابل للتكرار، هو تخطيط يدوي
+bespoke. تعديل محدود ومحصور في نفس الملف، مش إعادة بناء.
+
+**2. إدارة فرق professional — موجودة فعلاً ولا لأ**
+
+**موجودة وشغّالة بالفعل، لكن مش في صفحة مستقلة.** كل منطق إدارة الفرق (قايمة + إنشاء + حذف) +
+إدارة المباريات (قايمة + إنشاء + تعديل + نتيجة) لدوري كامل، بما فيه toggle صريح
+`premier`/`professional` شغّال دلوقتي، موجود جوه
+[`age-group-detail.component.ts`](../frontend/src/app/features/age-groups/age-group-detail/age-group-detail.component.ts)
+(٩٠٧ سطر) — مقفول تحت مسار فئة عمرية معيّنة (`/age-groups/:id`). `TeamService`
+([`team.service.ts`](../frontend/src/app/features/teams/services/team.service.ts)) عنده
+`getAll`/`getOne`/`create`/`delete` بس، **مفيش `update`** حالياً — الحذف والإنشاء بس هما القائمين.
+
+⚠️ **فجوة نموذج بيانات حقيقية، لازم تتحسم قبل الكتابة:** `Team.ageGroup` **required** في
+[`teamModel.js:9-13`](../Backend/models/teamModel.js#L9-L13) — حتى لفرق دوري المحترفين اللي
+مفهوم الفئة العمرية أصلاً مش بيخصها. الصفحة الحالية بتلفّ حول ده بإن الأدمن بيبقى بالفعل جوه
+صفحة فئة عمرية معيّنة وقت الإنشاء، فالفريق المحترف بياخد ageGroup الصفحة دي بالصدفة، مش باختيار
+له معنى. الصفحة الجديدة (بدون سياق فئة عمرية) لازم تحسم: تختار ageGroup افتراضي/canonical تلقائياً
+من غير ما يشوفه الأدمن، ولا لسه يُطلب منه يختاره رغم إنه مايعنيش حاجة لفريق محترف؟ ده سؤال
+`[NEEDS CLARIFICATION]` حقيقي، مش تفصيلة تنفيذ.
+
+الخلاصة: **إعادة استخدام منطقي (نفس `TeamService`/`SeasonMatchService`، نفس نمط الـtoggle)، مش
+بناء من الصفر** — لكن مش "drop-in" حرفي لأن الكومبوننت الحالي مربوط بـ`ageGroupId` من الراوت في
+كل سطر تقريباً؛ الاستخلاص لصفحة مستقلة قرار تصميم يتاخد وقت `/speckit-plan`.
+
+**3. إدارة proScouts — موجودة في صفحة Users العامة ولا لأ**
+
+**مفيش صفحة "Users عامة" أصلاً.** `features/users` مبنية حصراً للكوتشز — الفلتر
+`role: 'coach'` [مكتوب حرفي في `user-list.component.ts:162`](../frontend/src/app/features/users/user-list/user-list.component.ts#L162)،
+وزر "إدارة الكوتشز" في الداشبورد بيودّي عليها. `features/observers` نسخة موازية مستقلة تماماً
+لنفس النمط. **مفيش `features/pro-scouts` خالص.**
+
+لكن — **إعادة الاستخدام هنا أعلى ثقة من الفرق/المباريات**: `UserFormComponent` بالفعل
+[بيدعم `role=proScout` صراحة](../frontend/src/app/features/users/user-form/user-form.component.ts#L18)
+(`ROLE_OPTIONS` من المرحلة 4) وبيقرا `?role=` من الـquery param بالظبط زي ما
+`ObserverListComponent` بيعمل (`/observers/new?role=observer`)، و`UserService`/`UserDetailComponent`
+مش مربوطين برول معيّن أصلاً. يعني صفحة قايمة proScouts = نسخة شبه طبق الأصل من
+[`observer-list.component.ts`](../frontend/src/app/features/observers/observer-list/observer-list.component.ts)
+(نفس `UserService`, نفس `UserFormComponent` عبر `/pro-scouts/new?role=proScout`, نفس
+`UserDetailComponent`) — مكوّن واحد جديد بس، صفر تعديل على النموذج أو التفاصيل.
+
+**4. إنشاء SeasonMatch — من فين وإزاي، وفيه فورم يتعاد استخدامه**
+
+نفس مكان الفرق بالظبط — جوه `age-group-detail.component.ts`، فورم كامل (season/league/matchDate/
+homeTeam/awayTeam/venue) + تعديل + تسجيل نتيجة، عبر `SeasonMatchService`، مقفول بنفس قيد
+`ageGroupId` وبنفس toggle الدوري. نفس خلاصة بند (2): إعادة استخدام منطقي للـservice والنمط، مش
+نسخ-لصق للكومبوننت كامل بسبب الربط بمسار الفئة العمرية.
+
+**5. مراجعة design tokens (skill الـfrontend-design)**
+
+**مفيش skill بالاسم ده بالظبط** في القايمة المتاحة — الأقرب `ui-ux-pro-max` (design
+review/build). ماستدعيتوش لأن المهمة دلوقتي بحث مش بناء، وبدل كده قريت
+[`frontend/src/styles.scss`](../frontend/src/styles.scss) مباشرة — المشروع عنده **نظام design
+tokens موثّق ذاتياً بالفعل** (تعليق header صريح "TALENT RADAR — Design System"):
+
+- ألوان عبر CSS custom properties، dark-first (`:root`) + override بـ`[data-theme="light"]` —
+  `--bg-card`, `--text-primary/secondary/muted`, `--border-color/subtle`, `--accent` (كهرماني)،
+  ألوان badges جاهزة لكل حالة لاعب (`--badge-selected/pending/rejected/observed-*`).
+  Primary=أخضر (اكتشاف)، Accent=كهرماني (تميّز)، Danger=وردي/rose (رفض) — موثّقين بالاسم في
+  الملف نفسه.
+  - **ملاحظة مباشرة الصلة بالمرحلة دي**: الكارد الحالي (بند 1) بيستخدم لون وردي (`#f472b6` /
+    `rgba(236,72,153,…)`) مش أي من الألوان التلاتة الموثّقة دول. **[محسوم — قرار مالك
+    2026-08-23]**: يتساب زي ما هو، ونفس اللون الوردي ده يتاخد لعمود proScouts الجديد كمان —
+    التلات أرقام في نفس الكارد بنفس اللون، بدون أي لون رابع جديد ولا اشتقاق من لوحة الحالة.
+  - خط: `Inter` (لاتيني) + `Cairo` (عربي) مع font-feature-settings.
+  - كارت أساسي (`.card`): `border-radius:14px`, `backdrop-filter:blur(12px)`,
+    `box-shadow:var(--shadow-card)`, transition موحّد على 4 خواص.
+  - `.form-input` مع focus عبر `--input-focus-border` + `--shadow-glow`، و`*:focus-visible`
+    عام (outline 2px + offset).
+  - حركة hover قياسية على كروت القوايم: `transform:scale(1.015)` على `mouseenter/leave` بـ
+    `cubic-bezier(0.16,1,0.3,1)` (مستخدمة في `observer-list.component.ts` وغيرها).
+  - خلفية ثابتة (ملعب كرة قدم SVG + "stadium glow" متحرك)، محترمة لـ
+    `prefers-reduced-motion: reduce`.
+
+ده مرجع أقوى من إرشاد skill عام، لأنه المصدر الفعلي اللي أي تصميم جديد المفروض يتّسق معاه.
+**[محسوم — قرار مالك 2026-08-23]**: `ui-ux-pro-max` (مش "frontend-design" — الاسم الدقيق
+للـskill المتاح) يُستدعى لمراجعة معايير التصميم قبل أي شغل UI فعلي في `/speckit-implement`، فوق
+مرجع `styles.scss` أعلاه مش بدل منه.
+
+### القرارات النهائية (owner sign-off، 2026-08-23) — بديلة لأسئلة `/speckit-clarify` التلاتة
+
+1. **`Team.ageGroup` لفرق دوري المحترفين**: **يُمسح تماماً، مش قيمة وهمية** — بنفس نمط
+   `Player.isProfessional` من المرحلة 4b
+   ([`playedModel.js:207-237`](../Backend/models/playedModel.js#L207-L237)): الحقل مش
+   `required` على مستوى الـschema أصلاً (`ageGroup` بدون `required:true`،
+   [سطر 38-42](../Backend/models/playedModel.js#L38-L42))، والإلزام بيتطبّق برمجياً جوه
+   `pre('save')` — لو `isProfessional` بيتخطّى الاشتقاق ويمسح `this.ageGroup = undefined`
+   صراحة. `teamModel.js` [الحالي](../Backend/models/teamModel.js#L9-L13) عكس كده: `ageGroup`
+   `required: true` على مستوى الـschema. المطلوب: نفس القلب — يتشال `required: true` من تعريف
+   الحقل، ويتضاف `pre('save')`/`pre('findOneAndUpdate')` بمنطق مطابق (`league === 'professional'`
+   → `ageGroup = undefined`؛ غير كده → يفضل مطلوب زي ما هو دلوقتي، فحص صريح لا استنتاج).
+   **أثر على بيانات قائمة**: فرق professional موجودة دلوقتي عندها قيمة `ageGroup` بالصدفة (من
+   أي صفحة فئة عمرية اتعمل جواها الفريق حالياً) — القرار يقتضي مسحها هي كمان لتطابق نفس القاعدة
+   بعد التنفيذ، مش بس منعها مستقبلاً؛ تفاصيل الـmigration (backfill unset) تُحسم وقت
+   `/speckit-plan`، مش هنا.
+2. **لون عمود proScouts في كارد الداشبورد**: نفس اللون الوردي غير الموثّق المستخدم بالفعل
+   لعمودي Coaches/Observers (`#f472b6` / `rgba(236,72,153,…)`) — التلات أعمدة بنفس اللون، بدون
+   أي تغيير على اللون الحالي وبدون توسيع نظام الألوان الموثّق في `styles.scss`.
+3. **مراجعة التصميم**: `ui-ux-pro-max` (اسمه بالظبط، مش "frontend-design") يُستدعى قبل أي شغل UI
+   في هذه المرحلة.
+
+بنية الصفحة الجديدة (تبويبات مقابل أقسام عمودية) واستخلاص منطق الفرق/المباريات من
+`age-group-detail.component.ts` لمكوّن مشترك يتساببوا لتقدير `/speckit-plan` — مش قرارات نطاق أو
+أمان تستاهل دورة `/speckit-clarify` منفصلة.
+
+```
+/speckit-specify
+
+صفحة إدارة دوري المحترفين للأدمن + عدد proScouts في داشبورد الأدمن.
+
+1. القائمة الجانبية (sidebar.component.ts NAV_ITEMS): عنصر جديد "دوري
+   المحترفين" (route جديد، admin فقط) بين "المتابعون" و"الفئات العمرية".
+   Route guard صريح (roleGuard(['admin'])) بنفس نمط باقي عناصر الأدمن.
+
+2. الصفحة الجديدة: إدارة proScouts (قايمة + إنشاء + عرض تفاصيل، بإعادة
+   استخدام UserService/UserFormComponent[role=proScout]/UserDetailComponent
+   زي ObserverListComponent بالظبط) + إدارة فرق دوري المحترفين (قايمة +
+   إنشاء + حذف عبر TeamService، مسكوبة league=professional) + إدارة مباريات
+   دوري المحترفين (قايمة + إنشاء + تعديل + نتيجة عبر SeasonMatchService،
+   مسكوبة league=professional) — نفس المنطق الموجود جوه
+   age-group-detail.component.ts لكن بدون قفل على ageGroupId معيّن.
+
+3. داشبورد الأدمن: أضف totalProScouts للباك إند (computeAdminDashboardData
+   في dashboardController.js، نفس نمط totalCoaches/totalObservers +
+   AdminDashboard schema في swagger.js + dump-spec/gen:types)، ووسّع كارد
+   "المدربون/المتابعون" الحالي (admin-dashboard.component.ts:83-106) لعمود
+   تالت "proScouts" بنفس اللون الوردي الحالي (#f472b6) — تعديل تخطيط
+   الكارد اليدوي الحالي، مش مكوّن جديد، وبدون أي لون رابع جديد.
+
+4. Team.ageGroup لفرق دوري المحترفين: يُمسح تماماً (undefined)، بنفس نمط
+   Player.isProfessional (playedModel.js:207-237) — شيل required:true من
+   تعريف الحقل في teamModel.js، وأضف pre('save')/pre('findOneAndUpdate')
+   يمسح ageGroup صراحة لو league === 'professional'، ويفضل يطلبه صراحة
+   (فحص، لا استنتاج) لغير كده. فرق professional قائمة عندها ageGroup
+   بالصدفة دلوقتي — يتحسم مسار الـmigration (backfill unset) هنا.
+
+5. لا تغيير على سلوك /age-groups أو /users أو /observers القائمة — الصفحة
+   الجديدة إضافة صافية.
+
+معايير القبول:
+- عنصر "دوري المحترفين" ظاهر للأدمن بس، بين "المتابعون" و"الفئات العمرية"
+  بالترتيب المطلوب بالضبط.
+- إنشاء/عرض proScout من الصفحة الجديدة يعمل بنفس UserFormComponent القائم،
+  بدون أي تكرار كود للفورم.
+- إنشاء/حذف فريق professional وإنشاء/تعديل مباراة professional من الصفحة
+  الجديدة يعملوا بنفس الـservices القائمة، مسكوبين league=professional فقط.
+- فريق professional جديد يتحفظ بدون ageGroup (undefined)، مش قيمة وهمية —
+  وفريق premier لسه لازم ageGroup صراحة زي ما هو دلوقتي (regression).
+- كارد الداشبورد يعرض تلات أعمدة (Coaches/Observers/ProScouts) بنفس اللون
+  الوردي الحالي وبأرقام صحيحة، وباقي كروت الداشبورد لم تتغير.
+- التصميم البصري يستخدم design tokens الموجودة في styles.scss فقط، ومراجَع
+  عبر ui-ux-pro-max قبل التنفيذ، ومتسق مع نمط الـhover/focus/transitions
+  القائم.
+- regression كامل على /age-groups (الفرق والمباريات هناك لسه شغالة زي ما
+  هي، بما فيها فرق premier اللي لسه محتاجة ageGroup) و/users و/observers.
+```

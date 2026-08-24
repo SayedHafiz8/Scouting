@@ -185,6 +185,7 @@
     "PROFILE": "Profile",
     "OBSERVED": "Observed",
     "OBSERVERS": "Observers",
+    "PROFESSIONAL_LEAGUE": "Professional League",
     "MY_MATCHES": "My Matches"
   },
   "HEADER": {
@@ -806,6 +807,27 @@
     "DETAIL": {
       "VIEW_PLAYERS": "View Assigned Players"
     }
+  },
+  "PROSCOUTS": {
+    "TITLE": "ProScouts",
+    "SUBTITLE": "Registered professional-league scouts",
+    "ADD": "Add proScout",
+    "ROLE_BADGE": "ProScout",
+    "EMPTY": "No proScouts yet",
+    "EMPTY_MSG": "Add a proScout to start covering the professional league.",
+    "DEACTIVATE_TITLE": "Deactivate proScout",
+    "DEACTIVATE_MSG": "Are you sure you want to deactivate {{name}}?",
+    "FORM": {
+      "ADD_TITLE": "Add New ProScout",
+      "EDIT_TITLE": "Edit ProScout"
+    }
+  },
+  "PROFESSIONAL_LEAGUE": {
+    "TITLE": "Professional League",
+    "SUBTITLE": "Manage proScouts, teams, and fixtures for the professional league in one place",
+    "PROSCOUTS_SECTION": "ProScouts",
+    "TEAMS_SECTION": "Teams",
+    "MATCHES_SECTION": "Matches"
   },
   "UNAUTHORIZED": {
     "TITLE": "Access not authorized",

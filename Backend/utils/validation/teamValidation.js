@@ -36,6 +36,13 @@ export const createValidate = [
         .isIn(LEAGUES).withMessage("league must be either 'premier' or 'professional'"),
 
     check().custom(async (_, { req }) => {
+        // Stage 13 — فرق دوري المحترفين مالهاش فئة عمرية (نفس نمط Player.isProfessional):
+        // الفحص ده بالكامل بيتخطّى لـleague: "professional"، وTeam.ageGroup's pre('save')
+        // هو المرجع النهائي اللي بيمسح الحقل فعلياً.
+        if (req.body.league === 'professional') {
+            return true;
+        }
+
         const ageGroupId = req.body.ageGroup || req.params.id;
 
         if (!ageGroupId) {

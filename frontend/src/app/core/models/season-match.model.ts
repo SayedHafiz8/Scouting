@@ -54,7 +54,7 @@ export interface SeasonMatchResult {
 
 export interface SeasonMatch {
   _id: string;
-  ageGroup: AgeGroup | string;
+  ageGroup?: AgeGroup | string;
   season: string;
   league: SeasonMatchLeague;
   matchDate: string;
@@ -79,7 +79,7 @@ export interface SeasonMatchStatusPayload {
 }
 
 export interface SeasonMatchPayload {
-  ageGroup: string;
+  ageGroup?: string;
   season: string;
   league: SeasonMatchLeague;
   matchDate: string;

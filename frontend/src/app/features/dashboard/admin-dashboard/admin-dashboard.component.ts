@@ -80,7 +80,7 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
               iconBg="rgba(99,102,241,0.18)"  iconColor="#818cf8"/>
             <app-stat-card [label]="'DASHBOARD.MEDIA' | translate"         [value]="adminData()!.totalMedia"   iconName="media"
               iconBg="rgba(14,165,233,0.18)"  iconColor="#38bdf8"/>
-            <div class="card overflow-hidden relative h-full" role="group" [attr.aria-label]="('NAV.COACHES' | translate) + ': ' + adminData()!.totalCoaches + ', ' + ('NAV.OBSERVERS' | translate) + ': ' + adminData()!.totalObservers">
+            <div class="card overflow-hidden relative h-full" role="group" [attr.aria-label]="('NAV.COACHES' | translate) + ': ' + adminData()!.totalCoaches + ', ' + ('NAV.OBSERVERS' | translate) + ': ' + adminData()!.totalObservers + ', ' + ('NAV.PROFESSIONAL_LEAGUE' | translate) + ' ' + ('PROSCOUTS.TITLE' | translate) + ': ' + adminData()!.totalProScouts">
               <div class="h-0.5 w-full" style="background:#f472b6"></div>
               <div aria-hidden="true" style="position:absolute;top:-20px;right:-10px;width:90px;height:90px;border-radius:50%;filter:blur(28px);pointer-events:none;opacity:0.5;background:rgba(236,72,153,0.22)"></div>
               <div class="p-5 flex flex-col gap-4 h-full">
@@ -100,6 +100,11 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
                   <div class="flex-1 min-w-0">
                     <p class="text-xs font-semibold uppercase tracking-widest mb-1.5" style="color:var(--text-muted)">{{ 'NAV.OBSERVERS' | translate }}</p>
                     <p class="text-3xl font-bold leading-none tabular-nums" style="color:var(--text-primary)">{{ adminData()!.totalObservers }}</p>
+                  </div>
+                  <div aria-hidden="true" style="width:1px;align-self:stretch;background:var(--border-subtle)"></div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs font-semibold uppercase tracking-widest mb-1.5" style="color:var(--text-muted)">{{ 'PROSCOUTS.TITLE' | translate }}</p>
+                    <p class="text-3xl font-bold leading-none tabular-nums" style="color:var(--text-primary)">{{ adminData()!.totalProScouts }}</p>
                   </div>
                 </div>
               </div>

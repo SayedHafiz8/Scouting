@@ -1,83 +1,66 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.2 → 1.1.0
-Bump rationale: MINOR, by owner decision. Constraint C-4's player-scope shape — previously
-locked as "the only approved definition" — is replaced outright, not extended: the
-professional-league-team branch is removed entirely, leaving `{ createdBy: <userId> }`
-alone. This is a materially different access boundary for `proScout` (narrower, not
-wider), not a wording clarification, so PATCH does not fit; it is not a removal or
-incompatible redefinition of a Core Principle (I–VII unchanged), so MAJOR does not fit
-either. MINOR is the closest fit under "توسيع جوهري في الإرشاد" (substantial expansion/
-revision of binding guidance) even though this instance narrows rather than adds.
-
-  ⚠️ Honest note for reviewers: the v1.0.2 entry above classified a comparable C-4 edit
-  (the `isProfessional` carve-out) as PATCH, on the reasoning that it merely bounded an
-  exception the original text already implied. This edit is different in kind: it deletes
-  an entire access branch that real `proScout` users have been relying on since Stage 2,
-  changing who can see which players, not just how a field is derived. A reviewer who
-  weighs deleted-behavior-with-real-users more heavily than this document does is free to
-  treat this as the first MAJOR-caliber change to a Security & Access Control Constraint,
-  even though it does not touch Principles I–VII by name. The owner made the MINOR call
-  explicitly, aware of this argument.
-
-  This narrows rather than weakens Principle II (deny-by-default): fewer players are
-  visible to `proScout` after this change, not more. It does not touch Principles I, III,
-  or IV's wording or force, so the "documented security review + explicit owner approval"
-  clause for weakening I–IV is not the applicable gate here — but because the change is a
-  binding constraint on data scoping, it still went through explicit owner sign-off
-  (`specs/011-proscout-createdby-scope/spec.md`) before this amendment, by the same
-  standard the clause exists to protect.
+Version change: 1.1.0 → 1.2.0
+Bump rationale: MINOR, by owner decision. Constraint C-4's `SeasonMatch.ageGroup` clause —
+previously locked as `required: true` "بلا استثناء... هذا الاستثناء يخص Player وحده" (no
+exception, Player's is the only one) — gains a second, narrowly-scoped exception for
+professional-league fixtures, mirroring the existing `Player.isProfessional` mechanism
+exactly. This is a materially binding constraint change (a MUST NOT that forbade this exact
+shape is now permitted, under explicit conditions), not a wording clarification, so PATCH
+does not fit; it adds to and narrowly qualifies existing guidance rather than removing or
+incompatibly redefining a Core Principle (I–VII unchanged), so MAJOR does not fit either.
+MINOR under "توسيع جوهري في الإرشاد" (substantial expansion/revision of binding guidance),
+the same classification used for the v1.1.0 amendment.
 
 Modified principles: none (I–VII unchanged in title, wording, and force)
 
 Modified sections:
-  - Constraint C-4 — player-scope code block replaced: the `$or` (professional-league
-    team membership OR `team: null` + `createdBy`) is replaced by `{ createdBy: <userId> }`
-    alone. The "الفرع الثاني موجود لأن..." (`team: null` orphan-branch) rationale is
-    removed — there is no second branch left to explain. The season-match scope shown in
-    C-4 (`{ league: "professional" }`) is unchanged. Added an explicit note that
-    `professionalTeamIds()` / team-based scoping is NOT being removed from the system —
-    it remains required for `checkTeamScope` (write-time team-assignment validation) and
-    `GET /teams`; only its use inside the *player read scope* is removed. Recorded three
-    consequential resolved decisions from `specs/011-proscout-createdby-scope/spec.md`
-    that implementers MUST follow: (1) a `proScout`'s own authored report/media on a
-    player that falls out of scope loses access too — player scope wins over authorship;
-    (2) legacy players whose `createdBy` is not a `proScout` become permanently
-    admin-only-visible, no migration/backfill is performed; (3) the `proScout` dashboard's
-    upcoming-matches/latest-results cards intentionally stay league-wide (match scope is
-    untouched by this amendment) while player/report totals narrow to `createdBy` — a
-    documented divergence, not a defect.
+  - Constraint C-4 — the `ageGroup` sub-section is restructured from a single allowed
+    exception (`Player.isProfessional` only) to two: `Player.isProfessional` (unchanged)
+    and a new `SeasonMatch` exception for fixtures between two professional-league teams.
+    The line "`ageGroup` يبقى `required: true` على `SeasonMatch` **بلا استثناء**" is
+    removed — it is no longer true. The shared "قيود تنفيذية على الاستثناء" (binding
+    implementation constraints) block is generalized to cover both exceptions under one
+    set of rules (server-only determination, `lockField` on create+patch, scope limited to
+    the `ageGroup` derivation/requirement clause only, non-professional path unchanged and
+    regression-tested) rather than duplicating it per-entity.
+  - Constraint C-4 also gains a short, explicitly-non-binding note that `Team.ageGroup` is
+    cleared for professional-league teams (Stage 13) — recorded here for a reader's
+    completeness since it is the precondition for the `SeasonMatch` exception above, not
+    because `Team.ageGroup` was previously locked by this document (it was not named in
+    C-4 before this amendment, so clearing it needed no constitutional change).
 
 Added sections: none
 Removed sections: none
 
-Motivating context: Stage 2's team-based branch let any `proScout` see and act on any
-player on a professional-league team, regardless of who created it — including another
-`proScout`'s players. The owner ruled this out as a data-isolation gap after Stage 7
-(hardening) shipped: `createdBy` is now the sole boundary. See
-`specs/011-proscout-createdby-scope/spec.md` and `docs/scout-pro-plan-v2.md` ("المرحلة
-11") for the full investigation of every call site this affects
-(`services/scope.js`, `middlewares/ownership.js`'s three duplicated copies of the scope
-logic, `playerController.js`, `dashboardController.js`, `scoutingReportController.js`)
-and confirmation that the admin's Professional League lens (Stage 4c,
-`specs/006-admin-professional-lens/`) and creator-name display (Stage 4d,
-`specs/010-professional-lens-creator/`) are unaffected, since the admin path never
-consults `proScout` scope.
+Motivating context: Stage 13 (`specs/013-professional-league-admin/`) decided, by owner
+sign-off, that professional-league teams should carry no `ageGroup` at all — mirroring
+`Player.isProfessional` — rather than the arbitrary value teams received by accident
+(whichever age-group page they happened to be created under) up to that point. This was
+discovered, during that stage's `/speckit-plan`, to conflict directly with this
+constitution: with `Team.ageGroup` now `undefined` for professional teams, and
+`SeasonMatch.ageGroup` still `required: true` with no exception, `teamBelongsToMatchAgeGroup`
+in `Backend/utils/validation/seasonMatchValidation.js` (`team.ageGroup.toString()`) would
+throw on every attempt to create or edit a professional-league fixture — not a hypothetical
+gap, a guaranteed crash on the exact capability that stage exists to deliver. Three options
+were presented to the owner (a single canonical placeholder `AgeGroup` for all professional
+fixtures; extending the `Player.isProfessional`-style exception to `SeasonMatch`; or asking
+the admin to still pick an `ageGroup` only for fixtures). The owner chose the second,
+explicitly by reference to the existing `Player.isProfessional`/Stage 4b precedent, over a
+canonical-placeholder workaround or a partial UI exception. See
+`specs/013-professional-league-admin/spec.md` and `docs/scout-pro-plan-v2.md` ("المرحلة 13")
+for the full investigation.
 
 Deferred items / TODOs (carried forward, unchanged):
   - TODO(AGES_UNAUTHENTICATED_READ): `GET /ages` and `GET /ages/:id` carry no `protect`
     at all. Logged as tech debt outside the plan's scope by owner decision; see C-3.
-    Confirmed still open as of Stage 4.
-  - TODO(PLAYER_OWNER_FIELD): CLOSED by Stage 2 — `Player.createdBy` now exists with a
-    backfill script. Listed here only to close the loop from v1.0.1.
-
-New deferred item:
   - No migration/backfill is planned for professional-league players whose `createdBy`
-    is not a `proScout` (pre-Stage-2 data, admin-imported, or reassigned from a coach).
-    They become permanently admin-only-visible by explicit owner decision (Option A,
-    `specs/011-proscout-createdby-scope/spec.md`). Not tracked as tech debt — this is
-    accepted final behavior, not a gap.
+    is not a `proScout` (v1.1.0, unchanged by this amendment).
+
+New deferred item: none — the professional-league `Team.ageGroup` migration (clearing the
+field on pre-existing professional-league team documents) is an implementation task tracked
+in `specs/013-professional-league-admin/`, not a constitutional deferral.
 
 Templates read at runtime (plan/spec/tasks/checklist) are unmodified by design — the
 Scope Guard limits this command to the constitution itself.
@@ -318,30 +301,56 @@ spec أو plan دون تعديل دستوري:
     `playerScopeFor`/`seasonMatchScopeFor`/`teamScopeFor`)، لا شرط فلترة يدوي في أي
     controller (Principle IV). أي نسخة يدوية مكافئة (مثل الفروع المقارَنة في الذاكرة
     داخل `middlewares/ownership.js`) MUST تتزامن معها في نفس التغيير، لا تنحرف عنها.
-  - `ageGroup` يبقى `required: true` على `SeasonMatch` ومشتقاً إجبارياً على `Player`.
-    التعريف أعلاه MUST NOT يُفهَم كإذن بإزالته أو تجاوزه — الرول الجديد يُمنَع من
-    *قراءة* بيانات الفئات العمرية، والحقل نفسه يبقى قائماً في المخطط.
+  - `ageGroup` يبقى `required: true` على `SeasonMatch` ومشتقاً إجبارياً على `Player`،
+    إلا في الاستثناءين المحصورين تحت. التعريف أعلاه MUST NOT يُفهَم كإذن بإزالته أو
+    تجاوزه بشكل عام — الرول الجديد يُمنَع من *قراءة* بيانات الفئات العمرية، والحقل
+    نفسه يبقى قائماً في المخطط لكل ما عدا الاستثناءين المذكورين صراحةً.
 
-    **الاستثناء الوحيد المسموح:** لاعبون بعلامة `isProfessional: true` (لاعبو دوري
-    المحترفين اللي رول `proScout` بيكتشفهم) لا يحملون `ageGroup` إطلاقاً، لأن مفهوم
-    الفئة العمرية خاص بالناشئين حصراً وليس جزءاً من نطاق عملهم. هذا لا يُعتبر إزالة
-    أو تجاوزاً للحقل — الحقل يبقى مشتقاً إجبارياً لكل لاعب ناشئ كما هو، والاستثناء
-    محصور في هذا النوع الوحيد من اللاعبين.
+    **الاستثناءان المسموحان (`Player` — بلا تغيير، و`SeasonMatch` — جديد v1.2.0،
+    راجع Sync Impact Report أعلى الملف):**
 
-    قيود تنفيذية على الاستثناء (ملزمة، وتُقرأ كجزء منه لا كتعليق عليه):
+    1. **`Player.isProfessional`:** لاعبون بعلامة `isProfessional: true` (لاعبو دوري
+       المحترفين اللي رول `proScout` بيكتشفهم) لا يحملون `ageGroup` إطلاقاً، لأن مفهوم
+       الفئة العمرية خاص بالناشئين حصراً وليس جزءاً من نطاق عملهم. هذا لا يُعتبر إزالة
+       أو تجاوزاً للحقل — الحقل يبقى مشتقاً إجبارياً لكل لاعب ناشئ كما هو، والاستثناء
+       محصور في هذا النوع الوحيد من اللاعبين.
 
-    - `isProfessional` MUST يُحدَّد من السيرفر وحده، من رول المُنشئ وقت الإنشاء.
-      MUST يحمل `lockField` في **الإنشاء والتعديل معاً** — بدون قفل التعديل يستطيع
-      أي كوتش رفع قيد سنة الميلاد (2007→2019) عن لاعبه وتفريغ فئته العمرية بطلب
-      `PATCH` عادي.
-    - الاستثناء يشمل **بندين فقط**: مدى سنة الميلاد المسموح، واشتقاق `ageGroup`.
-      MUST NOT يُوسَّع ليشمل أي قيد آخر (الملكية، النطاق، الأقنعة، أو حراس
-      `ownership.js`) — علامة "محترف" ليست إعفاءً عاماً.
-    - مسار اللاعب الناشئ MUST يبقى مطابقاً حرفياً: نفس المدى، نفس الاشتقاق، ونفس
-      رسالة `No age group is configured` (Principle III). يُثبَت باختبار انحدار على
-      `coach`، لا بمراجعة بصرية.
-    - `ageGroup` يبقى `required: true` على `SeasonMatch` **بلا استثناء** — هذا
-      الاستثناء يخص `Player` وحده.
+    2. **`SeasonMatch` بين فريقين `league: "professional"`** (Stage 13،
+       `specs/013-professional-league-admin/`): مباراة دوري المحترفين لا تحمل
+       `ageGroup` إطلاقاً، بنفس منطق استثناء `Player` أعلاه بالضبط — الحقل مش
+       `required` على مستوى الـschema، والإلزام برمجي جوه
+       `pre('save')`/`pre('findOneAndUpdate')`: لو الفريقان `professional` يُمسح
+       `ageGroup` صراحة (`undefined`)، وغير كده يفضل مطلوباً صراحة (فحص، لا استنتاج)
+       زي ما هو تماماً. هذا لا يُعتبر إزالة أو تجاوزاً للحقل بشكل عام — مباراة دوري
+       ممتاز (`premier`) تبقى `ageGroup` بتاعها مطلوبة إجبارياً كما هي، والاستثناء
+       محصور في مباريات الدوري المحترف فقط. السبب الجذري: `Team.ageGroup` (تحت) بقى
+       `undefined` لفرق دوري المحترفين، فأي فحص تطابق `ageGroup` الفريق مع المباراة
+       (`teamBelongsToMatchAgeGroup` في `Backend/utils/validation/seasonMatchValidation.js`)
+       MUST يتخطّى الفحص ده صراحةً لمباريات الدوري المحترف — تجاهله بصمت (بترك الكود
+       يقارن `undefined` بقيمة) MUST NOT يُعتبر تنفيذاً كافياً، لأنه يحوّل الفحص لخطأ
+       تشغيل (`TypeError`) بدل قرار نطاق واضح.
+
+    قيود تنفيذية على الاستثناءين (ملزمة للاثنين معاً، وتُقرأ كجزء منهما لا كتعليق
+    عليهما):
+
+    - الحالة المؤهِّلة للاستثناء (`isProfessional` لـ`Player`، وعضوية الفريقين في
+      دوري المحترفين لـ`SeasonMatch`) MUST تُحدَّد من السيرفر وحده — لا من قيمة
+      يرسلها العميل مباشرة. MUST يحمل `lockField` أو فحص مكافئ في **الإنشاء والتعديل
+      معاً** — بدون قفل التعديل يستطيع أي مستخدم رفع القيد عن مستند قائم بطلب `PATCH`
+      عادي.
+    - كل استثناء يشمل **بند اشتقاق/إلزام `ageGroup` بس** (ولمدى سنة الميلاد في حالة
+      `Player` تحديداً). MUST NOT يُوسَّع ليشمل أي قيد آخر (الملكية، النطاق، الأقنعة،
+      أو حراس `ownership.js`) — "محترف" ليست إعفاءً عاماً لأي كيان.
+    - مسار الكيانات غير المحترفة (لاعب ناشئ، مباراة دوري ممتاز) MUST يبقى مطابقاً
+      حرفياً لسلوكه الحالي — نفس المدى/الاشتقاق ونفس رسائل الخطأ (Principle III).
+      يُثبَت باختبار انحدار صريح لكل كيان، لا بمراجعة بصرية للكود.
+
+  - **`Team.ageGroup` (Stage 13 — إضافة توضيحية، مش قيد دستوري جديد بذاته):** `Team`
+    مالهاش ذكر سابق في C-4، فمسح `ageGroup` لفرق دوري المحترفين (`league:
+    "professional"`) ما احتاجش تعديلاً دستورياً — بس مُسجَّل هنا لأنه الأساس اللي
+    استثناء `SeasonMatch` فوق مبني عليه. فرق الدوري الممتاز (`premier`) تبقى
+    `ageGroup` بتاعها مطلوبة صراحة كما هي، بنفس القيود التنفيذية فوق (تحديد سيرفر-سايد
+    فقط، `lockField`/فحص مكافئ في الإنشاء والتعديل معاً).
 
 ### القيود المعروفة (Known Enforcement Gaps)
 
@@ -428,4 +437,4 @@ MUST NOT يُفترَض أنها آمنة:
 - التعقيد MUST يُبرَّر. الحل الأبسط الذي يحقق المبادئ هو الحل المطلوب.
 - `CLAUDE.md` هو مرجع التوجيه أثناء التطوير اليومي، ويظل تابعاً لهذا الدستور.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-23
+**Version**: 1.2.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-23

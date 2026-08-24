@@ -7,7 +7,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { UserRole } from '../../core/models/user.model';
 import { PlayerContextService } from '../../core/services/player-context.service';
 
-type NavIcon = 'dashboard' | 'players' | 'coaches' | 'observers' | 'age-groups' | 'my-matches' | 'profile';
+type NavIcon = 'dashboard' | 'players' | 'coaches' | 'observers' | 'professional-league' | 'age-groups' | 'my-matches' | 'profile';
 
 interface NavItem {
   labelKey: string;
@@ -24,6 +24,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { labelKey: 'NAV.PLAYERS',    icon: 'players',     route: '/players',     roles: ['admin', 'coach', 'observer', 'proScout'] },
   { labelKey: 'NAV.COACHES',    icon: 'coaches',     route: '/users',       roles: ['admin'] },
   { labelKey: 'NAV.OBSERVERS',  icon: 'observers',   route: '/observers',   roles: ['admin'] },
+  { labelKey: 'NAV.PROFESSIONAL_LEAGUE', icon: 'professional-league', route: '/professional-league', roles: ['admin'] },
   { labelKey: 'NAV.AGE_GROUPS', icon: 'age-groups',  route: '/age-groups',  roles: ['admin'] },
   { labelKey: 'NAV.MY_MATCHES', icon: 'my-matches',  route: '/my-matches',  roles: ['coach', 'observer', 'proScout'] },
   { labelKey: 'NAV.PROFILE',    icon: 'profile',     route: '/profile',     roles: ['admin', 'coach', 'observer', 'proScout'] },
@@ -81,6 +82,13 @@ const STATUS_CHILDREN = [
                 @case ('observers') {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                }
+                @case ('professional-league') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M3 12h18"/>
+                    <path d="M12 3c2.5 2.3 4 5.5 4 9s-1.5 6.7-4 9"/>
+                    <path d="M12 3c-2.5 2.3-4 5.5-4 9s1.5 6.7 4 9"/>
                   </svg>
                 }
                 @case ('age-groups') {

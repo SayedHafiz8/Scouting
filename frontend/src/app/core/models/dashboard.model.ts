@@ -8,6 +8,7 @@ export interface AdminDashboard extends CoachDashboard {
   totalMedia: number;
   totalCoaches: number;
   totalObservers: number;
+  totalProScouts: number;
   totalMatchesPlayed: number;
   topCoaches: TopCoach[];
 }

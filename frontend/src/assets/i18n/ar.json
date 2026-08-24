@@ -185,6 +185,7 @@
     "PROFILE": "الملف الشخصي",
     "OBSERVED": "تحت المتابعة",
     "OBSERVERS": "المتابعون",
+    "PROFESSIONAL_LEAGUE": "دوري المحترفين",
     "MY_MATCHES": "مبارياتي"
   },
   "HEADER": {
@@ -806,6 +807,27 @@
     "DETAIL": {
       "VIEW_PLAYERS": "عرض اللاعبين المخصصين"
     }
+  },
+  "PROSCOUTS": {
+    "TITLE": "كشافو المحترفين",
+    "SUBTITLE": "الكشافون المسجَّلون لدوري المحترفين",
+    "ADD": "إضافة كشاف",
+    "ROLE_BADGE": "كشاف محترفين",
+    "EMPTY": "لا يوجد كشافون بعد",
+    "EMPTY_MSG": "أضِف كشافًا لتبدأ في تغطية دوري المحترفين.",
+    "DEACTIVATE_TITLE": "إيقاف الكشاف",
+    "DEACTIVATE_MSG": "هل أنت متأكد أنك تريد إيقاف {{name}}؟",
+    "FORM": {
+      "ADD_TITLE": "إضافة كشاف جديد",
+      "EDIT_TITLE": "تعديل الكشاف"
+    }
+  },
+  "PROFESSIONAL_LEAGUE": {
+    "TITLE": "دوري المحترفين",
+    "SUBTITLE": "إدارة كشافي، فرق، ومباريات دوري المحترفين من مكان واحد",
+    "PROSCOUTS_SECTION": "الكشافون",
+    "TEAMS_SECTION": "الفرق",
+    "MATCHES_SECTION": "المباريات"
   },
   "UNAUTHORIZED": {
     "TITLE": "الوصول غير مصرّح به",

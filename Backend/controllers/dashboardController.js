@@ -90,6 +90,7 @@ const computeAdminDashboardData = async () => {
         totalMedia,
         totalCoaches,
         totalObservers,
+        totalProScouts,
         totalMatchesPlayed,
         topCoaches,
     ] = await Promise.all([
@@ -101,6 +102,7 @@ const computeAdminDashboardData = async () => {
         PlayerMedia.estimatedDocumentCount(),
         User.countDocuments({ role: ROLES.COACH }),
         User.countDocuments({ role: ROLES.OBSERVER }),
+        User.countDocuments({ role: ROLES.PRO_SCOUT }),
         // عدد كل المباريات اللي اتلعبت فعلاً (تاريخها النهاردة أو قبل كده) على مستوى الموقع كله
         SeasonMatch.countDocuments({
             matchDate: { $lte: new Date(new Date().setHours(23, 59, 59, 999)) },
@@ -145,6 +147,7 @@ const computeAdminDashboardData = async () => {
         totalMedia,
         totalCoaches,
         totalObservers,
+        totalProScouts,
         totalMatchesPlayed,
         topCoaches,
         selectionRate:

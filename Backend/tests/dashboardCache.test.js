@@ -8,6 +8,7 @@ import {
     createAdmin,
     createCoach,
     createObserver,
+    createProScout,
     playerPayload,
     seedAgeGroups,
 } from "./helpers/factory.js";
@@ -92,6 +93,36 @@ describe("§11 — GET /dashboard/admin is served from a TTL cache", () => {
 
         expect(res.body.data.totalPlayers).toBe(1);
         expect(res.body.data.pendingPlayers).toBe(1);
+    });
+
+    // Stage 13 (US4) — totalProScouts is additive; every other figure must stay
+    // byte-identical to before (FR-010).
+    it("totalProScouts matches the actual proScout count, and no other figure changes", async () => {
+        const { token: adminToken } = await createAdmin({ email: "proscouts_admin@test.com" });
+        const { token: coachToken } = await createCoach({ email: "proscouts_coach@test.com" });
+        await createObserver({ email: "proscouts_observer@test.com" });
+        await createProScout({ email: "proscouts_scout_1@test.com" });
+        await createProScout({ email: "proscouts_scout_2@test.com" });
+
+        await request(app)
+            .post("/api/v1/players")
+            .set("Authorization", `Bearer ${coachToken}`)
+            .send(playerPayload({ name: "ProScout Count Kid" }))
+            .expect(201);
+
+        const before = await getAdmin(adminToken).expect(200);
+        expect(before.body.data.totalProScouts).toBe(2);
+
+        await createProScout({ email: "proscouts_scout_3@test.com" });
+        advanceClock(TTL_MS + 1_000);
+
+        const after = await getAdmin(adminToken).expect(200);
+        expect(after.body.data.totalProScouts).toBe(3);
+
+        // every other figure is unaffected by the new field
+        const { totalProScouts: _before, ...beforeRest } = before.body.data;
+        const { totalProScouts: _after, ...afterRest } = after.body.data;
+        expect(afterRest).toEqual(beforeRest);
     });
 
     it("a second admin inside the TTL gets the same cached payload", async () => {

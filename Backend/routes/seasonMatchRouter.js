@@ -35,7 +35,7 @@ import { ROLES } from "../constants/roles.js";
  *       type: object
  *       properties:
  *         _id: { type: string }
- *         ageGroup: { type: string, description: AgeGroup id (populated on read) }
+ *         ageGroup: { type: string, nullable: true, description: "AgeGroup id (populated on read); absent for league: 'professional' fixtures (Stage 13)" }
  *         season: { type: string, example: "2025/2026" }
  *         league:
  *           type: string

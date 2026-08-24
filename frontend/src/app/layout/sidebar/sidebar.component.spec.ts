@@ -60,9 +60,9 @@ function menuHrefs(): string[] {
 }
 
 describe('SidebarComponent — role-based navigation menu', () => {
-  it('admin sees exactly: Dashboard, Players, Coaches, Observers, Age Groups, Profile', async () => {
+  it('admin sees exactly: Dashboard, Players, Coaches, Observers, Professional League, Age Groups, Profile', async () => {
     await setup('admin');
-    expect(menuHrefs()).toEqual(['/dashboard', '/players', '/users', '/observers', '/age-groups', '/profile']);
+    expect(menuHrefs()).toEqual(['/dashboard', '/players', '/users', '/observers', '/professional-league', '/age-groups', '/profile']);
   });
 
   it('coach sees exactly: Dashboard, Players, My Matches, Profile', async () => {

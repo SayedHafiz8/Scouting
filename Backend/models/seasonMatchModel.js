@@ -3,8 +3,7 @@ import mongoose from "mongoose";
 const seasonMatchSchema = new mongoose.Schema({
     ageGroup: {
         type: mongoose.Schema.ObjectId,
-        ref: "AgeGroup",
-        required: true
+        ref: "AgeGroup"
     },
     // الموسم بصيغة "2025/2026" — index عشان الفلترة والتجميع بالموسم
     season: {
@@ -102,6 +101,36 @@ seasonMatchSchema.pre(/^find/, function () {
         .populate({ path: "homeTeam", select: "name clubName" })
         .populate({ path: "awayTeam", select: "name clubName" })
         .populate({ path: "attendees", select: "name email role" });
+});
+
+// Stage 13 (constitution v1.2.0) — مباراة دوري المحترفين مالهاش فئة عمرية، بنفس
+// نمط Team.ageGroup و Player.isProfessional بالضبط: مش required على مستوى الـschema،
+// والإلزام برمجي هنا. professional → يتمسح صراحة، غير كده لسه مطلوب صراحة زي ما كان.
+seasonMatchSchema.pre('save', function() {
+    if (this.league === 'professional') {
+        this.ageGroup = undefined;
+        return;
+    }
+    if (!this.ageGroup) {
+        throw new Error("SeasonMatch must belong to an ageGroup");
+    }
+});
+
+seasonMatchSchema.pre('findOneAndUpdate', function() {
+    const update = this.getUpdate() || {};
+    const league = update.league ?? update.$set?.league;
+    if (league === undefined) return;
+    if (league === 'professional') {
+        update.$unset = { ...(update.$unset), ageGroup: "" };
+        if (update.$set) delete update.$set.ageGroup;
+        delete update.ageGroup;
+        this.setUpdate(update);
+        return;
+    }
+    const ageGroup = update.ageGroup ?? update.$set?.ageGroup;
+    if (!ageGroup) {
+        throw new Error("SeasonMatch must belong to an ageGroup");
+    }
 });
 
 const SeasonMatch = mongoose.model("SeasonMatch", seasonMatchSchema);
