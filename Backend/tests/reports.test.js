@@ -391,6 +391,24 @@ describe('GET /api/v1/players/:playerId/reports/statistics', () => {
 
     expect(res.status).toBe(200);
   });
+
+  // لاعب جديد لسه ملوش تقارير — حالة طبيعية، مش خطأ. لازم ترجع 200 بإحصائيات
+  // فاضية بدل 404 (كانت قبل كده بترجع 404 وبتطلّع toast خطأ في الفرونت)
+  it('returns 200 with zeroed statistics for a player with no reports yet', async () => {
+    const { token } = await createCoach();
+    const player = await createPlayer(token);
+
+    const res = await request(app)
+      .get(`/api/v1/players/${player._id}/reports/statistics`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.statistics).toMatchObject({
+      totalReports: 0,
+      lastReport: null,
+      overallRating: 0,
+    });
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
