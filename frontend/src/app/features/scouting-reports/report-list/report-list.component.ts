@@ -137,7 +137,7 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
             [message]="'REPORTS.EMPTY_MSG' | translate"
             [actionLabel]="(auth.isCoach() || auth.isObserver()) ? ('REPORTS.ADD' | translate) : null"
             (actionClicked)="navigateToNew()"
-            [icon]="reportIcon"
+            icon="reports"
           />
         } @else if (filteredReports().length === 0) {
           <div class="text-center py-10" style="color:var(--text-muted)">
@@ -350,7 +350,6 @@ export class ReportListComponent implements OnInit {
     !!this.filterDateFrom() || !!this.filterDateTo() || this.filterSort() !== 'default'
   );
 
-  readonly reportIcon = `<svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>`;
 
   private get playerId(): string {
     return this.route.snapshot.pathFromRoot

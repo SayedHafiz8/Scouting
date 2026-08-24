@@ -1,5 +1,5 @@
 import { Component, HostListener, inject, output, signal } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { Router, RouterLink } from '@angular/router';
 import { NotificationService } from '../../core/services/notification.service';
@@ -7,9 +7,34 @@ import { SocketNotification } from '../../core/models/notification.model';
 
 @Component({
     selector: 'app-notification-panel',
-    imports: [DatePipe, TranslatePipe],
+    imports: [DatePipe, NgTemplateOutlet, TranslatePipe],
     styles: [':host { display: contents; }'],
     template: `
+    <!-- Frontend audit fix B1 — was [innerHTML] with an SVG string; Angular's
+         sanitizer strips svg/path/circle (not in its HTML allowlist), so this
+         icon rendered as nothing in production. Real inline SVG survives, and
+         since the same icon is needed in two places below (list row + detail
+         modal), it's factored into one template + ngTemplateOutlet — the same
+         pattern stat-card.component.ts already uses for this exact situation. -->
+    <ng-template #notifIcon let-n>
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        @switch (n.type) {
+          @case ('DAILY_SUMMARY') {
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          }
+          @case ('PLAYER_STATUS_UPDATED') {
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          }
+          @case ('MEDIA_REJECTED') {
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          }
+          @default {
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          }
+        }
+      </svg>
+    </ng-template>
+
     <div class="absolute right-0 top-full mt-2 w-80 md:w-96 card shadow-lg overflow-hidden"
          style="z-index:200; box-shadow:0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px var(--border-color);"
          style="animation: slideUp 0.15s ease; max-height: 480px; display: flex; flex-direction: column;">
@@ -41,7 +66,7 @@ import { SocketNotification } from '../../core/models/notification.model';
             <div class="flex items-start gap-3">
               <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
                    [class]="iconClass(n)">
-                <span [innerHTML]="icon(n)"></span>
+                <ng-container [ngTemplateOutlet]="notifIcon" [ngTemplateOutletContext]="{ $implicit: n }" />
               </div>
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium" style="color:var(--text-primary)">
@@ -86,7 +111,7 @@ import { SocketNotification } from '../../core/models/notification.model';
             <div class="flex items-start gap-4 mb-4">
               <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
                    [class]="iconClass(n)">
-                <span [innerHTML]="icon(n)"></span>
+                <ng-container [ngTemplateOutlet]="notifIcon" [ngTemplateOutletContext]="{ $implicit: n }" />
               </div>
               <div class="flex-1 min-w-0">
                 <h3 [id]="detailTitleId" class="font-semibold text-base" style="color:var(--text-primary)">
@@ -201,12 +226,5 @@ export class NotificationPanelComponent {
       MEDIA_REJECTED: 'bg-danger-100 text-danger-600',
     };
     return map[n.type] ?? 'bg-surface-100 text-surface-600';
-  }
-
-  icon(n: SocketNotification): string {
-    if (n.type === 'DAILY_SUMMARY') return '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-    if (n.type === 'PLAYER_STATUS_UPDATED') return '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
-    if (n.type === 'MEDIA_REJECTED') return '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    return '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/></svg>';
   }
 }

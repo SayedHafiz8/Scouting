@@ -5,7 +5,7 @@ import { AuthService } from './auth.service';
 import { RoleLandingService } from '../services/role-landing.service';
 import { UserRole } from '../models/user.model';
 
-export const roleGuard = (allowedRoles: UserRole[]): CanActivateFn =>
+export const roleGuard = (allowedRoles: readonly UserRole[]): CanActivateFn =>
   async () => {
     const auth = inject(AuthService);
     const router = inject(Router);

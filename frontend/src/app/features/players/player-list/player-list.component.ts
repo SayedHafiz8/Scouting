@@ -343,7 +343,7 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
           [message]="keyword ? ('PLAYERS.EMPTY_SEARCH' | translate) : ('PLAYERS.EMPTY_FIRST' | translate)"
           [actionLabel]="(auth.isCoach() || auth.isProScout()) && !keyword ? ('PLAYERS.ADD' | translate) : null"
           (actionClicked)="router.navigate(['/players/new'])"
-          [icon]="playerIcon"
+          icon="players"
         />
       } @else {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -655,7 +655,6 @@ export class PlayerListComponent implements OnInit {
   private professionalTeamsLoaded = false;
 
   readonly positions = PLAYER_POSITIONS;
-  readonly playerIcon = `<svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
 
   private pendingGroupId = '';
 
