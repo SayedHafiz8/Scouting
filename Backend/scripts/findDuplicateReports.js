@@ -31,8 +31,25 @@ import ScoutingReport from "../models/scoutingReportModel.js";
 
 const AS_JSON = process.argv.includes("--json");
 
+// ⚠️ autoIndex/autoCreate: false — **مش تحسين، دي شرط سلامة**.
+//
+// mongoose افتراضه autoIndex: true. يعني مجرد ما الموديل يتجمّع على اتصال مفتوح،
+// Model.init() بينده createIndexes() وبيبني **كل** الفهارس المعلنة في المخطط —
+// وده بيشمل الـunique index الجديد { player, coach, seasonMatch }.
+//
+// السكريبت ده الغرض منه إنه يتنفّذ على الإنتاج **قبل** ما الـindex يتبني، عشان
+// يقول هل هيتبني نظيف ولا لأ. من غير السطر ده كان هيبني الـindex بنفسه كأثر
+// جانبي — يعني السكريبت اللي المفروض "بيقرا بس" كان بيعمل بالظبط التغيير اللي
+// إحنا مستنيين موافقة عليه. مُثبَت بالتنفيذ على كلاستر معزول: كولكشن فيها _id_
+// بس بقت فيها player_1_coach_1_seasonMatch_1 بعد تشغيل السكريبت.
+//
+// التطبيق نفسه محمي من ده (config/database.js:13 بيحط autoIndex: !isProduction)،
+// لكن السكريبتات المستقلة مابتعديش على المسار ده — بتنده mongoose.connect مباشرةً.
+// autoCreate: false كمان بيمنع إنشاء كولكشن مش موجودة.
+const READ_ONLY_CONNECT = { autoIndex: false, autoCreate: false };
+
 async function run() {
-    await mongoose.connect(process.env.CONNECTION_STRING);
+    await mongoose.connect(process.env.CONNECTION_STRING, READ_ONLY_CONNECT);
     if (!AS_JSON) console.log(`✅ Connected to ${mongoose.connection.name}\n`);
 
     // نفس مفتاح الـindex الجديد بالظبط، وبنفس شرط الـpartial: التقارير اللي

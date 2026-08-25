@@ -53,7 +53,12 @@ const PENDING = { isProfessional: { $exists: false } };
 async function run() {
     console.log(`Mode: ${APPLY ? "APPLY" : "DRY RUN (pass --apply to write)"}\n`);
 
-    await mongoose.connect(process.env.CONNECTION_STRING);
+    // ⚠️ autoIndex: false — الميجريشن دي بتغيّر بيانات، **مش** فهارس. من غير
+    // السطر ده mongoose بيبني كل فهارس Player المعلنة في المخطط كأثر جانبي لمجرد
+    // الاتصال (Model.init → createIndexes)، وده بيخلط عمليتين لازم يفضلوا منفصلين:
+    // تغيير الفهارس مساره الوحيد هو scripts/syncAllIndexes.js بالـdry-run بتاعه.
+    // (نفس السبب المشروح بالتفصيل في scripts/findDuplicateReports.js.)
+    await mongoose.connect(process.env.CONNECTION_STRING, { autoIndex: false, autoCreate: false });
     console.log(`✅ Connected to ${mongoose.connection.name}\n`);
 
     const total = await Player.countDocuments();
