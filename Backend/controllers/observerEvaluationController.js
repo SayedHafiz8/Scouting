@@ -12,6 +12,13 @@ import { sendNotificationToUser } from "../socket/handlers/notification.js";
 import { EVALUATION_CRITERIA } from "../utils/observerEvaluationCriteria.js";
 import { ROLES } from "../constants/roles.js";
 
+// audit-database I2 — وايت ليست الترتيب. الكونترولر بيفرض "-year,-month"
+// كافتراضي فوق، والاتنين آخر حقلين في {observer: 1, status: 1, year: -1, month: -1}
+// وفي {evaluator: 1, year: -1, month: -1} — فكل مسارات القايمة (الكشاف بيشوف
+// بتاعه، الأدمن بيشوف تقييماته) مغطّاة. overallRating **مش** هنا عن قصد: مفيش
+// index عليه، وقايمة التقييمات مسكوبة بس مش صغيرة بالضرورة.
+const EVALUATION_SORT_FIELDS = ["year", "month", "createdAt"];
+
 const populate = [
     { path: "observer", select: "name email" },
     { path: "evaluator", select: "name" },
@@ -105,7 +112,7 @@ export const getAll = asyncHandler(async (req, res, next) => {
     const documentCount = await ObserverEvaluation.countDocuments(
         features.query.getFilter()
     );
-    features.sort().limitFields().paginate(documentCount);
+    features.sort(EVALUATION_SORT_FIELDS).limitFields().paginate(documentCount);
 
     const documents = await features.query.populate(populate);
 

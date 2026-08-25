@@ -25,7 +25,9 @@ export const getAll = asyncHandler(async (req, res, next) => {
         });
     }
     // الفرونت مبيبعتش أي param فلترة على /ages — sort شغّال عبر RESERVED_QUERY_KEYS
-    return gettingAll(AgeGroup, {})(req, res, next);
+    // audit-database I2 — birthYear مفهرس (unique)، وهو القيمة الوحيدة اللي بتوصل
+    // هنا أصلاً (الكونترولر بيفرضها فوق). name مضاف لأنه unique ومفهرس برضه.
+    return gettingAll(AgeGroup, { sortable: ["birthYear", "name"] })(req, res, next);
 });
 
 // @desc    Get specific age 

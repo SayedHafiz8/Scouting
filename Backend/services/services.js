@@ -49,17 +49,23 @@ export const creating = (model, field = null, populateOptions = null) => {
 // §11 — الباراميتر searchFields اتشال: بعد ما البحث اتضيّق على Player (اللي ليه
 // كنترولر مخصص) مبقاش فيه ولا مستدعي واحد للـgettingAll بيبحث. الوحيد اللي كان
 // بيبعته هو seasonMatches بـ["venue"]، ومفيش UI بيطلبه.
+// audit-database I2 — `filterOptions.sortable` وايت ليست حقول الترتيب، بنفس شكل
+// `filterOptions.allowed` بتاعة الفلاتر. غيابها = مفيش ترتيب من العميل خالص
+// (ApiFeature.sort افتراضيها قايمة فاضية) — الفشل المقفول، عشان مستدعي جديد ينسى
+// يمرّرها مايفتحش الباب لـCOLLSCAN من غير ما حد ياخد باله.
 export const gettingAll = (model, filterOptions = {}, populateOptions = null, baseFilterFn = null) => {
+    const { sortable = [], ...apiFilterOptions } = filterOptions;
+
     return asyncHandler(async (req, res, next) => {
         const baseFilter = baseFilterFn ? await baseFilterFn(req) : {};
         const features = new ApiFeature(model.find(baseFilter), req.query, req.params, req.user)
-            .filter(filterOptions)
+            .filter(apiFilterOptions)
 
         const documentCount = await model.countDocuments(
             features.query.getFilter()
         );
 
-        features.sort().limitFields().paginate(documentCount);
+        features.sort(sortable).limitFields().paginate(documentCount);
 
         const { query, pagination } = features;
 

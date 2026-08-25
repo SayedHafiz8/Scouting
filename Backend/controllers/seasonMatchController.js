@@ -21,6 +21,12 @@ export const setUpdatedBy = (req, res, next) => {
 // attendees مطلوب لـ ?attendees=<id> (الكشاف بيفلتر الماتشات اللي حضّرها بس).
 const SEASON_MATCH_FILTERS = ["ageGroup", "season", "league", "status", "attendees", "matchDate"];
 
+// audit-database I2 — وايت ليست الترتيب. matchDate هو القيمة الوحيدة اللي الفرونت
+// بيبعتها (شاشة "ماتشاتي" وصفحة الفئة العمرية وصفحة دوري المحترفين، تصاعدي
+// وتنازلي)، وهي آخر حقل في تلات فهارس مركّبة وكمان index مستقل matchDate_1 —
+// فالترتيب مغطّى في كل مسارات الفلترة. قبل الإصلاح ?sort=venue كان COLLSCAN.
+const SEASON_MATCH_SORT_FIELDS = ["matchDate"];
+
 // سكوب المباريات لكل رول — switch صريح بدل الـif القديم (Principle II).
 //
 // أوبزيرفر بيشوف بس مباريات فرق اللاعبين اللي الأدمن حطّه يتابعهم (Player.observers) —
@@ -59,7 +65,7 @@ export const getAll = (req, res, next) => {
     if (!req.query.sort) req.query.sort = "matchDate";
     // §11 — البحث في venue اتشال (مفيش UI بيبعت keyword للمباريات)، فالباراميتر
     // searchFields اتشال من gettingAll والترتيب اتزحلق
-    return gettingAll(SeasonMatch, { allowed: SEASON_MATCH_FILTERS }, null, seasonMatchBaseFilterFor)(req, res, next);
+    return gettingAll(SeasonMatch, { allowed: SEASON_MATCH_FILTERS, sortable: SEASON_MATCH_SORT_FIELDS }, null, seasonMatchBaseFilterFor)(req, res, next);
 };
 
 // @desc    Get specific season match (with linked reports, media + audit users)

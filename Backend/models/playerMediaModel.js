@@ -98,7 +98,12 @@ const playerMediaSchema = new mongoose.Schema(
 );
 
 playerMediaSchema.index({ player: 1, createdAt: -1 }); // كل ميديا اللاعب مرتبة بالأحدث
-playerMediaSchema.index({ player: 1, type: 1 });        // فلترة صور أو فيديوهات
+// audit-database I3 — { player: 1, type: 1 } اتشال (كان 2,844 KB على 50,000 مستند).
+// التعليق القديم كان "فلترة صور أو فيديوهات"، والفلترة دي **مش موجودة**:
+// playerMediaController.getAll بيعمل new ApiFeature(...) من غير ما ينده .filter()
+// خالص، فـ?type= عمره ما بيتحوّل لشرط استعلام. والاستعلامات اللي فعلاً بتحط type
+// (playerMediaController.js:316/334/360 + الكرونز) كلها بتحط seasonMatch وstatus
+// معاها، فبتتخدم من player_1_seasonMatch_1_type_1_status_1 أو من type_1_updatedAt_1.
 // F8/A1: العدّ الحيّ للفيديوهات الجاهزة + البحث عن فيديو processing لنفس (لاعب، ماتش)
 playerMediaSchema.index({ player: 1, seasonMatch: 1, type: 1, status: 1 });
 // كشف تكرار رفع نفس الفيديو لنفس اللاعب
@@ -111,8 +116,18 @@ playerMediaSchema.index({ seasonMatch: 1 }, { sparse: true });
 playerMediaSchema.index({ linkedVideo: 1 }, { sparse: true });
 // ميديا الأوبزيرفر/الكوتش اللي رفعها بنفسه، مرتبة بالأحدث
 playerMediaSchema.index({ uploadedBy: 1, createdAt: -1 });
-// مراجعة الأدمن للميديا المعلقة (pending review)
-playerMediaSchema.index({ reviewStatus: 1 }, { sparse: true });
+// audit-database I3 — { reviewStatus: 1 } اتشال (كان 904 KB على 50,000 مستند).
+// reviewStatus بيتكتب في تلات أماكن وبيتقرا في **صفر** استعلامات: مراجعة الأدمن
+// بتحصل من صفحة تفاصيل المباراة عن طريق populate على الـvirtual media
+// (seasonMatchController.js:90) اللي بيمشي على seasonMatch_1، ومفيش قايمة
+// "معلّق للمراجعة" في الفرونت أصلاً. لو اتضافت قايمة كهذه بعدين، الـindex ده
+// يترجّع — ويُفضّل partial على reviewStatus:"pending" بنفس منطق type_1_updatedAt_1
+// تحت، لأن الحالة دي عابرة.
+//
+// أثر شيل الاتنين مقيس (insertMany 2000 مستند × 6 جولات، الوسيط):
+//   60ms/2000 → 44ms/2000  =  +26.2% سرعة إدخال، و−3.7 MB لكل 50,000 مستند.
+// وده على أكتر كولكشن بيتكتب فيها في النظام (كل رفع + كل تحديث ويبهوك + reconcile
+// كل 5 دقايق).
 
 // §11 — الكرونز اللي بتدوّر على الفيديوهات المعلّقة:
 //   videoReconcile.js:21  → { type:"video", status:"processing", updatedAt: {$lte} }  كل 5 دقايق
