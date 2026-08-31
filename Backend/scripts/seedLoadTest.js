@@ -559,7 +559,14 @@ async function main() {
         process.exit(0);
     }
 
-    await mongoose.connect(URI);
+    // audit-database — autoIndex/autoCreate: false إجباري (CLAUDE.md). السكريبت ده
+    // كان بيعتمد على autoIndex عشان الفهارس تتبني، وده كان بيخفي حاجتين:
+    //   1) الفهارس كانت بتتبني **قبل** الإدخال بالجملة، وده أبطأ من بنائها بعده
+    //      (كل insert بيحدّث كل B-tree، بدل بناء واحد مرتّب في الآخر).
+    //   2) الاعتماد كان ضمني — لو الفهارس مش مبنية لأي سبب، كل استعلام في
+    //      explainQueries.js بيطلع COLLSCAN والقياس بيبقى كذب صامت.
+    // البناء بقى صريح بعد الزرع (تحت في main)، فالسلوك أوضح وأسرع.
+    await mongoose.connect(URI, { autoIndex: false, autoCreate: false });
     console.log(`\n✅ Connected to ${mongoose.connection.name}`);
 
     if (CLEAN) {
@@ -567,6 +574,13 @@ async function main() {
         await clean();
     } else {
         await seed();
+
+        // الفهارس بتتبني هنا صراحةً — بعد الإدخال بالجملة، مش قبله. من غير
+        // الخطوة دي كل استعلام في explainQueries.js هيطلع COLLSCAN وهيتقري
+        // كأنه مشكلة أداء حقيقية، بينما هو كلاستر بلا فهارس أصلاً.
+        console.log("\n▸ Building indexes (explicit — autoIndex is off)");
+        await mongoose.connection.syncIndexes();
+        console.log("   done");
     }
 
     await mongoose.disconnect();

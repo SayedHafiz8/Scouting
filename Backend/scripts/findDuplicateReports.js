@@ -46,10 +46,16 @@ const AS_JSON = process.argv.includes("--json");
 // التطبيق نفسه محمي من ده (config/database.js:13 بيحط autoIndex: !isProduction)،
 // لكن السكريبتات المستقلة مابتعديش على المسار ده — بتنده mongoose.connect مباشرةً.
 // autoCreate: false كمان بيمنع إنشاء كولكشن مش موجودة.
-const READ_ONLY_CONNECT = { autoIndex: false, autoCreate: false };
-
+//
+// الأوبشنز مكتوبة inline مش في ثابت مسمّى عن قصد: القاعدة في CLAUDE.md المفروض
+// تتفحص آليًا، وفحص نصي على `mongoose.connect(` بيدوّر على autoIndex جنبه —
+// الثابت المسمّى كان بيخلي الملف ده يبان مخالف وهو مش مخالف (false negative
+// اتقاس فعلاً). الشكل الموحّد أهم من عدم التكرار هنا.
 async function run() {
-    await mongoose.connect(process.env.CONNECTION_STRING, READ_ONLY_CONNECT);
+    await mongoose.connect(process.env.CONNECTION_STRING, {
+        autoIndex: false,
+        autoCreate: false,
+    });
     if (!AS_JSON) console.log(`✅ Connected to ${mongoose.connection.name}\n`);
 
     // نفس مفتاح الـindex الجديد بالظبط، وبنفس شرط الـpartial: التقارير اللي

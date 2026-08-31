@@ -11,7 +11,17 @@ const AGE_GROUPS = Array.from({ length: 11 }, (_, i) => {
 });
 
 async function run() {
-  await mongoose.connect(process.env.CONNECTION_STRING);
+  // audit-database — autoIndex/autoCreate: false إجباري على أي اتصال (CLAUDE.md).
+  //
+  // mongoose افتراضه autoIndex: true، وده بيخلي مجرد فتح الاتصال ينده
+  // Model.init() → createIndexes() ويبني كل فهرس معلن في المخطط كأثر جانبي.
+  // السكريبت اللي غرضه يقرا أو يعدّل بيانات مايصحّش يعيد تشكيل الفهارس.
+  // حصل فعلاً على الإنتاج (2026-08-26) من tool موصوف بإنه "dry run".
+  // مسار تغيير الفهارس الوحيد هو scripts/syncAllIndexes.js بالـdry-run بتاعه.
+  await mongoose.connect(process.env.CONNECTION_STRING, {
+      autoIndex: false,
+      autoCreate: false,
+  });
   console.log("✅ Connected to MongoDB");
 
   // 1) Remove old age-based groups (documents that have no birthYear field)

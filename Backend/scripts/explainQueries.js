@@ -504,7 +504,10 @@ function print() {
 }
 
 async function main() {
-    await mongoose.connect(URI);
+    // audit-database — autoIndex/autoCreate: false إجباري (CLAUDE.md). الـharness
+    // ده بيقيس الفهارس الموجودة فعلاً؛ لو بناها بنفسه وقت الاتصال كان هيقيس حالة
+    // من صنعه هو مش حالة الكلاستر. البناء مسؤولية seedLoadTest.js.
+    await mongoose.connect(URI, { autoIndex: false, autoCreate: false });
     console.log(`✅ Connected to ${mongoose.connection.name}`);
 
     const counts = {};

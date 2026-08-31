@@ -38,7 +38,17 @@ const PENDING = { league: "professional", ageGroup: { $exists: true, $ne: null }
 async function run() {
     console.log(`Mode: ${APPLY ? "APPLY" : "DRY RUN (pass --apply to write)"}\n`);
 
-    await mongoose.connect(process.env.CONNECTION_STRING);
+    // audit-database — autoIndex/autoCreate: false إجباري على أي اتصال (CLAUDE.md).
+    //
+    // mongoose افتراضه autoIndex: true، وده بيخلي مجرد فتح الاتصال ينده
+    // Model.init() → createIndexes() ويبني كل فهرس معلن في المخطط كأثر جانبي.
+    // السكريبت اللي غرضه يقرا أو يعدّل بيانات مايصحّش يعيد تشكيل الفهارس.
+    // حصل فعلاً على الإنتاج (2026-08-26) من tool موصوف بإنه "dry run".
+    // مسار تغيير الفهارس الوحيد هو scripts/syncAllIndexes.js بالـdry-run بتاعه.
+    await mongoose.connect(process.env.CONNECTION_STRING, {
+        autoIndex: false,
+        autoCreate: false,
+    });
     console.log(`✅ Connected to ${mongoose.connection.name}\n`);
 
     const pending = await Team.countDocuments(PENDING).setOptions({ bypassFilter: true });
