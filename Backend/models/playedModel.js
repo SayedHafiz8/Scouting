@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import AgeGroup from "./ageGroupModel.js";
 import AppError from "../utils/appError.js";
 import { resolveImageUrl } from "../utils/mediaUrl.js";
+import { yearOfUTC } from "../utils/time.js";
 
 const playerSchema = new mongoose.Schema({
     name: {
@@ -178,8 +179,10 @@ const MAX_BIRTH_YEAR = 2019;
 // وهو نفس أسلوب MAX_BIRTH_YEAR الموجود أصلاً.
 const PRO_MIN_BIRTH_YEAR = 1996;
 
+// audit-backend C3 — UTC، مش توقيت السيرفر. dateOfBirth بيتخزن منتصف ليل UTC،
+// والسبب الكامل في utils/time.js:yearOfUTC.
 function getBirthYear(dateOfBirth) {
-    return new Date(dateOfBirth).getFullYear();
+    return yearOfUTC(dateOfBirth);
 }
 
 // Stage 4b — نقطة واحدة لقرار "إيه المسموح لسنة الميلاد دي".

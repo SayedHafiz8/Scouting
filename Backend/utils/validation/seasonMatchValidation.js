@@ -4,6 +4,7 @@ import validatorMiddleware from "../../middlewares/validatorMiddleware.js";
 import AgeGroup from "../../models/ageGroupModel.js";
 import Team from "../../models/teamModel.js";
 import SeasonMatch from "../../models/seasonMatchModel.js";
+import { utcDayRange } from "../time.js";
 
 // فاليديشن الموسم: لازم يكون "YYYY/YYYY" والسنة التانية = الأولى + 1
 const seasonFormat = (chain) =>
@@ -25,8 +26,9 @@ const seasonFormat = (chain) =>
 // يعني عمليًا مستحيل تسجّل ماتش بتاريخ النهارده. عشان كده بنقارن ببداية اليوم.
 const matchDateNotPast = (chain) =>
     chain.custom((val) => {
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
+        // audit-backend C3 — بداية النهاردة بتوقيت UTC، عشان تتقارن بنفس مقياس
+        // matchDate المتخزّن (منتصف ليل UTC) مش بتوقيت السيرفر.
+        const startOfToday = utcDayRange(new Date()).start;
         if (new Date(val).getTime() < startOfToday.getTime()) {
             throw new Error("Match date cannot be in the past");
         }
@@ -112,10 +114,8 @@ const noDuplicateFixture = body().custom(async (_, { req }) => {
     if (!matchDate || !homeTeam || !awayTeam || !league) return true;
     if (league !== 'professional' && !ageGroup) return true;
 
-    const dayStart = new Date(matchDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // audit-backend C3 — نفس السبب: يوم UTC كامل، مش يوم بتوقيت السيرفر
+    const { start: dayStart, end: dayEnd } = utcDayRange(matchDate);
 
     const duplicate = await SeasonMatch.findOne({
         ageGroup,

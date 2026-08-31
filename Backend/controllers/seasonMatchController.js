@@ -7,6 +7,7 @@ import { creating, gettingAll, updating, deleteOne } from "../services/services.
 import { decorateMedia } from "./playerMediaController.js";
 import { ROLES } from "../constants/roles.js";
 import { seasonMatchScopeFor } from "../services/scope.js";
+import { utcDayRange } from "../utils/time.js";
 
 // createdBy بيتحط من السيرفر (creating بيعمل req.body[field] = req.user._id)
 export const create = creating(SeasonMatch, "createdBy");
@@ -134,10 +135,9 @@ export const updateMatchStatus = asyncHandler(async (req, res, next) => {
         if (!match) {
             return next(new AppError(`No document for this Id: ${req.params.id}`, 404));
         }
-        const dayStart = new Date(match.matchDate);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayEnd.getDate() + 1);
+        // audit-backend C3 — حدود اليوم UTC، مش توقيت السيرفر. matchDate متخزّن
+        // منتصف ليل UTC، والـ setHours المحلي كان بيزح النافذة بفرق توقيت السيرفر.
+        const { start: dayStart, end: dayEnd } = utcDayRange(match.matchDate);
         const now = Date.now();
         if (now < dayStart.getTime() || now >= dayEnd.getTime()) {
             return next(new AppError("You can only enter the match result on the day of the match", 400));
@@ -165,9 +165,8 @@ export const updateMatchStatus = asyncHandler(async (req, res, next) => {
 // الحضور/الإلغاء متاح لحد آخر اليوم اللي قبل يوم الماتش بس — بعد ما يوم الماتش يبدأ بيتقفل خالص
 // (نفس نمط مقارنة start-of-day المستخدم في matchDateNotPast للاتساق)
 const isBeforeMatchDay = (matchDate) => {
-    const dayStart = new Date(matchDate);
-    dayStart.setHours(0, 0, 0, 0);
-    return Date.now() < dayStart.getTime();
+    // audit-backend C3 — بداية يوم المباراة بتوقيت UTC (utils/time.js)
+    return Date.now() < utcDayRange(matchDate).start.getTime();
 };
 
 // @desc    Scout self-enrolls to attend a match (adds self to attendees)

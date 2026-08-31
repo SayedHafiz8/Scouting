@@ -9,6 +9,7 @@ import ApiFeature from "../utils/apiFeatures.js";
 import { deleteOne, gettingSpecific, updating } from "../services/services.js";
 import { emitCoachDashboardUpdate, emitObserverDashboardUpdate } from "./dashboardController.js";
 import AppError from "../utils/appError.js";
+import { utcDayRange } from "../utils/time.js";
 import { ROLES } from "../constants/roles.js";
 import { playerScopeFor } from "../services/scope.js";
 
@@ -77,14 +78,14 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
     // official
     if (!player?.team) return next();
 
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date();
-    dayEnd.setHours(23, 59, 59, 999);
+    // audit-backend C3 — "النهاردة" بيوم UTC كامل، مش يوم بتوقيت السيرفر.
+    // matchDate متخزّن منتصف ليل UTC، فيوم محلي كان بيزح النافذة بفرق التوقيت
+    // ويخلي ماتش النهاردة يقع برّه النافذة في آخر/أول ساعات اليوم.
+    const { start: dayStart, end: dayEnd } = utcDayRange(new Date());
 
     const todaysMatch = await SeasonMatch.findOne({
         $or: [{ homeTeam: player.team }, { awayTeam: player.team }],
-        matchDate: { $gte: dayStart, $lte: dayEnd },
+        matchDate: { $gte: dayStart, $lt: dayEnd },
     }).setOptions({ skipPopulate: true });
 
     if (!todaysMatch) {

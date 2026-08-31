@@ -15,6 +15,7 @@ import {
 import AgeGroup from '../../models/ageGroupModel.js';
 import SeasonMatch from '../../models/seasonMatchModel.js';
 import ScoutingReport from '../../models/scoutingReportModel.js';
+import { startOfTodayUTC } from '../../utils/time.js';
 
 // ملفات الاختبارات بتحتفظ بأسماء الرولات كنصوص حرفية عن قصد — أوراكل مستقل عن
 // constants/roles.js (قرار /speckit-clarify Q1، نفس نمط proScoutDataScope.test.js).
@@ -92,8 +93,9 @@ describe('proScout dashboard — matches (G-2, G-3, G-4)', () => {
   });
 
   it('G-3: a match dated TODAY lands in latestResults, never in upcomingMatches', async () => {
-    const today = new Date();
-    today.setHours(10, 0, 0, 0);
+    // "النهاردة" بتوقيت UTC — نفس المقياس اللي الداشبورد بيقسّم بيه بعد
+    // audit-backend C3، وكمان نفس شكل matchDate الحقيقي (منتصف ليل UTC).
+    const today = new Date(startOfTodayUTC());
 
     await SeasonMatch.create({
       ageGroup: ageGroup._id, season: '2025/2026', league: 'professional',

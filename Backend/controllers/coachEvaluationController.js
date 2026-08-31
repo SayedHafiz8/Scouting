@@ -11,6 +11,7 @@ import AppError from "../utils/appError.js";
 import { sendNotificationToUser } from "../socket/handlers/notification.js";
 import { EVALUATION_CRITERIA } from "../utils/coachEvaluationCriteria.js";
 import { ROLES } from "../constants/roles.js";
+import { isCurrentMonthUTC as isCurrentMonth } from "../utils/time.js";
 
 // audit-database I2 — وايت ليست الترتيب. الكونترولر بيفرض "-year,-month"
 // كافتراضي فوق، والاتنين آخر حقلين في {coach: 1, status: 1, year: -1, month: -1}
@@ -31,11 +32,13 @@ const assertOwnEvaluation = (doc, req) => {
     }
 };
 
-// القفل بيتطبق بس على الشهر الحالي — تقييمات الشهور اللي فاتت تفضل ظاهرة عادي زي ما كانت
-const isCurrentMonth = (year, month) => {
-    const now = new Date();
-    return Number(year) === now.getFullYear() && Number(month) === now.getMonth() + 1;
-};
+// القفل بيتطبق بس على الشهر الحالي — تقييمات الشهور اللي فاتت تفضل ظاهرة عادي زي ما كانت.
+//
+// audit-backend C3 — المقارنة بتيجي من utils/time.js و**لازم** تفضل UTC. كانت
+// متكتبة هنا بـ getFullYear/getMonth (توقيت السيرفر المحلي) بينما year/month
+// الجايين من العميل متولّدين UTC، فكان فيه نافذة عند حدود الشهر عرضها = فرق
+// المنطقة الزمنية، القفل فيها بيتخطّى بالكامل. التفاصيل والحادثة المقيسة في
+// utils/time.js — متترجعش تكتب المقارنة محلياً هنا تاني.
 
 // تقييمات الأدمنز التانيين (درافت أو منشورة) مقفولة لحد ما الأدمن الحالي ينشر تقييمه هو
 // لنفس المدرب ونفس الشهر — نوع من الـ "blind review" بيمنع التحيّز بتقييمات التانيين

@@ -1,19 +1,18 @@
 import Player from "../models/playedModel.js";
 import SeasonMatch from "../models/seasonMatchModel.js";
 import AppError from "../utils/appError.js";
-
-const DAY = 86_400_000;
+import { DAY_MS, startOfTodayUTC } from "../utils/time.js";
 
 // نافذة 3 أيام (يوم قبل الماتش + يوم الماتش + يوم بعده) بتوقيت UTC —
 // matchDate بيتخزن كـ منتصف ليل UTC (جاي من <input type="date">)، فلازم نقارن بحدود UTC
 // مش بتوقيت السيرفر المحلي (وإلا ممكن نتزحلق يوم كامل حسب توقيت السيرفر).
+// حدود الـUTC كلها بتيجي من utils/time.js — مصدر واحد، مش حساب محلي في كل ملف.
 // لازم تتحسب في كل طلب مش تتلقّط مرة واحدة وقت تحميل الملف.
 const utcWindow = () => {
-    const now = new Date();
-    const startOfTodayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const start = startOfTodayUTC();
     return {
-        $gte: new Date(startOfTodayUTC - DAY),      // الماتش كان امبارح → "يوم بعد الماتش" ✓
-        $lt: new Date(startOfTodayUTC + 2 * DAY),   // الماتش بكرة → "يوم قبل الماتش" ✓ (وبعد كده برة)
+        $gte: new Date(start - DAY_MS),      // الماتش كان امبارح → "يوم بعد الماتش" ✓
+        $lt: new Date(start + 2 * DAY_MS),   // الماتش بكرة → "يوم قبل الماتش" ✓ (وبعد كده برة)
     };
 };
 
