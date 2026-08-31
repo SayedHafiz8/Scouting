@@ -62,7 +62,28 @@ async function checkDuplicateEmails() {
 async function run() {
     console.log(`Mode: ${APPLY ? "APPLY (will create/drop indexes)" : "DRY RUN (no changes — pass --apply to execute)"}\n`);
 
-    await mongoose.connect(process.env.CONNECTION_STRING);
+    // ⚠️ autoIndex/autoCreate: false — بدونها **الـdry run بيكتب**.
+    //
+    // mongoose افتراضه autoIndex: true، فأول ما الاتصال يفتح بينده Model.init()
+    // لكل موديل متسجّل → createIndexes() → بيبني كل فهرس معلن في المخطط. يعني
+    // السكريبت ده كان بيبني الفهارس الجديدة كأثر جانبي **قبل** ما يوصل لسطر
+    // diffIndexes() اللي المفروض بس "يطبع الخطة".
+    //
+    // حصل فعلاً على الإنتاج (2026-08-26): تشغيل بدون --apply أنشأ
+    // Player.createdBy_1_createdAt_-1 و ScoutingReport.player_1_coach_1_seasonMatch_1
+    // (unique). الحذف مااتنفّذش — autoIndex بيضيف بس — فالداتابيز قعدت في حالة
+    // نص-مطبَّقة، والـdiff المطبوع كان بيوصف قاعدة اتغيّرت تحت رجليه بالفعل.
+    //
+    // ملاحظة على الخطورة: الفهرس الـunique اللي اتبنى كان ممكن **يفشل** لو كان
+    // فيه تكرارات — يعني "تشغيلة استطلاعية" كانت تقدر تبدأ بناء فهرس طويل أو
+    // تقع في النص على كولكشن كبيرة.
+    //
+    // السكريبت مابيخسرش حاجة بالتعطيل ده: شغله كله **صريح** عن طريق
+    // Model.syncIndexes() و Model.diffIndexes()، مش عن طريق الآلية الضمنية.
+    await mongoose.connect(process.env.CONNECTION_STRING, {
+        autoIndex: false,
+        autoCreate: false,
+    });
     console.log("✅ Connected\n");
 
     const emailsOk = await checkDuplicateEmails();
