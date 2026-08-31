@@ -34,6 +34,7 @@ import Player from "../models/playedModel.js";
 import ScoutingReport from "../models/scoutingReportModel.js";
 import PlayerMedia from "../models/playerMediaModel.js";
 import SeasonMatch from "../models/seasonMatchModel.js";
+import Team from "../models/teamModel.js";
 import CoachEvaluation from "../models/coachEvaluationModel.js";
 import { ROLES } from "../constants/roles.js";
 
@@ -149,12 +150,21 @@ async function run() {
     // نجيب معرّفات حقيقية من الداتا المزروعة عشان الفلاتر تبقى انتقائية بجد
     const coach = await User.findOne({ role: ROLES.COACH }).select("_id").lean();
     const observer = await User.findOne({ role: ROLES.OBSERVER }).select("_id").lean();
+    // audit-database (توصية 6) — الرول ده كان غايب تماماً عن الـharness، وده
+    // السبب المباشر إن البند I1 عاش من المرحلة 11 لحد مراجعة الداتابيز.
+    const proScout = await User.findOne({ role: ROLES.PRO_SCOUT }).select("_id").lean();
     const group = await AgeGroup.findOne({}).select("_id").lean();
     const player = await Player.findOne({}).select("_id").lean();
     const observedPlayer = await Player.findOne({ status: "observed" }).select("_id observers").lean();
 
     if (!coach || !player) {
         throw new Error("No seeded data found — run scripts/seedLoadTest.js first.");
+    }
+    if (!proScout) {
+        console.warn(
+            "\n⚠️  No proScout user in this dataset — the Stage 2/11 scope shapes below will be skipped.\n" +
+            "   Re-seed with a current seedLoadTest.js (it creates them by default).\n"
+        );
     }
 
     const today = new Date(new Date().setHours(23, 59, 59, 999));
@@ -270,6 +280,74 @@ async function run() {
         "media • uploader dashboard count {uploadedBy}",
         PlayerMedia, { uploadedBy: coach._id }
     );
+
+    // ── 4b. proScout scope — services/scope.js + Stage 11 ───────────────────
+    //
+    // audit-database (توصية 6). النطاق بيتلفّ في $and جوه services/scope.js
+    // (wrap())، فالشكل المقاس هنا هو اللي بيتنفّذ حرفياً — مش صيغة مبسّطة.
+    // الـ$and مالوش أثر على اختيار الـplanner، لكن الاتساق مع المصدر مقصود.
+    if (proScout) {
+        const scope = { $and: [{ createdBy: proScout._id }] };
+
+        await explainFind(
+            "proScout • players list (default sort)  [playerController.js:309]",
+            Player, scope, { sort: { createdAt: -1 }, limit: 50 }
+        );
+        await explainFind(
+            "proScout • countDocuments for that page [playerController.js:333]",
+            Player, scope, { limit: 0 }
+        );
+        await explainFind(
+            "proScout • players + status filter",
+            Player, { ...scope, status: "selected" }, { sort: { createdAt: -1 }, limit: 50 }
+        );
+        await explainFind(
+            "proScout • prefix search inside scope",
+            Player, { ...scope, searchTokens: { $regex: "^ahmed" } }, { limit: 50 }
+        );
+        await explainAgg("proScout • dashboard $facet          [dashboardController.js:283]", Player, [
+            { $match: { $and: [{ createdBy: oid(proScout._id) }] } },
+            { $facet: {
+                byStatus: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+                ids: [{ $project: { _id: 1 } }],
+            } },
+        ]);
+        await explainAgg("proScout • counts byAgeGroup         [playerController.js:162]", Player, [
+            { $match: { $and: [{ createdBy: oid(proScout._id) }, {}] } },
+            { $group: { _id: "$ageGroup", count: { $sum: 1 },
+                professional: { $sum: { $cond: ["$isProfessional", 1, 0] } } } },
+        ]);
+
+        // محور التقارير في الداشبورد: $in على كل ids اللاعبين في النطاق
+        const scopedIds = await Player.find(scope).distinct("_id");
+        await explainFind(
+            `proScout • reports count {coach, player:$in[${scopedIds.length}]} [dashboardController.js:314]`,
+            ScoutingReport, { coach: proScout._id, player: { $in: scopedIds } }, { limit: 0 }
+        );
+        await explainFind(
+            "proScout • recentReports sort -matchDate limit 5 [dashboardController.js:334]",
+            ScoutingReport, { coach: proScout._id, player: { $in: scopedIds } },
+            { sort: { matchDate: -1 }, limit: 5 }
+        );
+
+        // سكوب المباريات والفرق — league لوحده، من services/scope.js
+        const endOfToday = new Date(new Date().setHours(23, 59, 59, 999));
+        await explainFind(
+            "proScout • upcoming matches {league, matchDate>today}",
+            SeasonMatch, { $and: [{ league: "professional" }, { matchDate: { $gt: endOfToday } }] },
+            { sort: { matchDate: 1 }, limit: 5 }
+        );
+        await explainFind(
+            "proScout • teams scope {league:professional}",
+            Team, { $and: [{ league: "professional" }] }, { limit: 50 }
+        );
+
+        // الفرع اليتيم — لاعب محترف بلا فريق، عدسة الأدمن ?coach=none
+        await explainFind(
+            "players • §9 orphan lens with pro players seeded",
+            Player, { coach: null }, { sort: { createdAt: -1 }, limit: 50 }
+        );
+    }
 
     // ── 5. crons — the shapes that run unattended ───────────────────────────
     const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
@@ -426,7 +504,10 @@ function print() {
 }
 
 async function main() {
-    await mongoose.connect(URI);
+    // audit-database — autoIndex/autoCreate: false إجباري (CLAUDE.md). الـharness
+    // ده بيقيس الفهارس الموجودة فعلاً؛ لو بناها بنفسه وقت الاتصال كان هيقيس حالة
+    // من صنعه هو مش حالة الكلاستر. البناء مسؤولية seedLoadTest.js.
+    await mongoose.connect(URI, { autoIndex: false, autoCreate: false });
     console.log(`✅ Connected to ${mongoose.connection.name}`);
 
     const counts = {};

@@ -13,6 +13,7 @@ import {
 import { getConnectedUsers } from "../socket/index.js";
 import { ROLES } from "../constants/roles.js";
 import { playerScopeFor, seasonMatchScopeFor } from "../services/scope.js";
+import { utcDayRange } from "../utils/time.js";
 
 // ============================
 // §11 — كاش TTL في الذاكرة لداشبورد الأدمن
@@ -105,7 +106,8 @@ const computeAdminDashboardData = async () => {
         User.countDocuments({ role: ROLES.PRO_SCOUT }),
         // عدد كل المباريات اللي اتلعبت فعلاً (تاريخها النهاردة أو قبل كده) على مستوى الموقع كله
         SeasonMatch.countDocuments({
-            matchDate: { $lte: new Date(new Date().setHours(23, 59, 59, 999)) },
+            // audit-backend C3 — نهاية النهاردة بتوقيت UTC (حد أعلى مفتوح)
+            matchDate: { $lt: utcDayRange(new Date()).end },
         }),
         Player.aggregate([
             { $match: { status: "selected" } },
@@ -198,7 +200,8 @@ const getCoachDashboardData = async (coachId) => {
         // اللي لسه في أول اليوم (فرق التوقيت UTC) تتحسب "حاضرة" على طول من غير race condition
         SeasonMatch.countDocuments({
             attendees: coachId,
-            matchDate: { $lte: new Date(new Date().setHours(23, 59, 59, 999)) },
+            // audit-backend C3 — نهاية النهاردة بتوقيت UTC (حد أعلى مفتوح)
+            matchDate: { $lt: utcDayRange(new Date()).end },
         }),
     ]);
 
@@ -237,7 +240,8 @@ const getObserverDashboardData = async (observerId) => {
         // عدد المباريات الى اتحدد كحاضر فيها وفعلاً اتلعبت (تاريخها النهاردة أو قبل كده)
         SeasonMatch.countDocuments({
             attendees: observerId,
-            matchDate: { $lte: new Date(new Date().setHours(23, 59, 59, 999)) },
+            // audit-backend C3 — نهاية النهاردة بتوقيت UTC (حد أعلى مفتوح)
+            matchDate: { $lt: utcDayRange(new Date()).end },
         }),
     ]);
 
@@ -263,10 +267,14 @@ const getProScoutDashboardData = async (req) => {
     // نهاية اليوم النهاردة — نفس حد المقارنة المستخدم في التلات دوال فوق بالظبط،
     // عشان matchDate المخزنة UTC-midnight (من <input type="date">) متتصنفش
     // "لسه ماجاش" غلط لمعظم اليوم. مباراة النهاردة بتتحسب "نتيجة"، مش "قادمة".
-    const endOfToday = new Date(new Date().setHours(23, 59, 59, 999));
+    // audit-backend C3 — الحد ده **نهاية النهاردة بتوقيت UTC** (= منتصف ليل بكرة
+    // UTC، حد مفتوح)، مش نهاية اليوم المحلي. matchDate متخزّن منتصف ليل UTC،
+    // فاليوم المحلي كان بيزح التقسيمة بفرق توقيت السيرفر — على توقيت سالب ماتش
+    // النهاردة كان بيتحسب "قادم" لجزء من اليوم.
+    const endOfToday = utcDayRange(new Date()).end;
 
-    const upcomingMatchFilter = { $and: [matchScope, { matchDate: { $gt: endOfToday } }] };
-    const pastMatchFilter = { $and: [matchScope, { matchDate: { $lte: endOfToday } }] };
+    const upcomingMatchFilter = { $and: [matchScope, { matchDate: { $gte: endOfToday } }] };
+    const pastMatchFilter = { $and: [matchScope, { matchDate: { $lt: endOfToday } }] };
 
     // محور التقارير: تأليف **و** نطاق اللاعب مع بعض، مش تأليف بس — نفس اللي
     // getAverageRatingsForPlayers عملته في المرحلة 2 لنفس السبب: تقرير على لاعب

@@ -6,10 +6,17 @@ import Team from '../../models/teamModel.js';
 import Player from '../../models/playedModel.js';
 import SeasonMatch from '../../models/seasonMatchModel.js';
 import app from '../../app.js';
+import { currentYearMonthUTC } from '../../utils/time.js';
 
 // Login only checks notEmpty (no format validation). Set-password endpoints require uppercase +
 // lowercase + digit, min 8 chars, and now allow special characters (.{8,} instead of [A-Za-z\d]{8,}).
 export const TEST_PASSWORD = 'TestPass1234';
+
+// عدّاد تسلسلي للإيميلات الفريدة. `Date.now()` لوحده مكانش كافي: أي تست بيجمّد
+// الساعة (vi.setSystemTime — زي تستات حدود الشهر في coachEvaluations) بيخلي كل
+// المستخدمين في نفس التست ياخدوا نفس الإيميل → E11000 على email_1.
+let userSeq = 0;
+const uniqueEmail = (prefix) => `${prefix}_${Date.now()}_${++userSeq}@test.com`;
 
 // Returns ISO date string for someone who is exactly `years` years old (birthday was yesterday)
 export const dobForAge = (years) => {
@@ -30,7 +37,7 @@ export async function seedAgeGroups() {
 
 // ── Create an admin user directly in the DB and return token ─────────────────
 export async function createAdmin(overrides = {}) {
-  const email = overrides.email ?? `admin_${Date.now()}@test.com`;
+  const email = overrides.email ?? uniqueEmail('admin');
   const admin = await User.create({
     name: 'Test Admin',
     email,
@@ -52,7 +59,7 @@ export async function createAdmin(overrides = {}) {
 
 // ── Create a coach user and return token ─────────────────────────────────────
 export async function createCoach(overrides = {}) {
-  const email = overrides.email ?? `coach_${Date.now()}@test.com`;
+  const email = overrides.email ?? uniqueEmail('coach');
   const coach = await User.create({
     name: 'Test Coach',
     email,
@@ -75,7 +82,7 @@ export async function createCoach(overrides = {}) {
 
 // ── Create an observer user and return token ─────────────────────────────────
 export async function createObserver(overrides = {}) {
-  const email = overrides.email ?? `observer_${Date.now()}@test.com`;
+  const email = overrides.email ?? uniqueEmail('observer');
   const observer = await User.create({
     name: 'Test Observer',
     email,
@@ -97,7 +104,7 @@ export async function createObserver(overrides = {}) {
 
 // ── Create a proScout user and return token ───────────────────────────────────
 export async function createProScout(overrides = {}) {
-  const email = overrides.email ?? `proscout_${Date.now()}@test.com`;
+  const email = overrides.email ?? uniqueEmail('proscout');
   const proScout = await User.create({
     name: 'Test Pro Scout',
     email,
@@ -225,10 +232,8 @@ export function reportPayload(overrides = {}) {
 
 // ── Base payload for a valid observer evaluation (pass `observer` id via overrides) ──
 export function observerEvaluationPayload(overrides = {}) {
-  const now = new Date();
   return {
-    year: now.getUTCFullYear(),
-    month: now.getUTCMonth() + 1,
+    ...currentYearMonthUTC(),
     scouting:        { talentIdentification: 8, matchAnalysis: 7, reportAccuracy: 9 },
     videoWork:       { videoRecordingQuality: 8, videoUploadTimeliness: 7, videoCoverage: 8 },
     professionalism: { punctuality: 9, commitment: 8, attitude: 7 },
@@ -239,11 +244,13 @@ export function observerEvaluationPayload(overrides = {}) {
 }
 
 // ── Base payload for a valid coach evaluation (pass `coach` id via overrides) ──
+//
+// السنة/الشهر بييجوا من utils/time.js — **نفس** الدالة اللي الكونترولر بيقفل بيها.
+// قبل كده الملف ده كان بيحسب UTC بنفسه والكونترولر بيقارن محلي، فالتستات كانت
+// بتعدّي 27 يوم في الشهر وتفشل في نافذة حدود الشهر (اتقاست فعلاً: 2026-08-31 21:53Z).
 export function coachEvaluationPayload(overrides = {}) {
-  const now = new Date();
   return {
-    year: now.getUTCFullYear(),
-    month: now.getUTCMonth() + 1,
+    ...currentYearMonthUTC(),
     scouting:         { talentIdentification: 8, matchAnalysis: 7, reportAccuracy: 9 },
     videoWork:        { videoRecordingQuality: 8, videoUploadTimeliness: 7, videoCoverage: 8 },
     rosterManagement: { playerProfileQuality: 8, squadOrganization: 7 },

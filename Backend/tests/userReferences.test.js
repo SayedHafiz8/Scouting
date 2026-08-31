@@ -29,6 +29,7 @@ import {
     createPlayer,
     createTeam,
     defaultTeamIds,
+    setupPlayerMatchDay,
     coachEvaluationPayload,
     observerEvaluationPayload,
     seedAgeGroups,
@@ -312,16 +313,22 @@ describe("§12 — clearing refs cannot collide on the unique indexes", () => {
     });
 
     it("the unique rule still applies while the author exists", async () => {
+        // audit-database D1 — المفتاح بقى {player, coach, seasonMatch} بدل
+        // {player, coach, matchDate}، فالتست ده اتحدّث ليربط بمباراة حقيقية.
+        // نيّته لم تتغيّر: الاستثناء الـpartial بتاع الكاتب المحذوف **مايلغيش**
+        // الفرادة على التقارير اللي ليها كاتب موجود.
         const { token: coachToken, user: coach } = await createCoach({ email: "ref_still@test.com" });
         const player = await createPlayer(coachToken, { name: "Still Unique Kid" });
 
-        const matchDate = new Date("2026-04-20T00:00:00.000Z");
         const teams = await defaultTeamIds(player.ageGroup);
+        const match = await setupPlayerMatchDay(player._id, teams, new Date("2026-04-20T00:00:00.000Z"));
+
         const doc = {
             player: player._id,
             coach: coach._id,
-            matchDate,
-            matchType: "friendly",
+            matchDate: match.matchDate,
+            matchType: "official",
+            seasonMatch: match._id,
             homeTeam: teams.homeTeam,
             awayTeam: teams.awayTeam,
             notes: "First",
@@ -331,8 +338,6 @@ describe("§12 — clearing refs cannot collide on the unique indexes", () => {
         };
         await ScoutingReport.create(doc);
 
-        // الـpartial لازم يفضل مطبّق على التقارير اللي ليها كاتب — لو الاستثناء
-        // اتكتب غلط الفرادة كانت هتتلغي خالص
         await expect(ScoutingReport.create(doc)).rejects.toThrow(/duplicate key|E11000/i);
     });
 

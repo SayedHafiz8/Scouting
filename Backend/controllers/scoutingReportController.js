@@ -9,8 +9,15 @@ import ApiFeature from "../utils/apiFeatures.js";
 import { deleteOne, gettingSpecific, updating } from "../services/services.js";
 import { emitCoachDashboardUpdate, emitObserverDashboardUpdate } from "./dashboardController.js";
 import AppError from "../utils/appError.js";
+import { utcDayRange } from "../utils/time.js";
 import { ROLES } from "../constants/roles.js";
 import { playerScopeFor } from "../services/scope.js";
+
+// audit-database I2 — وايت ليست الترتيب. matchDate هو الترتيب الوحيد اللي الفرونت
+// بيبعته (report-list.component.ts: sort: "-matchDate")، ومغطّى بـ
+// player_1_matchDate_-1 — وقايمة التقارير دايماً مسكوبة على لاعب واحد فالـprefix
+// موجود. قبل الإصلاح ?sort=overallRating كان COLLSCAN بيفحص 75,400 مستند لـ50.
+const REPORT_SORT_FIELDS = ["matchDate", "createdAt"];
 
 const reportPopulate = [
     { path: "coach", select: "name email role" },
@@ -71,14 +78,14 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
     // official
     if (!player?.team) return next();
 
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date();
-    dayEnd.setHours(23, 59, 59, 999);
+    // audit-backend C3 — "النهاردة" بيوم UTC كامل، مش يوم بتوقيت السيرفر.
+    // matchDate متخزّن منتصف ليل UTC، فيوم محلي كان بيزح النافذة بفرق التوقيت
+    // ويخلي ماتش النهاردة يقع برّه النافذة في آخر/أول ساعات اليوم.
+    const { start: dayStart, end: dayEnd } = utcDayRange(new Date());
 
     const todaysMatch = await SeasonMatch.findOne({
         $or: [{ homeTeam: player.team }, { awayTeam: player.team }],
-        matchDate: { $gte: dayStart, $lte: dayEnd },
+        matchDate: { $gte: dayStart, $lt: dayEnd },
     }).setOptions({ skipPopulate: true });
 
     if (!todaysMatch) {
@@ -150,7 +157,7 @@ export const getAll = asyncHandler(async (req, res, next) => {
     const features = new ApiFeature(ScoutingReport.find(baseFilter), req.query, req.params, req.user);
 
     const documentCount = await ScoutingReport.countDocuments(features.query.getFilter());
-    features.sort().limitFields().paginate(documentCount);
+    features.sort(REPORT_SORT_FIELDS).limitFields().paginate(documentCount);
 
     const documents = await features.query.populate(reportPopulate);
 

@@ -232,6 +232,15 @@ const PLAYER_FILTERS = [
     "coach", "observers", "isProfessional",
 ];
 
+// audit-database I2 — وايت ليست الترتيب. **كل حقل هنا لازم يكون مفهرس** — الوايت
+// ليست موجودة عشان تمنع الـCOLLSCAN، فحقل غير مفهرس فيها هو نفس المشكلة باسم
+// مسموح. مقيس قبل الإصلاح: ?sort=name/height/notes = COLLSCAN فحص 25,800 لـ50.
+//
+// createdAt هو الترتيب الافتراضي للقايمة ومغطّى بـcoach_1_createdAt_-1 (الكوتش)،
+// createdBy_1_createdAt_-1 (الـproScout)، وcreatedAt_1 (الأدمن).
+// الفرونت مابيبعتش أي قيمة تانية النهارده (اتفحص) — أي إضافة هنا لازم يسبقها index.
+const PLAYER_SORT_FIELDS = ["createdAt"];
+
 // @desc    Get all players (coach sees own with "observed" masked to "pending")
 // @route   GET api/v1/players
 // @access  private
@@ -331,7 +340,7 @@ export const getAll = asyncHandler(async (req, res, next) => {
     }
 
     const documentCount = await Player.countDocuments(features.query.getFilter());
-    features.sort().limitFields().paginate(documentCount);
+    features.sort(PLAYER_SORT_FIELDS).limitFields().paginate(documentCount);
 
     let documents = await features.query;
     // FR-014 — الـproScout بياخد نفس قناع الكوتش: مايشوفش مصفوفة observers

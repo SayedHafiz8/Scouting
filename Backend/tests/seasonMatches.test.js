@@ -592,9 +592,13 @@ describe('GET/PATCH/DELETE /api/v1/seasonMatches/:id', () => {
 
     // الحضور بيتسجل قبل يوم المباراة، لكن النتيجة بتتسجل يوم المباراة نفسه — بنستخدم فيك تايمرز
     // عشان نتحكم فى "دلوقتى" ونتنقل من "قبل الماتش" (للتسجيل) لـ "يوم الماتش" (للنتيجة)
+    // التواريخ كلها UTC — matchDate الحقيقي بييجي من <input type="date"> يعني
+    // منتصف ليل UTC، والسيرفر بقى بيقارن بحدود UTC (audit-backend C3). تواريخ
+    // محلية هنا كانت بتخلي "يوم المباراة" في التست غير "يوم المباراة" عند السيرفر
+    // على أي جهاز توقيته مش UTC.
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 5, 15, 9, 0, 0));
-    const matchDate = new Date(2026, 5, 16, 0, 0, 0);
+    vi.setSystemTime(new Date(Date.UTC(2026, 5, 15, 9, 0, 0)));
+    const matchDate = new Date(Date.UTC(2026, 5, 16, 0, 0, 0));
 
     try {
       const created = await createMatch(adminToken, matchPayload({
@@ -609,7 +613,7 @@ describe('GET/PATCH/DELETE /api/v1/seasonMatches/:id', () => {
       await attend(coachToken, id);
 
       // move the clock to the match day itself
-      vi.setSystemTime(new Date(2026, 5, 16, 15, 0, 0));
+      vi.setSystemTime(new Date(Date.UTC(2026, 5, 16, 15, 0, 0)));
 
       const res = await request(app)
         .patch(`/api/v1/seasonMatches/${id}/status`)
@@ -789,12 +793,12 @@ describe('GET/PATCH/DELETE /api/v1/seasonMatches/:id', () => {
   // "...T00:00:00.000Z"), which is always "earlier today" than the current instant.
   // Comparing against Date.now() instead of start-of-day rejected every "today" match.
   it('accepts creating a match dated today, even as a UTC-midnight timestamp (400 regression)', async () => {
-    // Pin the clock to a fixed local noon so this test is deterministic regardless
-    // of when it actually runs — real wall-clock time in the 00:00–03:00 local
-    // window (server ahead of UTC) makes "today at UTC midnight" resolve to a
-    // moment before local start-of-day, flaking this exact scenario otherwise.
+    // الساعة متثبّتة على ظهر UTC عشان التست يبقى حتمي مهما اشتغل إمتى.
+    // ملحوظة: الفلاك اللي التعليق القديم كان بيوصفه (نافذة 00:00–03:00 المحلية على
+    // سيرفر متقدم عن UTC) اتشال من جذره في audit-backend C3 — matchDateNotPast
+    // بقى بيقارن ببداية النهاردة **UTC**. التثبيت هنا اتساب كتوثيق للحالة.
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 5, 15, 12, 0, 0));
+    vi.setSystemTime(new Date(Date.UTC(2026, 5, 15, 12, 0, 0)));
 
     try {
       const { token } = await createAdmin();

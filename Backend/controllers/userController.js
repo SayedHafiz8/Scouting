@@ -39,10 +39,17 @@ export const create = creating(User);
 
 const USER_FILTERS = ["role"];
 
+// audit-database I2 — وايت ليست الترتيب. "name" مش مفهرس على User، وده الاستثناء
+// الوحيد المقبول في المشروع: الفرونت بيبعت ?sort=name في أربع قوايم منسدلة كلها
+// مفلترة بـrole (role_1 بيغطي الفلتر)، وكولكشن المستخدمين عشرات لكل رول — يعني
+// الفرز في الذاكرة محدود بحجم الرول مش بحجم الكولكشن. لو عدد المستخدمين تخطّى
+// الآلاف، الحل index { role: 1, name: 1 } مش شيل الحقل من هنا.
+const USER_SORT_FIELDS = ["name", "createdAt"];
+
 // @desc    Get all Users
 // @route   POST api/v1/users
 // @access  private
-export const getAll = gettingAll(User, { allowed: USER_FILTERS });
+export const getAll = gettingAll(User, { allowed: USER_FILTERS, sortable: USER_SORT_FIELDS });
 
 // @desc    Get specific User (ID card images excluded — need the vault endpoint below)
 // @route   GET api/v1/users/:id

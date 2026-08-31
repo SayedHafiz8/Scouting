@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import AgeGroup from "./ageGroupModel.js";
 import AppError from "../utils/appError.js";
 import { resolveImageUrl } from "../utils/mediaUrl.js";
+import { yearOfUTC } from "../utils/time.js";
 
 const playerSchema = new mongoose.Schema({
     name: {
@@ -178,8 +179,10 @@ const MAX_BIRTH_YEAR = 2019;
 // وهو نفس أسلوب MAX_BIRTH_YEAR الموجود أصلاً.
 const PRO_MIN_BIRTH_YEAR = 1996;
 
+// audit-backend C3 — UTC، مش توقيت السيرفر. dateOfBirth بيتخزن منتصف ليل UTC،
+// والسبب الكامل في utils/time.js:yearOfUTC.
 function getBirthYear(dateOfBirth) {
-    return new Date(dateOfBirth).getFullYear();
+    return yearOfUTC(dateOfBirth);
 }
 
 // Stage 4b — نقطة واحدة لقرار "إيه المسموح لسنة الميلاد دي".
@@ -279,11 +282,29 @@ playerSchema.index({ observers: 1, ageGroup: 1 });
 playerSchema.index({ createdAt: 1 });           // dailySummary: $match createdAt > lastSentAt
 // الربط العكسي Team.players (foreignField: team) — بس للاعبين المربوطين فعلاً بفريق
 playerSchema.index({ team: 1 }, { sparse: true });
-// Stage 2 — الفرع التاني من سكوب proScout: { team: null, createdBy: <userId> }.
-// الـindex اللي فوقه (team_1 الـsparse) **مايقدرش** يخدم الفرع ده: الـsparse بيستبعد
-// المستندات اللي team فيها null، ودي بالظبط المجموعة اللي الفرع بيختارها. فمحتاجين
-// index غير sparse على الاتنين مع بعض.
-playerSchema.index({ team: 1, createdBy: 1 });
+// audit-database I1 — سكوب الـproScout. **الترتيب هنا هو البند نفسه، مش تفصيلة.**
+//
+// المرحلة 2 كانت بتسكوب الرول ده بفرعين، والتاني منهم { team: null, createdBy }،
+// فكان فيه index بالشكل { team: 1, createdBy: 1 } مبني للفرع ده بالظبط. المرحلة 11
+// (specs/011-proscout-createdby-scope) **ألغت الفرع** وخلّت النطاق createdBy لوحده
+// (services/scope.js:94)، والـindex فضل ورا. و`createdBy` مش الـprefix فيه، فهو
+// مايقدرش يخدم الشكل الجديد أبداً — يعني كان index بيتكتب على كل إدخال لاعب لصفر
+// قارئ، والشكل الفعلي اللي بيتنفّذ مالوش أي index.
+//
+// النتيجة كانت تلات مسارات بتعمل COLLSCAN على الكولكشن كله (مقيس على 25,800 لاعب
+// منهم 400 للكشاف، mongodb-memory-server + explain):
+//   • countDocuments بتاع كل صفحة قايمة  (playerController.js:333) → فحص 25,800
+//   • $facet بتاع الداشبورد               (dashboardController.js:283) → فحص 25,800
+//   • counts بالفئة العمرية               (playerController.js:162)  → فحص 25,800
+// وبعد الـindex ده: فحص 400 في التلاتة. زمن الداشبورد 21.5ms → 2.1ms، وعدّاد
+// القايمة 14.4ms → 1.0ms.
+//
+// ليه createdAt: -1 تانية مش createdBy لوحده: الترتيب الافتراضي للقايمة هو
+// -createdAt. من غير الجزء ده الـplanner بيسيب الفلتر ويقع على createdAt_1 عشان
+// يتجنّب الـblocking sort، فبيمشي على الفهرس كله ويرمي اللي مش بتاع الكشاف —
+// مقيس: فحص 25,040 مفتاح عشان يرجّع 50 لما مستندات الكشاف مش الأحدث. مع الجزء
+// ده الاستعلام بيبقى مغطّى بالكامل: فحص 50 لـ50.
+playerSchema.index({ createdBy: 1, createdAt: -1 });
 
 
 

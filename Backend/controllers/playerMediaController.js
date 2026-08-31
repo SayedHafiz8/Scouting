@@ -154,6 +154,12 @@ export const uploadMedia = asyncHandler(async (req, res, next) => {
     }
 });
 
+// audit-database I2 — وايت ليست الترتيب. createdAt هو الوحيد اللي الفرونت بيبعته
+// (media-gallery.component.ts: sort: "-createdAt")، ومغطّى بـplayer_1_createdAt_-1
+// (القايمة دايماً مسكوبة على لاعب واحد فالـprefix موجود) وبـcreatedAt_1.
+// قبل الإصلاح ?sort=title كان COLLSCAN بيفحص 50,000 مستند لـ50.
+const MEDIA_SORT_FIELDS = ["createdAt"];
+
 // @desc    List media for a player — coach & observer see only what THEY uploaded; admin sees all
 export const getAll = asyncHandler(async (req, res, next) => {
     const baseFilter = { player: req.params.playerId };
@@ -166,7 +172,7 @@ export const getAll = asyncHandler(async (req, res, next) => {
     const features = new ApiFeature(PlayerMedia.find(baseFilter), req.query, req.params, req.user);
 
     const documentCount = await PlayerMedia.countDocuments(features.query.getFilter());
-    features.sort().limitFields().paginate(documentCount);
+    features.sort(MEDIA_SORT_FIELDS).limitFields().paginate(documentCount);
 
     const documents = await features.query;
 

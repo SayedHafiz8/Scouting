@@ -75,6 +75,15 @@ const ASSUME_YES = flag("yes");
 const PLAYERS = num("players", 5000);
 const COACHES = num("coaches", 40);
 const OBSERVERS = num("observers", 15);
+// audit-database (توصية 6) — الرول ده موجود من المرحلة 2 وعمره ما اتزرع، فكل
+// قياسات الأداء السابقة كانت بتعدّي على سكوبه من غير ما تلمسه. ده بالظبط اللي
+// خلّى البند I1 (سكوب { createdBy } بلا index) يعيش من المرحلة 11 لحد مراجعة
+// الداتابيز. العدد صغير عن قصد: النطاق بيتقاس بانتقائيته (كام لاعب من الإجمالي)،
+// مش بعدد الكشافين.
+const PRO_SCOUTS = num("proScouts", 5);
+// نسبة لاعبي الـproScout من الإجمالي. 8% بيخلي النطاق انتقائي بجد — وده الشرط
+// اللي بيخلي فرق الـindex يبان في explain (نطاق واسع بيخلي أي index بلا قيمة).
+const PRO_PLAYER_RATIO = 0.08;
 const REPORTS_PER_PLAYER = num("reportsPerPlayer", 3);
 const MEDIA_PER_PLAYER = num("mediaPerPlayer", 2);
 const MATCHES = num("matches", 600);
@@ -217,6 +226,18 @@ async function seed() {
         updatedAt: now,
         ...MARK,
     }));
+    const proScouts = Array.from({ length: PRO_SCOUTS }, (_, i) => ({
+        _id: oid(),
+        name: `LoadTest ProScout ${i + 1}`,
+        email: `lt_proscout_${i + 1}@loadtest.local`,
+        password: fakeHash,
+        phoneNumber: phone(),
+        role: ROLES.PRO_SCOUT,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+        ...MARK,
+    }));
     const admin = {
         _id: oid(),
         name: "LoadTest Admin",
@@ -229,7 +250,7 @@ async function seed() {
         updatedAt: now,
         ...MARK,
     };
-    await insertBatched(User, [...coaches, ...observers, admin], "users");
+    await insertBatched(User, [...coaches, ...observers, ...proScouts, admin], "users");
 
     // 3) teams — فريقين لكل (فئة × دوري) عشان جدول المباريات يبقى واقعي
     console.log("\n▸ Teams");
@@ -258,17 +279,41 @@ async function seed() {
         if (!teamsByGroup.has(key)) teamsByGroup.set(key, []);
         teamsByGroup.get(key).push(t);
     }
+    // audit-database (توصية 6) — فرق دوري المحترفين، اللي لاعبو الـproScout
+    // بيتربطوا بيها. الفرق دي ليها ageGroup في الزرع (زي البيانات القديمة قبل
+    // المرحلة 13) — وده مقصود: unsetProfessionalTeamAgeGroup.js موجود بالظبط
+    // عشان الحالة دي، فسيبها بيخلي السكريبت ده يبقى ليه شغل يتقاس عليه.
+    const professionalTeams = teams.filter((t) => t.league === "professional");
 
     // 4) players — موزّعين على الفئات، وageGroup بتتشتق من سنة الميلاد زي الـhook
     console.log("\n▸ Players");
     const players = [];
     for (let i = 0; i < PLAYERS; i++) {
-        const birthYear = randInt(2007, 2019);
+        // audit-database (توصية 6) — شريحة لاعبي الـproScout.
+        //
+        // اللاعب المحترف مختلف بنيوياً مش بس في العلم: ageGroup **فاضية** بحكم
+        // الـhook (playedModel.js pre-save)، وسنة الميلاد في مدى تاني (1996→)،
+        // وcoach مفضّي (playerController.create بيعمل delete req.body.coach لغير
+        // الكوتش) وcreatedBy هو الكشاف. زرعه بالشكل ده بيخلي explain يقيس:
+        //   • سكوب { createdBy } الحقيقي بانتقائية واقعية
+        //   • مسار "اللاعب بلا فئة عمرية" في counts/aggregations
+        //   • الفرع اليتيم (coach: null) في عدسة الأدمن ?coach=none
+        const isProPlayer = i % Math.round(1 / PRO_PLAYER_RATIO) === 0;
+        const scout = proScouts.length ? proScouts[i % proScouts.length] : null;
+        const usePro = isProPlayer && scout;
+
+        const birthYear = usePro ? randInt(1996, 2006) : randInt(2007, 2019);
         const dateOfBirth = new Date(Date.UTC(birthYear, randInt(0, 11), randInt(1, 28)));
         const coach = coaches[i % coaches.length];
         const status = pick(STATUSES);
-        const groupId = groupByYear.get(birthYear);
-        const groupTeams = teamsByGroup.get(String(groupId)) ?? [];
+        // المحترف مالوش فئة عمرية — نفس ما بيعمله pre('save') بالظبط
+        const groupId = usePro ? undefined : groupByYear.get(birthYear);
+        const groupTeams = usePro
+            // المحترف بيتربط بفريق دوري محترفين، أو بلا فريق خالص (team: null) —
+            // والحالة التانية دي بالظبط اللي الفرع اليتيم في عدسة الأدمن موجود
+            // عشانها، وكانت غير مزروعة قبل كده
+            ? (i % 3 === 0 ? [] : professionalTeams)
+            : (teamsByGroup.get(String(groupId)) ?? []);
         const name = playerName();
         const city = pick(CITIES);
         // الأوبزيرفرز بيتحطوا على اللاعبين "observed" بس — زي المنطق الحقيقي
@@ -286,6 +331,7 @@ async function seed() {
             dateOfBirth,
             position: pick(POSITIONS),
             ageGroup: groupId,
+            isProfessional: Boolean(usePro),
             team: groupTeams.length ? pick(groupTeams)._id : null,
             teamName: null,
             height: randInt(140, 190),
@@ -296,7 +342,11 @@ async function seed() {
             status,
             observers: assigned,
             notes: "seeded for load testing",
-            coach: coach._id,
+            // المحترف مالوش كوتش مالك (playerController.create بيمسح الحقل لغير
+            // الكوتش)، والمنشئ هو الكشاف. اللاعب الناشئ: الاتنين نفس الكوتش، زي
+            // ما backfillPlayerCreatedBy بيعمل بالظبط.
+            coach: usePro ? null : coach._id,
+            createdBy: usePro ? scout._id : coach._id,
             createdAt: new Date(now - randInt(0, 400) * 86400000),
             updatedAt: now,
             ...MARK,
@@ -342,18 +392,40 @@ async function seed() {
         });
     }
     await insertBatched(SeasonMatch, matches, "matches");
+    const matchesByGroup = new Map();
+    for (const m of matches) {
+        const key = String(m.ageGroup);
+        if (!matchesByGroup.has(key)) matchesByGroup.set(key, []);
+        matchesByGroup.get(key).push(m);
+    }
 
-    // 6) scouting reports — matchDate بيتغيّر لكل تقرير عشان الـunique index
-    //    {player, coach, matchDate} مايتكسرش
+    // 6) scouting reports
+    //
+    // audit-database D1 — الـunique index بقى { player, coach, seasonMatch }
+    // (partial على الاتنين objectId). التقارير التحتية كلها seasonMatch: null
+    // فهي **خارج** الـindex بحكم الـpartial ومافيش تصادم ممكن. الاستثناء هو
+    // التقرير الأول لكل لاعب: بيتربط بمباراة حقيقية عشان الـindex الجديد يتمرّن
+    // فعلاً في القياس — تقرير واحد لكل (لاعب، كاتب، مباراة) فمافيش تكرار.
     console.log("\n▸ Scouting reports");
     const reports = [];
     for (const p of players) {
+        // مباراة من نفس فئة اللاعب (أو من دوري المحترفين للمحترف) عشان التقرير
+        // الأول يتربط بيها — بيغذّي seasonMatch_1 والـunique index الجديد.
+        const matchPool = p.isProfessional
+            ? matches.filter((m) => m.league === "professional")
+            : matchesByGroup.get(String(p.ageGroup)) ?? [];
+        const linkedMatch = matchPool.length ? matchPool[Number(String(p._id).slice(-6), 16) % matchPool.length] : null;
+
         for (let r = 0; r < REPORTS_PER_PLAYER; r++) {
             // معظم التقارير من كوتش اللاعب، وجزء من أوبزيرفر — عشان فلتر
             // authorRole بتاع الأدمن يبقى ليه معنى
+            // كاتب التقرير: الأوبزيرفر في آخر تقرير لو معيَّن، وإلا الكوتش المالك.
+            // اللاعب المحترف مالوش كوتش (coach: null)، فكاتبه هو الـproScout
+            // اللي أنشأه — وده اللي بيخلي استعلامات { coach: <scout> } في داشبورد
+            // الرول ده ليها بيانات حقيقية تتقاس عليها.
             const author = r === REPORTS_PER_PLAYER - 1 && p.observers.length
                 ? p.observers[0]
-                : p.coach;
+                : (p.coach ?? p.createdBy);
             const technical = { passing: rating(), dribbling: rating(), shooting: rating(), ballControl: rating() };
             const physical = { speed: rating(), stamina: rating(), strength: rating(), agility: rating() };
             const mental = { positioning: rating(), decisionMaking: rating(), teamwork: rating(), attitude: rating() };
@@ -362,12 +434,12 @@ async function seed() {
                 player: p._id,
                 coach: author,
                 matchDate: new Date(Date.UTC(2025, r, 1 + r)),
-                matchType: "training",
+                matchType: r === 0 && linkedMatch ? "official" : "training",
                 homeTeam: null,
                 homeTeamName: null,
                 awayTeam: null,
                 awayTeamName: null,
-                seasonMatch: null,
+                seasonMatch: r === 0 && linkedMatch ? linkedMatch._id : null,
                 technical,
                 physical,
                 mental,
@@ -387,7 +459,7 @@ async function seed() {
     for (const p of players) {
         for (let m = 0; m < MEDIA_PER_PLAYER; m++) {
             const isVideo = m % 2 === 1;
-            const uploader = p.observers.length && m === 0 ? p.observers[0] : p.coach;
+            const uploader = p.observers.length && m === 0 ? p.observers[0] : (p.coach ?? p.createdBy);
             media.push({
                 _id: oid(),
                 player: p._id,
@@ -461,7 +533,8 @@ async function seed() {
    reports   ${reports.length}
    media     ${media.length}
    matches   ${matches.length}
-   users     ${coaches.length + observers.length + 1}
+   users     ${coaches.length + observers.length + proScouts.length + 1}  (${coaches.length} coach, ${observers.length} observer, ${proScouts.length} proScout, 1 admin)
+   ↳ proScout players ${players.filter((p) => p.isProfessional).length} (${((players.filter((p) => p.isProfessional).length / players.length) * 100).toFixed(1)}% — النطاق المقاس في explain)
    teams     ${teams.length}
 
    Next:  SEED_TARGET_URI="..." node scripts/explainQueries.js
@@ -486,7 +559,14 @@ async function main() {
         process.exit(0);
     }
 
-    await mongoose.connect(URI);
+    // audit-database — autoIndex/autoCreate: false إجباري (CLAUDE.md). السكريبت ده
+    // كان بيعتمد على autoIndex عشان الفهارس تتبني، وده كان بيخفي حاجتين:
+    //   1) الفهارس كانت بتتبني **قبل** الإدخال بالجملة، وده أبطأ من بنائها بعده
+    //      (كل insert بيحدّث كل B-tree، بدل بناء واحد مرتّب في الآخر).
+    //   2) الاعتماد كان ضمني — لو الفهارس مش مبنية لأي سبب، كل استعلام في
+    //      explainQueries.js بيطلع COLLSCAN والقياس بيبقى كذب صامت.
+    // البناء بقى صريح بعد الزرع (تحت في main)، فالسلوك أوضح وأسرع.
+    await mongoose.connect(URI, { autoIndex: false, autoCreate: false });
     console.log(`\n✅ Connected to ${mongoose.connection.name}`);
 
     if (CLEAN) {
@@ -494,6 +574,13 @@ async function main() {
         await clean();
     } else {
         await seed();
+
+        // الفهارس بتتبني هنا صراحةً — بعد الإدخال بالجملة، مش قبله. من غير
+        // الخطوة دي كل استعلام في explainQueries.js هيطلع COLLSCAN وهيتقري
+        // كأنه مشكلة أداء حقيقية، بينما هو كلاستر بلا فهارس أصلاً.
+        console.log("\n▸ Building indexes (explicit — autoIndex is off)");
+        await mongoose.connection.syncIndexes();
+        console.log("   done");
     }
 
     await mongoose.disconnect();

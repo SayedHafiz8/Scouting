@@ -34,7 +34,9 @@ const TEAM_FILTERS = ["ageGroup", "league"];
 // وتفشل **مفتوحة** من غير أي خطأ.
 export const getAll = gettingAll(
     Team,
-    { parentField: "ageGroup", allowed: TEAM_FILTERS },
+    // audit-database I2 — name مفهرس كـprefix في الـunique
+    // { name, ageGroup, league }، فالترتيب بيه مغطّى.
+    { parentField: "ageGroup", allowed: TEAM_FILTERS, sortable: ["name"] },
     null,
     teamScopeFor
 );

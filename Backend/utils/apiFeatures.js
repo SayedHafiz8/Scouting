@@ -66,10 +66,43 @@ class ApiFeature {
                 }
                 scope[baseKey][operator] = value;
             }else{
-                scope[baseKey] = value;
+                scope[baseKey] = this.normalizeBooleanFalse(baseKey, value);
             }
         }
         return scope;
+    }
+
+    /**
+     * audit-database M1 — الحقل البولياني الغايب لازم يتعامل كـfalse.
+     *
+     * MongoDB بيفرّق بين "الحقل قيمته false" و"الحقل مش موجود"، و{field: false}
+     * بيطابق الأولانية بس. ودي مشكلة حقيقية مع أي حقل بولياني بيتضاف لمخطط فيه
+     * مستندات قديمة: `default: false` بيتكتب على المستندات **الجديدة** بس، والقديمة
+     * بيفضل الحقل غايب عندها تماماً.
+     *
+     * الحالة اللي كشفت ده: Player.isProfessional (المرحلة 4b) واتفتح كفلتر أدمن في
+     * المرحلة 4c. مُثبَت بالتنفيذ على لاعبين — واحد قديم بلا الحقل وواحد بالكود
+     * الحالي:
+     *     ?isProfessional=false  بيطابق 1 من 2   ← بيسقط المستند القديم
+     *     { $ne: true }          بيطابق 2 من 2   ← الصح
+     * يعني الأدمن بيفلتر "الناشئين بس" وبياخد قايمة ناقصة **بصمت**: مفيش خطأ،
+     * والعدّاد نفسه بيقول رقم متّسق مع القايمة الناقصة (getCountsByAgeGroup بتستخدم
+     * $cond اللي بتعامل الغايب كـfalsy صح)، فالغلط مش قابل للاكتشاف من الواجهة.
+     *
+     * الإصلاح هنا **عام مش خاص بـisProfessional**: أي حقل بولياني في أي مخطط
+     * بياخد نفس المعاملة تلقائياً، عشان الحقل البولياني الجاي مايكررش نفس الفخ.
+     * وscripts/backfillIsProfessional.js بيصلّح البيانات نفسها — الاتنين مطلوبين:
+     * الـbackfill بيصلّح النهاردة، والدلالة دي بتصلّح بكرة.
+     *
+     * ملاحظة: القيمة جاية من الـquery string فهي **نص** ("false")، مش بوليان.
+     */
+    normalizeBooleanFalse(field, value){
+        const path = this.query.model.schema.path(field);
+        if (!path || path.instance !== 'Boolean') return value;
+
+        // نفس القيم اللي mongoose نفسه بيحوّلها لـfalse وقت الـcast
+        const isFalse = value === false || value === 'false' || value === '0' || value === 0;
+        return isFalse ? { $ne: true } : value;
     }
 
     buildParentScope(parentField){
@@ -109,11 +142,53 @@ class ApiFeature {
         return { [field]: this.user._id };
     }
 
-    sort(){
-        if(this.queryParams.sort){
-            const sortBy = this.queryParams.sort.split(',').join(" ");
-            this.query = this.query.sort(sortBy)
-            
+    /**
+     * audit-database I2 — وايت ليست لحقول الترتيب، بنفس نمط `allowed` في filter().
+     *
+     * قبل كده الدالة دي كانت **النقطة الوحيدة** من التلاتة اللي بتاخد مدخل من
+     * العميل وبتعدّيه كما هو: filter() عندها وايت ليست وبترمي المفتاح المرفوض،
+     * وsearchPrefix() عندها سقف طول وescape وحقل مطبّع واحد، وsort() كانت
+     * بتاخد أي سلسلة وتحطها في .sort() مباشرة.
+     *
+     * الأثر مقيس بـexplain على mongodb-memory-server (limit=50 في كل الحالات):
+     *   ?sort=overallRating على التقارير  → COLLSCAN، فحص 75,400 لـ50
+     *   ?sort=title على الميديا           → COLLSCAN، فحص 50,000 لـ50
+     *   ?sort=name/height/notes على اللاعبين → COLLSCAN، فحص 25,800 لـ50
+     * يعني أي مستخدم مسجّل دخول كان يقدر يجبر مسحاً كاملاً على أكبر كولكشن في
+     * النظام بـquery param واحد، ويكرّره بمعدل الـrate limiter. الـblocking sort
+     * نفسه مش المشكلة (المحرك بيستخدم top-k مع الـlimit، والذاكرة المقيسة 25KB) —
+     * التكلفة هي المسح.
+     *
+     * القاعدة: **الحقل المسموح لازم يكون مفهرس**. الوايت ليست مش تجميلية — لو
+     * حقل اتضاف هنا وهو مش مفهرس، فهو نفس المشكلة باسم مسموح.
+     *
+     * السلوك مع المرفوض: بيتشال بصمت (زي filter() بالظبط) والباقي بيتنفّذ. الرفض
+     * الصريح بـ400 كان هيكسر أي عميل قديم بيبعت ?sort=name، والمكسب الأمني صفر.
+     *
+     * @param {string[]} allowedSortFields أسماء الحقول المسموح الترتيب بيها.
+     *        القايمة الفاضية (الافتراضي) = مفيش ترتيب من العميل خالص — الفشل
+     *        المقفول، عشان أي مستدعي جديد ينسى يمرّر القايمة مايفتحش الباب تاني.
+     */
+    sort(allowedSortFields = []){
+        if (!this.queryParams.sort) return this;
+
+        const allowSet = new Set(allowedSortFields);
+        const fields = String(this.queryParams.sort)
+            .split(',')
+            .map((field) => field.trim())
+            .filter(Boolean)
+            .filter((field) => {
+                // الشرطة البادئة = ترتيب تنازلي، مش جزء من اسم الحقل
+                const baseField = field.startsWith('-') ? field.slice(1) : field;
+                if (allowSet.has(baseField)) return true;
+                if (process.env.NODE_ENV !== 'production') {
+                    console.warn(`ApiFeature: dropped non-whitelisted sort field "${field}" for ${this.query.model.modelName}`);
+                }
+                return false;
+            });
+
+        if (fields.length) {
+            this.query = this.query.sort(fields.join(' '));
         }
         return this;
     }

@@ -7,6 +7,7 @@ import { creating, gettingAll, updating, deleteOne } from "../services/services.
 import { decorateMedia } from "./playerMediaController.js";
 import { ROLES } from "../constants/roles.js";
 import { seasonMatchScopeFor } from "../services/scope.js";
+import { utcDayRange } from "../utils/time.js";
 
 // createdBy بيتحط من السيرفر (creating بيعمل req.body[field] = req.user._id)
 export const create = creating(SeasonMatch, "createdBy");
@@ -20,6 +21,12 @@ export const setUpdatedBy = (req, res, next) => {
 // matchDate لازم يفضل هنا — matchDate[gte] استخدام إنتاجي حقيقي في شاشة "ماتشاتي" (my-matches).
 // attendees مطلوب لـ ?attendees=<id> (الكشاف بيفلتر الماتشات اللي حضّرها بس).
 const SEASON_MATCH_FILTERS = ["ageGroup", "season", "league", "status", "attendees", "matchDate"];
+
+// audit-database I2 — وايت ليست الترتيب. matchDate هو القيمة الوحيدة اللي الفرونت
+// بيبعتها (شاشة "ماتشاتي" وصفحة الفئة العمرية وصفحة دوري المحترفين، تصاعدي
+// وتنازلي)، وهي آخر حقل في تلات فهارس مركّبة وكمان index مستقل matchDate_1 —
+// فالترتيب مغطّى في كل مسارات الفلترة. قبل الإصلاح ?sort=venue كان COLLSCAN.
+const SEASON_MATCH_SORT_FIELDS = ["matchDate"];
 
 // سكوب المباريات لكل رول — switch صريح بدل الـif القديم (Principle II).
 //
@@ -59,7 +66,7 @@ export const getAll = (req, res, next) => {
     if (!req.query.sort) req.query.sort = "matchDate";
     // §11 — البحث في venue اتشال (مفيش UI بيبعت keyword للمباريات)، فالباراميتر
     // searchFields اتشال من gettingAll والترتيب اتزحلق
-    return gettingAll(SeasonMatch, { allowed: SEASON_MATCH_FILTERS }, null, seasonMatchBaseFilterFor)(req, res, next);
+    return gettingAll(SeasonMatch, { allowed: SEASON_MATCH_FILTERS, sortable: SEASON_MATCH_SORT_FIELDS }, null, seasonMatchBaseFilterFor)(req, res, next);
 };
 
 // @desc    Get specific season match (with linked reports, media + audit users)
@@ -128,10 +135,9 @@ export const updateMatchStatus = asyncHandler(async (req, res, next) => {
         if (!match) {
             return next(new AppError(`No document for this Id: ${req.params.id}`, 404));
         }
-        const dayStart = new Date(match.matchDate);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayEnd.getDate() + 1);
+        // audit-backend C3 — حدود اليوم UTC، مش توقيت السيرفر. matchDate متخزّن
+        // منتصف ليل UTC، والـ setHours المحلي كان بيزح النافذة بفرق توقيت السيرفر.
+        const { start: dayStart, end: dayEnd } = utcDayRange(match.matchDate);
         const now = Date.now();
         if (now < dayStart.getTime() || now >= dayEnd.getTime()) {
             return next(new AppError("You can only enter the match result on the day of the match", 400));
@@ -159,9 +165,8 @@ export const updateMatchStatus = asyncHandler(async (req, res, next) => {
 // الحضور/الإلغاء متاح لحد آخر اليوم اللي قبل يوم الماتش بس — بعد ما يوم الماتش يبدأ بيتقفل خالص
 // (نفس نمط مقارنة start-of-day المستخدم في matchDateNotPast للاتساق)
 const isBeforeMatchDay = (matchDate) => {
-    const dayStart = new Date(matchDate);
-    dayStart.setHours(0, 0, 0, 0);
-    return Date.now() < dayStart.getTime();
+    // audit-backend C3 — بداية يوم المباراة بتوقيت UTC (utils/time.js)
+    return Date.now() < utcDayRange(matchDate).start.getTime();
 };
 
 // @desc    Scout self-enrolls to attend a match (adds self to attendees)
