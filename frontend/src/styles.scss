@@ -183,6 +183,46 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   خلفية الملعب — حركة تقف بعد 22 ثانية عن قصد
+   ══════════════════════════════════════════════════════════════════════════
+   الأنيميشنين تحت كانوا `infinite`. الاتنين بيحرّكوا transform و opacity بس،
+   وهما خاصيتين الـcompositor بيتولّاهما — يعني **والصفحة ساكنة مابيكلّفوش حاجة
+   خالص**. ده متحقَّق منه: نافذة 8 ثواني بلا أي تفاعل = **صفر** style recalc،
+   بالأنيميشن أو من غيره. التعليق الأصلي فوق ("GPU-accelerated via transform
+   only") كان صح.
+
+   ⚠️ **تصحيح لقياس أقدم:** كنت قِست "358ms كل 4 ثواني" ونسبتها للأنيميشنز.
+   الرقم ده كان **من صنع أداة القياس نفسها** — كان فيها حلقة requestAnimationFrame
+   دائمة بتصحّي الـmain thread كل فريم. لما شيلتها، الرقم بقى صفر. متسجّل هنا
+   عشان محدش يعيد استخدام الرقم الغلط ده.
+
+   لكن التكلفة حقيقية **وقت التفاعل**: لما يكون فيه حاجة تانية بتشغّل الـmain
+   thread كل فريم أصلاً (حركة ماوس + transitions)، الأنيميشن بيفرض تحديث ستايل
+   إضافي مع كل فريم. مقيس على بناء إنتاج، تمرير الماوس على 12 كارت × 6 مرات،
+   CPU ×4، من غير أي مسبار:
+
+     RecalcStyleCount     609  →  332      (−45%، متسق في 3 جولات)
+     RecalcStyleDuration  2730 →  2122 ms  (−22%، وأقل في كل جولة على حدة)
+
+   إيقافهم بعد 22 ثانية بيشيل التكلفة دي بالكامل بعد أول دقيقة من الاستخدام.
+
+   ليه 22 ثانية بالذات، وليه مفيش قفزة بصرية لما تقف:
+     • grassScroll بيتحرك 104px = طول دورة الخطوط بالظبط، فدورة واحدة كاملة
+       بتنتهي على نفس المنظر تمامًا.
+     • stadiumGlow بـalternate ودورتين (11s × 2) بيرجع لحالة الـfrom.
+     • forwards ضرورية مش تزويق: الـfrom فيه opacity 0.45 والستايل الأساسي
+       مافيهوش opacity (يعني 1)، فمن غيرها الوهج كان هيقفز فجأة ويولّع ساعة ما
+       الأنيميشن يخلص.
+
+   ⚠️ الحركة **مابترجعش مع التنقل بين الصفحات**. دي مش غلطة: الأنيميشن على
+   body، وbody مابيتعادش إنشاؤه في تطبيق SPA، فالـ22 ثانية بتتحسب مرة واحدة من
+   تحميل الصفحة وخلاص. اللي يشوف الخلفية ساكنة بعد أول دقيقة **ده هو السلوك
+   المقصود** — مش باج. بترجع تتحرك مع reload كامل بس.
+
+   prefers-reduced-motion متغطّى تحت (سطر 237) وكمان بقاعدة شاملة في آخر الملف.
+   ══════════════════════════════════════════════════════════════════════════ */
+
 /* Animated grass stripes — GPU-accelerated via transform only */
 body::before {
   content: '';
@@ -201,7 +241,8 @@ body::before {
     rgba(0, 70, 20, 0.05) 104px
   );
   will-change: transform;
-  animation: grassScroll 22s linear infinite;
+  /* دورة واحدة (22s) وبعدين تقف — شوف الشرح فوق */
+  animation: grassScroll 22s linear 1 forwards;
 }
 
 /* Stadium floodlight glow from above — breathing effect */
@@ -222,7 +263,8 @@ body::after {
   filter: blur(55px);
   pointer-events: none;
   z-index: 0;
-  animation: stadiumGlow 11s ease-in-out infinite alternate;
+  /* دورتين (11s × 2 = 22s) بـalternate فبترجع لحالة البداية — الشرح فوق */
+  animation: stadiumGlow 11s ease-in-out 2 alternate forwards;
 }
 
 @keyframes grassScroll {
@@ -548,6 +590,29 @@ select.form-input {
 }
 
 /* ══════════════════════════════════════════════
+   HOVER SCALE  (audit-frontend P5)
+   ══════════════════════════════════════════════ */
+/* تأثير الـhover لازم يبقى CSS، مش (mouseenter) في التمبليت.
+ *
+ * الهاندلر في التمبليت بيربط ليسنر جوه Angular zone، فكل مرور ماوس فوق أي كارت
+ * كان بيشغّل دورة change detection كاملة على الشجرة كلها — ومع كثافة نداءات
+ * الدوال في التمبليتات (16 نداء لكل كارت لاعب) الدورة دي مش رخيصة.
+ *
+ * مقيس على /players (20 كارت، بناء إنتاج، CPU ×4): تحريك الماوس **وحده** فوق
+ * 12 كارت × 6 مرات = 130 long task بمجموع 15.5 ثانية، ومتوسط الفريم 82ms.
+ * الـ:hover بيتنفّذ في المتصفح ومابيوصلش لجافاسكريبت أصلاً.
+ *
+ * المقدار بيتظبط لكل استخدام عن طريق --hover-scale لأن القيم مختلفة بين
+ * الشاشات (1.015 لكروت المستخدمين، 1.016 لكارت اللاعب، 1.03 لكارت الإحصاء). */
+.hover-scale {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
+
+  &:hover {
+    transform: scale(var(--hover-scale, 1.015));
+  }
+}
+
+/* ══════════════════════════════════════════════
    INTERACTIVE CARD
    ══════════════════════════════════════════════ */
 .card-interactive {
@@ -604,7 +669,8 @@ select.form-input {
     rgba(0, 100, 30, 0.038) 52px,
     rgba(0, 100, 30, 0.038) 104px
   );
-  animation: grassScroll 22s linear infinite;
+  /* نفس سياسة الإيقاف بعد 22 ثانية زي الثيم الداكن — الشرح عند body::before فوق */
+  animation: grassScroll 22s linear 1 forwards;
 }
 
 /* Light mode: soft green glow from above (natural sunlight feel) */
@@ -617,7 +683,8 @@ select.form-input {
     transparent 70%
   );
   filter: blur(55px);
-  animation: stadiumGlow 11s ease-in-out infinite alternate;
+  /* نفس سياسة الإيقاف بعد 22 ثانية زي الثيم الداكن — الشرح عند body::before فوق */
+  animation: stadiumGlow 11s ease-in-out 2 alternate forwards;
 }
 
 /* Light theme: header */

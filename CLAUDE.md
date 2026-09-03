@@ -21,8 +21,10 @@ Node version is pinned in `.nvmrc` (22).
 ```bash
 # Backend (cwd: Backend/)
 npm start                        # nodemon server.js — needs config.env (see config.env.example)
+npm run start:prod               # node server.js, no watch
 npm test                         # vitest run — spins up mongodb-memory-server, no live DB needed
 npm run test:watch
+npm run test:coverage
 npm test -- tests/players.test.js            # single file
 npm test -- -t "coach cannot see"            # single test by name
 npm run dump-spec                # regenerate ../openapi.json from the swagger JSDoc
@@ -39,7 +41,11 @@ npx playwright test tests/players.spec.ts
 npm run test:headed / test:debug / test:report
 ```
 
+> **Do not run the scripts in `Backend/scripts/` unless I explicitly ask.** They are one-off ops/migration tools that operate on a **live database** (`npm run sync-indexes`, `backfill-search-tokens`, `backfill-player-createdby`, `unset-professional-team-agegroup`, `clone-teams`, `seed:loadtest`, `explain`). They are not part of any build or test flow.
+
 CI (`.github/workflows/ci.yml`) runs backend vitest and frontend build+karma in parallel, then Playwright with a real mongo service container. All three are blocking. The E2E job seeds via `e2e/seed.js` (creates the test coach through the admin API) and `Backend/seeds/seedAgeGroups.js` — a fresh DB **must** have age groups or player creation throws.
+
+Two different age-group seeders exist, don't confuse them: `Backend/seeds/seedAgeGroups.js` is the **real seed script** (used by CI's E2E job and real environments); `seedAgeGroups()` in `Backend/tests/helpers/factory.js` is the **test helper** that vitest suites call in setup.
 
 `Backend/config.env` is git-ignored. In CI every var comes from the workflow `env:` block instead; `dotenv.config()` failing to find the file is expected there.
 
@@ -106,6 +112,11 @@ Standalone components throughout, no NgModules. `app.config.ts` wires the router
 Three environments: `environment.ts` (production, relative `/api/v1` behind nginx), `environment.development.ts` (`:8000`), `environment.ci.ts` (`:3000`, used only by `ng build --configuration=ci` because CI serves the bundle statically with no proxy).
 
 i18n is English + Arabic (`src/assets/i18n/*.json`) — the UI is bilingual, so new user-facing strings need keys in both files.
+
+### Frontend rules (measured, not stylistic)
+
+- **No function calls inside a list loop in a template.** Anything bound inside `@for` is re-evaluated on every change-detection pass, for every row. Use a `computed()`, or precompute the value onto the row when the data is loaded. The player card is the worst offender today — 16 calls per card × 20 cards ≈ 320 evaluations per pass, including a `calcAge()` that allocates three `Date` objects each time. **That is not yet fixed**: this rule is a constraint on new code, not a description of the current state. No component uses `OnPush` either (0 of 50), so every pass really does walk the whole tree.
+- **Hover effects belong in CSS `:hover`, never `(mouseenter)` in the template.** A template listener runs inside the Angular zone, so a mouse crossing a card triggers a full change-detection pass; `:hover` never reaches JavaScript at all. Removing twelve such handlers cut hover scripting time 81ms → 18ms at normal CPU and 3697ms → 502ms at 4× throttle (production bundles, interleaved A/B). If the element carries inline `style` for the properties you want to animate, move them into the class first — inline styles outrank any stylesheet rule, so `:hover` cannot override them where they sit.
 
 ## Conventions
 
