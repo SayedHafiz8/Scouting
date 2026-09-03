@@ -1,5 +1,8 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, DestroyRef, inject, signal, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { EMPTY, Subject, of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, switchMap, tap } from 'rxjs/operators';
 import { FormsModule } from '@angular/forms';
 import { TitleCasePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
@@ -17,6 +20,10 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ImageLightboxComponent } from '../../../shared/components/image-lightbox/image-lightbox.component';
+
+// audit-frontend P6 — 300ms: أطول من الفاصل الطبيعي بين ضغطتي زرار في الكتابة
+// (~120ms) فبيجمّع الكلمة في طلب واحد، وأقصر من إن المستخدم يحس إن الصفحة واقفة.
+const SEARCH_DEBOUNCE_MS = 300;
 
 @Component({
     selector: 'app-player-list',
@@ -264,12 +271,12 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
                  fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
-            <input [(ngModel)]="keyword" (ngModelChange)="resetAndLoad()" type="text"
+            <input [(ngModel)]="keyword" (ngModelChange)="onKeywordChange($event)" type="text"
                    [placeholder]="'PLAYERS.SEARCH_PH' | translate"
                    style="flex:1;background:transparent;border:none;outline:none;padding:14px 0;
                           font-size:14px;color:var(--text-primary);min-width:0" />
             @if (keyword) {
-              <button (click)="keyword=''; resetAndLoad()" title="Clear"
+              <button (click)="clearKeyword()" title="Clear"
                       style="background:none;border:none;cursor:pointer;padding:2px;display:flex;color:var(--text-muted);flex-shrink:0;transition:color 0.15s"
                       onmouseenter="this.style.color='var(--text-primary)'" onmouseleave="this.style.color='var(--text-muted)'">
                 <svg style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
@@ -661,6 +668,13 @@ export class PlayerListComponent implements OnInit {
     return groups.filter(g => (counts[g._id] ?? 0) > 0);
   }
 
+  private readonly destroyRef = inject(DestroyRef);
+
+  // audit-frontend P6 — كل عمليات تحميل الليستة بتعدّي من هنا (شوف
+  // wireLoadPipeline تحت). Subject منفصل للكتابة عشان هي الوحيدة المتأخّرة.
+  private readonly reload$ = new Subject<void>();
+  private readonly keywordInput$ = new Subject<string>();
+
   keyword = '';
   positionFilter: PlayerPosition | '' = '';
   statusFilter: PlayerStatus | '' = '';
@@ -681,7 +695,8 @@ export class PlayerListComponent implements OnInit {
   professionalFilter = '';
 
   ngOnInit(): void {
-    this.route.queryParamMap.subscribe(qp => {
+    this.wireLoadPipeline();
+    this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(qp => {
       this.statusFilter = (qp.get('status') as PlayerStatus | null) ?? '';
       this.coachFilter = qp.get('coach') ?? '';
       this.observerFilter = qp.get('observer') ?? '';
@@ -853,9 +868,11 @@ export class PlayerListComponent implements OnInit {
     });
   }
 
-  load(): void {
-    this.loading.set(true);
-    const filters: PlayerFilters = {
+  // audit-frontend P6 — الفلاتر بتتقرا من الكومبوننت **وقت الطلب**، مش بتتبعت مع
+  // الـtrigger. يعني أي إشارة إعادة تحميل بتستخدم أحدث حالة موجودة، ومفيش فرصة
+  // لطلب يتنفّذ بفلاتر قديمة.
+  private currentFilters(): PlayerFilters {
+    return {
       page: this.currentPage(),
       limit: 20,
       keyword: this.keyword || undefined,
@@ -867,30 +884,82 @@ export class PlayerListComponent implements OnInit {
       isProfessional: this.professionalOnly() ? 'true' : undefined,
       team: this.professionalOnly() ? (this.teamFilter || undefined) : undefined,
     };
-    this.playerService.getAll(filters).subscribe({
-      next: res => {
-        const players = res.data?.documents ?? [];
-        this.players.set(players);
-        this.total.set(res.count ?? 0);
-        this.pagination.set(res.pagination ?? null);
-        this.loading.set(false);
-        this.loadAvgRatings(players.map(p => p._id));
-      },
-      error: () => this.loading.set(false),
-    });
   }
 
-  private loadAvgRatings(playerIds: string[]): void {
-    if (!playerIds.length) { this.avgRatings.set({}); return; }
-    this.reportService.getAverageRatings(playerIds).subscribe({
-      next: res => {
+  // audit-frontend P6 — خط أنابيب واحد لكل عمليات التحميل.
+  //
+  // switchMap هو **إصلاح صحة، مش أداء**: قبله كل نداء load() كان بيفتح اشتراك
+  // مستقل، والمعروض في الآخر هو **آخر رد بيوصل** مش آخر بحث اتعمل. على شبكة
+  // بتخلط ترتيب الردود، المستخدم يكتب "mohamed" ويتفرّج على نتايج "moh" — بيانات
+  // غلط معروضة كأنها صح. switchMap بيلغي الطلب السابق فآخر بحث هو الوحيد اللي
+  // بيوصل للشاشة.
+  //
+  // ونداء المتوسطات **جوه** نفس الخط عن قصد: كان بيتنده من داخل next بتاع
+  // getAll، يعني اشتراك تاني بيتسابق لوحده — متوسطات ليستة قديمة كانت تقدر
+  // تكتب فوق متوسطات الليستة الجديدة حتى لو الليستة نفسها طلعت صح.
+  //
+  // catchError على كل طلب داخلي لوحده: الخطأ بيموّت الأوبزرفابل اللي بيحصل فيه،
+  // فلو حطيناه على الخط الخارجي أول فشل شبكة كان هيوقف البحث للأبد.
+  private wireLoadPipeline(): void {
+    this.reload$
+      .pipe(
+        tap(() => this.loading.set(true)),
+        switchMap(() =>
+          this.playerService.getAll(this.currentFilters()).pipe(
+            catchError(() => { this.loading.set(false); return EMPTY; })
+          )
+        ),
+        tap(res => {
+          this.players.set(res.data?.documents ?? []);
+          this.total.set(res.count ?? 0);
+          this.pagination.set(res.pagination ?? null);
+          this.loading.set(false);
+        }),
+        switchMap(res => {
+          const ids = (res.data?.documents ?? []).map(p => p._id);
+          if (!ids.length) return of(null);
+          return this.reportService.getAverageRatings(ids).pipe(catchError(() => of(null)));
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(res => {
+        if (!res) { this.avgRatings.set({}); return; }
         const averages = res.data?.averages ?? {};
         const map: Record<string, number> = {};
         Object.keys(averages).forEach(id => { map[id] = averages[id].overallRating; });
         this.avgRatings.set(map);
-      },
-      error: () => this.avgRatings.set({}),
-    });
+      });
+
+    // البحث بالكتابة هو الوحيد المتأخّر. الفلاتر التانية (بوزيشن/فريق/صفحة)
+    // أحداث منفصلة بتحصل مرة واحدة، فبتروح على الخط على طول — لكنها بتعدّي من
+    // نفس الـswitchMap فحمايتها من السباق موجودة برضه.
+    this.keywordInput$
+      .pipe(
+        debounceTime(SEARCH_DEBOUNCE_MS),
+        distinctUntilChanged(),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(() => {
+        this.currentPage.set(1);
+        this.reload$.next();
+      });
+  }
+
+  load(): void {
+    this.reload$.next();
+  }
+
+  // زرار المسح بيعدّي من نفس الـSubject مش من load() مباشرةً: debounceTime
+  // بيرمي القيمة المعلّقة ويطلع الأخيرة بس، فده بيضمن إن ضغطة المسح مابيلحقهاش
+  // طلب زيادة من آخر حرف اتكتب. التكلفة 300ms على المسح، والمقابل مسار واحد
+  // للبحث مفيهوش حالة سباق تانية نتابعها.
+  clearKeyword(): void {
+    this.keyword = '';
+    this.keywordInput$.next('');
+  }
+
+  onKeywordChange(value: string): void {
+    this.keywordInput$.next(value ?? '');
   }
 
   avgRating(playerId: string): number | null {

@@ -1,11 +1,11 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { signal } from '@angular/core';
-import { BehaviorSubject, of } from 'rxjs';
+import { BehaviorSubject, Subject, of } from 'rxjs';
 
 import { PlayerListComponent } from './player-list.component';
 import { PlayerService } from '../services/player.service';
@@ -509,4 +509,103 @@ describe('PlayerListComponent — creatorName()', () => {
     const player = {} as Player;
     expect(comp.creatorName(player)).toBe('');
   });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// audit-frontend P6 — البحث: التأخير وحماية السباق.
+//
+// الحالة قبل الإصلاح، مقيسة على بناء إنتاج حقيقي بمتصفح حقيقي: كتابة 6 حروف =
+// **12 ريكوست** (اتنين لكل ضغطة زرار: /players وبعده /players/reports/
+// average-ratings)، بصفر تباين في 5 تشغيلات متتالية.
+//
+// والأخطر إن مكانش فيه إلغاء: كل نداء كان بيفتح اشتراك مستقل، والمعروض في الآخر
+// هو **آخر رد بيوصل** مش آخر بحث. التست التاني تحت بيثبّت ده تحديدًا — وهو
+// بيفشل على الكود القديم حتى لو التأخير اتضاف من غير switchMap.
+// ══════════════════════════════════════════════════════════════════════════════
+describe('PlayerListComponent — search debounce and race protection (P6)', () => {
+  it('collapses a burst of keystrokes into a single request', fakeAsync(async () => {
+    const comp = await setup('admin');
+    getAllSpy.calls.reset();
+
+    for (const value of ['p', 'pl', 'pla', 'play', 'playe', 'player']) {
+      comp.keyword = value;
+      comp.onKeywordChange(value);
+      tick(120); // نفس إيقاع الكتابة الطبيعي — أقصر من نافذة التأخير
+    }
+    // لسه مفيش طلب: آخر ضغطة لسه جوه النافذة
+    expect(getAllSpy).not.toHaveBeenCalled();
+
+    tick(300);
+    expect(getAllSpy).toHaveBeenCalledTimes(1);
+    expect(getAllSpy.calls.mostRecent().args[0].keyword).toBe('player');
+
+    flush();
+  }));
+
+  it('shows the newest search even when an older response arrives after it', fakeAsync(async () => {
+    const comp = await setup('admin');
+    getAllSpy.calls.reset();
+
+    const playersFor = (name: string) =>
+      ({ status: 'success', count: 1, pagination: null,
+         data: { documents: [{ _id: name, name } as unknown as Player] } });
+
+    // "moh" بيرد بعد 500ms، و"mohamed" بعد 100ms — يعني القديم بيوصل **بعد**
+    // الجديد، وهو بالظبط اللي بيحصل على شبكة بترجّع الردود بترتيب مختلط.
+    const slow = new Subject<any>();
+    const fast = new Subject<any>();
+    getAllSpy.and.returnValues(slow.asObservable(), fast.asObservable());
+
+    comp.keyword = 'moh';
+    comp.onKeywordChange('moh');
+    tick(300);
+    expect(getAllSpy).toHaveBeenCalledTimes(1);
+
+    comp.keyword = 'mohamed';
+    comp.onKeywordChange('mohamed');
+    tick(300);
+    expect(getAllSpy).toHaveBeenCalledTimes(2);
+
+    // الرد الجديد الأول
+    fast.next(playersFor('mohamed'));
+    fast.complete();
+    // وبعدين الرد القديم — switchMap اللي بيلغي الاشتراك القديم هو اللي بيمنعه
+    // إنه يكتب فوق الجديد. من غيره الشاشة بتقع على "moh".
+    slow.next(playersFor('moh'));
+    slow.complete();
+
+    expect(comp.players().map(p => p.name)).toEqual(['mohamed']);
+
+    flush();
+  }));
+
+  it('clearing the box searches once, with an empty keyword', fakeAsync(async () => {
+    const comp = await setup('admin');
+    comp.keyword = 'player';
+    comp.onKeywordChange('player');
+    tick(300);
+    getAllSpy.calls.reset();
+
+    comp.clearKeyword();
+    expect(comp.keyword).toBe('');
+    tick(300);
+
+    expect(getAllSpy).toHaveBeenCalledTimes(1);
+    expect(getAllSpy.calls.mostRecent().args[0].keyword).toBeUndefined();
+
+    flush();
+  }));
+
+  it('a filter change is not delayed — only typing is', fakeAsync(async () => {
+    const comp = await setup('admin');
+    getAllSpy.calls.reset();
+
+    comp.positionFilter = 'CM';
+    comp.resetAndLoad();
+
+    expect(getAllSpy).toHaveBeenCalledTimes(1);
+    expect(getAllSpy.calls.mostRecent().args[0].position).toBe('CM');
+
+    flush();
+  }));
 });
