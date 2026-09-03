@@ -8,10 +8,8 @@ import { NgTemplateOutlet } from '@angular/common';
     template: `
     @if (link()) {
       <a [routerLink]="link()" [queryParams]="queryParams()"
-         class="block card overflow-hidden relative cursor-pointer h-full"
-         style="transition: transform 0.18s cubic-bezier(0.16,1,0.3,1);"
-         (mouseenter)="$any($event.currentTarget).style.transform='scale(1.03)'"
-         (mouseleave)="$any($event.currentTarget).style.transform='scale(1)'">
+         class="block card overflow-hidden relative cursor-pointer h-full hover-scale"
+         style="--hover-scale:1.03">
         <ng-container [ngTemplateOutlet]="body" />
       </a>
     } @else {

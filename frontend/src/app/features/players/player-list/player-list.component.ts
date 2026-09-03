@@ -159,11 +159,6 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
                 <!-- Populated group — vivid accent, glow, pulsing "has players" dot -->
                 <button type="button"
                         class="relative overflow-hidden rounded-2xl text-left group/card age-group-card age-group-card--populated"
-                        style="background:linear-gradient(150deg,rgba(56,189,248,0.14) 0%,rgba(139,92,246,0.07) 100%);
-                               border:1px solid rgba(56,189,248,0.35);padding:20px;cursor:pointer;
-                               transition:transform 0.18s cubic-bezier(0.16,1,0.3,1),box-shadow 0.18s ease,border-color 0.18s ease"
-                        (mouseenter)="$any($event.currentTarget).style.transform='translateY(-3px)';$any($event.currentTarget).style.borderColor='rgba(56,189,248,0.55)';$any($event.currentTarget).style.boxShadow='0 12px 30px rgba(56,189,248,0.22)'"
-                        (mouseleave)="$any($event.currentTarget).style.transform='translateY(0)';$any($event.currentTarget).style.borderColor='rgba(56,189,248,0.35)';$any($event.currentTarget).style.boxShadow='none'"
                         [attr.aria-label]="(g.birthYear + ' — ' + (groupCounts()[g._id] ?? 0)) + ' ' + ('PLAYERS.PLAYERS_WORD' | translate)"
                         (click)="selectGroup(g)">
 
@@ -204,12 +199,7 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
               } @else {
                 <!-- Empty group — muted/neutral so populated groups stand out at a glance -->
                 <button type="button"
-                        class="relative overflow-hidden rounded-2xl text-left group/card age-group-card"
-                        style="background:var(--bg-card);
-                               border:1px dashed var(--border-color);padding:20px;cursor:pointer;opacity:0.72;
-                               transition:transform 0.18s cubic-bezier(0.16,1,0.3,1),opacity 0.18s ease,border-color 0.18s ease"
-                        (mouseenter)="$any($event.currentTarget).style.transform='translateY(-2px)';$any($event.currentTarget).style.opacity='0.9'"
-                        (mouseleave)="$any($event.currentTarget).style.transform='translateY(0)';$any($event.currentTarget).style.opacity='0.72'"
+                        class="relative overflow-hidden rounded-2xl text-left group/card age-group-card age-group-card--empty"
                         [attr.aria-label]="(g.birthYear + ' — ' + ('PLAYERS.NO_PLAYERS_YET' | translate))"
                         (click)="selectGroup(g)">
 
@@ -349,10 +339,8 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           @for (player of players(); track player._id) {
 
-            <div class="card overflow-hidden cursor-pointer group"
-                 style="transition:transform 0.18s cubic-bezier(0.16,1,0.3,1),box-shadow 0.18s ease;"
-                 (mouseenter)="$any($event.currentTarget).style.transform='scale(1.016)'"
-                 (mouseleave)="$any($event.currentTarget).style.transform='scale(1)'"
+            <div class="card overflow-hidden cursor-pointer group hover-scale"
+                 style="--hover-scale:1.016"
                  (click)="goToPlayer(player._id)">
 
               <!-- Status-based gradient header -->
@@ -567,6 +555,38 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
     <app-image-lightbox [src]="lightboxSrc()" [alt]="lightboxAlt()" (closed)="closeLightbox()" />
   `,
   styles: [`
+    /* audit-frontend P5 — الستايل ده كان مكتوب inline على الزرار، والـhover كان
+       (mouseenter) في التمبليت بيعدّل .style مباشرةً.
+       نقله للكلاس **مش تنسيق** — هو شرط لازم عشان :hover يشتغل أصلاً: الستايل
+       الـinline أعلى أولوية من أي قاعدة في الستايل شيت، فقاعدة :hover على
+       border-color أو opacity مكانتش هتقدر تكتب فوق border/opacity المكتوبين
+       inline. */
+    .age-group-card {
+      padding: 20px;
+      cursor: pointer;
+      transition: transform 0.18s cubic-bezier(0.16,1,0.3,1),
+                  box-shadow 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+    }
+    /* فيها لاعبين — لون واضح وتوهّج */
+    .age-group-card--populated {
+      background: linear-gradient(150deg, rgba(56,189,248,0.14) 0%, rgba(139,92,246,0.07) 100%);
+      border: 1px solid rgba(56,189,248,0.35);
+    }
+    .age-group-card--populated:hover {
+      transform: translateY(-3px);
+      border-color: rgba(56,189,248,0.55);
+      box-shadow: 0 12px 30px rgba(56,189,248,0.22);
+    }
+    /* فاضية — باهتة عشان اللي فيها لاعبين تبان من نظرة */
+    .age-group-card--empty {
+      background: var(--bg-card);
+      border: 1px dashed var(--border-color);
+      opacity: 0.72;
+    }
+    .age-group-card--empty:hover {
+      transform: translateY(-2px);
+      opacity: 0.9;
+    }
     .age-group-pulse-dot {
       animation: ageGroupPulse 2s ease-in-out infinite;
     }

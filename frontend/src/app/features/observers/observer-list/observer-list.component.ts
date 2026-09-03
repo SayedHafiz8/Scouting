@@ -42,11 +42,8 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           @for (u of observers(); track u._id) {
 
-            <div class="card overflow-hidden cursor-pointer"
+            <div class="card overflow-hidden cursor-pointer hover-scale"
                  [class.opacity-40]="!u.active"
-                 style="transition: transform 0.18s cubic-bezier(0.16,1,0.3,1), box-shadow 0.18s ease;"
-                 (mouseenter)="$any($event.currentTarget).style.transform='scale(1.015)'"
-                 (mouseleave)="$any($event.currentTarget).style.transform='scale(1)'"
                  (click)="router.navigate(['/observers', u._id])">
 
               <!-- Header: purple gradient (observer identity) -->

@@ -52,11 +52,8 @@ interface CoachStats { total: number; selected: number; rate: number; }
           @for (user of users(); track user._id) {
 
             <!-- Coach Card -->
-            <div class="card overflow-hidden cursor-pointer"
+            <div class="card overflow-hidden cursor-pointer hover-scale"
                  [class.opacity-40]="!user.active"
-                 style="transition: transform 0.18s cubic-bezier(0.16,1,0.3,1), box-shadow 0.18s ease;"
-                 (mouseenter)="$any($event.currentTarget).style.transform='scale(1.015)'"
-                 (mouseleave)="$any($event.currentTarget).style.transform='scale(1)'"
                  (click)="router.navigate(['/users', user._id])">
 
               <!-- Header area: gradient background + avatar + identity -->
