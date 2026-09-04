@@ -6,7 +6,7 @@ import { RouterLink } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { AuthService } from '../../../core/auth/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
-import { SeasonMatch, SeasonMatchReport, SeasonMatchMedia, SeasonMatchStatus, SeasonMatchLeague, SEASON_MATCH_LEAGUES } from '../../../core/models/season-match.model';
+import { SeasonMatch, SeasonMatchReport, SeasonMatchMedia, SeasonMatchStatus, SeasonMatchLeague, SeasonMatchFilters } from '../../../core/models/season-match.model';
 import { Team } from '../../../core/models/team.model';
 import { AgeGroup } from '../../../core/models/age-group.model';
 import { Player } from '../../../core/models/player.model';
@@ -82,18 +82,27 @@ interface MediaRow {
         }
       </div>
 
-      <!-- League toggle — a separate schedule per league. Hidden for proScout: the role
-           only ever has one league in scope, so there is nothing to toggle (research.md R6). -->
+      <!-- League/age-group toggle. Hidden for proScout: the role only ever has one
+           league in scope, so there is nothing to toggle (research.md R6).
+           "الدوري الممتار" used to be one flat tab covering every age group; it's now
+           one tab per age group that actually has a premier match registered — an
+           age group with zero matches ever recorded gets no tab at all, so the list
+           never lands on a silently-empty "premier, unfiltered" view. -->
       <div class="flex flex-wrap items-center justify-between gap-3">
         @if (!auth.isProScout()) {
-          <div class="inline-flex gap-1 p-1 rounded-xl" style="background:var(--bg-secondary)">
-            @for (lg of leagues; track lg.value) {
-              <button type="button" (click)="selectLeague(lg.value)"
+          <div class="inline-flex flex-wrap gap-1 p-1 rounded-xl" style="background:var(--bg-secondary)">
+            @for (ag of premierAgeGroupTabs(); track ag._id) {
+              <button type="button" (click)="selectAgeGroupTab(ag)"
                       class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                      [class]="selectedLeague() === lg.value ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
-                {{ lg.labelKey | translate }}
+                      [class]="isAgeGroupTabActive(ag) ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
+                {{ ag.birthYear }}
               </button>
             }
+            <button type="button" (click)="selectLeague('professional')"
+                    class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                    [class]="selectedLeague() === 'professional' ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
+              {{ 'SEASON_MATCHES.LEAGUE_PROFESSIONAL' | translate }}
+            </button>
           </div>
         }
         @if (!auth.isAdmin()) {
@@ -340,10 +349,14 @@ export class MyMatchesComponent implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
 
-  readonly leagues = SEASON_MATCH_LEAGUES;
   // proScout has exactly one league in scope — default straight to it instead of 'premier',
   // which the scope layer's $and wrap would silently return zero rows for (research.md R6).
   readonly selectedLeague = signal<SeasonMatchLeague>(this.auth.isProScout() ? 'professional' : 'premier');
+  // The premier tab set is now per-age-group, not a single flat tab — see
+  // loadAllSeasons(), which derives this from the same unfiltered fetch it already
+  // makes for the season dropdown (no extra request). null until that resolves.
+  readonly premierAgeGroupTabs = signal<AgeGroup[]>([]);
+  readonly selectedAgeGroupId = signal<string | null>(null);
   readonly attendingOnly = signal(false);
 
   readonly loading = signal(true);
@@ -415,8 +428,17 @@ export class MyMatchesComponent implements OnInit {
   );
 
   ngOnInit(): void {
+    // The default view for a non-proScout is a premier age-group tab, but which
+    // tab is only known once loadAllSeasons() below resolves premierAgeGroupTabs()
+    // — it calls load() itself the moment it picks the first tab. Loading now and
+    // firing an immediate, ageGroup-less load() here would flash "every premier
+    // match" before snapping to the real default; skip the redundant first call.
+    if (this.selectedLeague() === 'premier' && !this.auth.isProScout()) {
+      this.loading.set(true);
+    } else {
+      this.load();
+    }
     this.loadAllSeasons();
-    this.load();
     if (this.auth.isObserver()) {
       this.loadObservedRows();
     }
@@ -427,16 +449,34 @@ export class MyMatchesComponent implements OnInit {
   }
 
   selectLeague(league: SeasonMatchLeague): void {
-    if (this.selectedLeague() === league) return;
+    if (this.selectedLeague() === league && (league !== 'premier' || !this.selectedAgeGroupId())) return;
     this.selectedLeague.set(league);
+    if (league === 'professional') this.selectedAgeGroupId.set(null);
     this.expandedMatchId.set(null);
     this.resultMatchId.set(null);
     this.load();
   }
 
+  selectAgeGroupTab(ag: AgeGroup): void {
+    if (this.selectedLeague() === 'premier' && this.selectedAgeGroupId() === ag._id) return;
+    this.selectedLeague.set('premier');
+    this.selectedAgeGroupId.set(ag._id);
+    this.expandedMatchId.set(null);
+    this.resultMatchId.set(null);
+    this.load();
+  }
+
+  isAgeGroupTabActive(ag: AgeGroup): boolean {
+    return this.selectedLeague() === 'premier' && this.selectedAgeGroupId() === ag._id;
+  }
+
   load(): void {
     this.loading.set(true);
-    this.seasonMatchService.getAll({ league: this.selectedLeague(), season: this.seasonFilter || undefined, sort: 'matchDate' }).subscribe({
+    const filters: SeasonMatchFilters = { league: this.selectedLeague(), season: this.seasonFilter || undefined, sort: 'matchDate' };
+    if (this.selectedLeague() === 'premier' && this.selectedAgeGroupId()) {
+      filters.ageGroup = this.selectedAgeGroupId()!;
+    }
+    this.seasonMatchService.getAll(filters).subscribe({
       next: (res) => {
         this.matches.set(res.data?.documents ?? []);
         this.loading.set(false);
@@ -445,11 +485,34 @@ export class MyMatchesComponent implements OnInit {
     });
   }
 
-  // unfiltered, so the season dropdown always lists every season on the schedule
+  // Unfiltered (capped at the API's own MAX_LIMIT=200), so the season dropdown
+  // always lists every season on the schedule. Reused for a second purpose now:
+  // deriving which age groups actually have a premier match registered at all,
+  // from the same round trip — a fixture's populated `ageGroup` (see
+  // seasonMatchModel.js's pre-find populate) is enough, no extra request per group.
   private loadAllSeasons(): void {
-    this.seasonMatchService.getAll({}).subscribe(res => {
-      const set = new Set((res.data?.documents ?? []).map(m => m.season));
-      this.allSeasons.set(Array.from(set));
+    this.seasonMatchService.getAll({ limit: 200 }).subscribe(res => {
+      const docs = res.data?.documents ?? [];
+      this.allSeasons.set(Array.from(new Set(docs.map(m => m.season))));
+
+      if (this.auth.isProScout()) return;
+
+      const byId = new Map<string, AgeGroup>();
+      docs.forEach(m => {
+        if (m.league !== 'premier' || !m.ageGroup || typeof m.ageGroup === 'string') return;
+        byId.set(m.ageGroup._id, m.ageGroup);
+      });
+      const tabs = Array.from(byId.values()).sort((a, b) => a.birthYear - b.birthYear);
+      this.premierAgeGroupTabs.set(tabs);
+
+      // First resolution of the default view: land on the earliest tab with data
+      // instead of the ageGroup-less "every premier match" the server would
+      // otherwise return for a bare league=premier query.
+      if (this.selectedLeague() === 'premier' && !this.selectedAgeGroupId()) {
+        const first = tabs[0];
+        if (first) this.selectedAgeGroupId.set(first._id);
+        this.load();
+      }
     });
   }
 

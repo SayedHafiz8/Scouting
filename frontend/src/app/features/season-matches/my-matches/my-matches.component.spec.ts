@@ -225,6 +225,68 @@ describe('MyMatchesComponent — observer schedule is unrestricted (observer-mat
   });
 });
 
+// "الدوري الممتار" used to be one flat tab; it's now one tab per age group that
+// actually has a premier match recorded, derived from the same unfiltered
+// season-list fetch (no extra request per age group).
+describe('MyMatchesComponent — premier tabs are per-age-group (observer-matches-and-players)', () => {
+  it('renders one tab per distinct age group that has a premier match, sorted by birth year', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+      makeMatch({ _id: 'm2', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+      makeMatch({ _id: 'm3', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+    ]);
+    const tabs = (fixture.componentInstance as any).premierAgeGroupTabs();
+    expect(tabs.map((t: any) => t._id)).toEqual(['ag2010', 'ag2012']);
+  });
+
+  it('an age group with zero premier matches gets no tab (nothing to derive it from)', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    expect((fixture.componentInstance as any).premierAgeGroupTabs()).toEqual([]);
+  });
+
+  it('defaults to the earliest tab and requests that ageGroup on the initial load', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+      makeMatch({ _id: 'm2', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+    ]);
+    const component = fixture.componentInstance as any;
+    expect(component.selectedAgeGroupId()).toBe('ag2010');
+    const loadCall = getAllSpy.calls.allArgs().find((args: unknown[]) => (args[0] as any)?.ageGroup);
+    expect(loadCall?.[0]).toEqual(jasmine.objectContaining({ league: 'premier', ageGroup: 'ag2010' }));
+  });
+
+  it('selecting a different age-group tab re-requests with that ageGroup', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+      makeMatch({ _id: 'm2', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+    ]);
+    const component = fixture.componentInstance as any;
+    getAllSpy.calls.reset();
+
+    component.selectAgeGroupTab({ _id: 'ag2012', name: '2012', birthYear: 2012 });
+
+    expect(component.selectedAgeGroupId()).toBe('ag2012');
+    expect(getAllSpy).toHaveBeenCalledWith(jasmine.objectContaining({ league: 'premier', ageGroup: 'ag2012' }));
+  });
+
+  it('selecting the professional tab clears the age-group filter', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+    ]);
+    const component = fixture.componentInstance as any;
+
+    component.selectLeague('professional');
+
+    expect(component.selectedAgeGroupId()).toBeNull();
+    expect(getAllSpy).toHaveBeenCalledWith(jasmine.objectContaining({ league: 'professional' }));
+  });
+
+  it('proScout never computes premier tabs (no toggle to feed)', async () => {
+    await setup('proScout', [makeMatch({ league: 'professional' })]);
+    expect((fixture.componentInstance as any).premierAgeGroupTabs()).toEqual([]);
+  });
+});
+
 // The precomputed row view-model (CLAUDE.md — no function calls inside a list-loop
 // template) must expose exactly what the template renders per row.
 describe('MyMatchesComponent — matchRows() view-model', () => {
