@@ -1,6 +1,7 @@
 import asyncHandler from "express-async-handler";
 
 import SeasonMatch from "../models/seasonMatchModel.js";
+import Player from "../models/playedModel.js";
 import AppError from "../utils/appError.js";
 import { creating, gettingAll, updating, deleteOne } from "../services/services.js";
 import { decorateMedia } from "./playerMediaController.js";
@@ -35,12 +36,24 @@ const SEASON_MATCH_SORT_FIELDS = ["matchDate"];
 // عشان يقدر يختار أي مباراة ويحضرها بنفسه، مش يتقيد بفرق لاعبينه المتابَعين.
 // التغيير موضوعه صراحةً هو المرحلة دي (سبب استثناء Principle III من نفسه)،
 // واتأكد بتست انحدار إن باقي الرولات (كوتش/أدمن/proScout) فضلوا زي ما هم بالظبط.
+//
+// القيد اللي اتشال هو "الفريق" بس — قيد "وجود علاقة أصلاً" فضل قائم عمداً:
+// أوبزيرفر متعيّن ليه لاعب واحد على الأقل (أياً كان فريقه) بيشوف الجدول كامل؛
+// أوبزيرفر لسه ملوش أي لاعب معيَّن بيشوف صفر، زي قبل المرحلة بالظبط. من غير
+// القيد ده، حساب أوبزيرفر لسه من غير أي علاقة حقيقية بالمنصة كان هيقدر يشوف
+// الجدول كامل ويحضر مباريات ويسجّل نتايج — توسيع صلاحية لحالة مالهاش صاحب،
+// مش هدف المرحلة. الفحص Player.exists() رخيص (بوليان، مش .distinct() بيبني
+// ليست) فمازلنا محافظين على مكسب الأداء اللي المرحلة دي جابته.
 async function seasonMatchBaseFilterFor(req) {
     switch (req.user.role) {
         case ROLES.ADMIN:
         case ROLES.COACH:
-        case ROLES.OBSERVER:
             return {};
+
+        case ROLES.OBSERVER: {
+            const hasAssignedPlayer = await Player.exists({ observers: req.user._id });
+            return hasAssignedPlayer ? {} : { _id: { $in: [] } };
+        }
 
         // Stage 2 — دوري المحترفين بس. بيرجع ملفوف في $and من الطبقة المركزية:
         // `league` مُدرج في SEASON_MATCH_FILTERS تحت، فنطاق غير ملفوف كان

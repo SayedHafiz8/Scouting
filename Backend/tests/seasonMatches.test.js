@@ -369,7 +369,9 @@ describe('GET /api/v1/seasonMatches', () => {
     expect(ids).toContain(unrelatedMatch.body.data.document._id);
   });
 
-  it('an observer with no assigned players at all still sees the full schedule', async () => {
+  it('an observer with no assigned players at all still sees zero matches', async () => {
+    // القيد اللي اتلغى هو "الفريق" — قيد "عنده لاعب أصلاً" فضل قائم عمداً، عشان
+    // حساب أوبزيرفر لسه من غير أي علاقة حقيقية بالمنصة ميشوفش الجدول كامل بالصدفة.
     const { token: adminToken } = await createAdmin();
     const { token: observerToken } = await createObserver();
     const { ageGroupA, home, away } = await setupFixtures();
@@ -385,14 +387,18 @@ describe('GET /api/v1/seasonMatches', () => {
       .set('Authorization', `Bearer ${observerToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.documents.length).toBe(1);
+    expect(res.body.data.documents.length).toBe(0);
   });
 
-  it('an observer sees both premier and professional matches in one list', async () => {
+  it('an observer sees both premier and professional matches in one list, once they have an assigned player', async () => {
     const { token: adminToken } = await createAdmin();
-    const { token: observerToken } = await createObserver();
+    const { token: coachToken } = await createCoach();
+    const { token: observerToken, user: observer } = await createObserver();
     const { ageGroupA, home, away } = await setupFixtures('premier');
     const proTeams = await setupFixtures('professional');
+
+    const player = await createPlayer(coachToken);
+    await Player.findByIdAndUpdate(player._id, { observers: [observer._id] });
 
     const premierMatch = await createMatch(adminToken, matchPayload({
       league: 'premier',
@@ -417,11 +423,15 @@ describe('GET /api/v1/seasonMatches', () => {
     expect(ids).toContain(proMatch.body.data.document._id);
   });
 
-  it('an observer can narrow the schedule with ?league=', async () => {
+  it('an observer can narrow the schedule with ?league=, once they have an assigned player', async () => {
     const { token: adminToken } = await createAdmin();
-    const { token: observerToken } = await createObserver();
+    const { token: coachToken } = await createCoach();
+    const { token: observerToken, user: observer } = await createObserver();
     const { ageGroupA, home, away } = await setupFixtures('premier');
     const proTeams = await setupFixtures('professional');
+
+    const player = await createPlayer(coachToken);
+    await Player.findByIdAndUpdate(player._id, { observers: [observer._id] });
 
     await createMatch(adminToken, matchPayload({
       league: 'premier',
