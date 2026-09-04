@@ -48,9 +48,14 @@ const SEARCH_DEBOUNCE_MS = 300;
              proScout — that role isn't determined by identity alone. -->
         @if (auth.isCoach() || auth.isProScout() || auth.isObserver()) {
           <a routerLink="/players/new" [queryParams]="professionalOnly() ? { context: 'professional' } : {}" class="btn btn-primary">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
+            <!-- observer-matches-and-players — the "+" icon is dropped for observer only
+                 (requested after the observer players page shipped); coach/proScout keep it,
+                 unchanged, per the standing rule not to touch other roles' UI in this feature. -->
+            @if (!auth.isObserver()) {
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            }
             {{ 'PLAYERS.ADD' | translate }}
           </a>
         }
