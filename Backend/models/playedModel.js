@@ -306,6 +306,16 @@ playerSchema.index({ team: 1 }, { sparse: true });
 // ده الاستعلام بيبقى مغطّى بالكامل: فحص 50 لـ50.
 playerSchema.index({ createdBy: 1, createdAt: -1 });
 
+// observer-matches-and-players — نفس منطق الـindex فوق بالظبط، لنفس السبب:
+// أوبزيرفرز بقوا يملكوا لاعبين (observers[] بتحتوي على معرّفهم) والترتيب
+// الافتراضي للقايمة -createdAt، والـindex الوحيد اللي فيه observers
+// ({observers:1, ageGroup:1} فوق) مش بيغطي الترتيب ده. مقيس بـ.explain() على
+// mongodb-memory-server، 6,000 لاعب (200 لأوبزيرفر واحد)، limit(50): قبل
+// الإضافة docsExamined 6,000 (COLLSCAN)؛ بعدها 50 لـ50 (FETCH مغطّى بالكامل
+// على الفهرس). الفهرس ده معلن في المخطط بس — تطبيقه على قاعدة بيانات حقيقية
+// عن طريق scripts/syncAllIndexes.js قرارك، مش شيء بينفّذ هنا (CLAUDE.md).
+playerSchema.index({ observers: 1, createdAt: -1 });
+
 
 
 playerSchema.pre('findOneAndUpdate', async function () {

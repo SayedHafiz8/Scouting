@@ -495,9 +495,13 @@ playerRouter.use('/:playerId/media', mediaRouter)
 //      متمركّب كمان على /users/:id/players وsetUserIdToBody بينسخ الـuser id من
 //      الـURL في coach).
 //   3) lockField على status/coach/observers/profileImg/ageGroup/createdBy.
+// observer-matches-and-players — POST/PATCH اتفتحوا للأوبزيرفر بنفس الطبقات
+// الثلاث بالضبط. اللاعب بيتحط في observers بتاعه من الأول (create)، فـ
+// ownerFields.observer الموجودة أصلاً بتشمله من غير أي تعديل في طبقة السكوب —
+// راجع playerController.create وownerFields تحت.
 playerRouter.route('/')
             .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),getAllValidate ,getAll)
-            .post(protect,allowedTo(ROLES.COACH, ROLES.PRO_SCOUT),setUserIdToBody, createValidate,create)
+            .post(protect,allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),setUserIdToBody, createValidate,create)
 
 // Counts per age group — must be declared before '/:id' so "counts" isn't treated as an id
 playerRouter.route('/counts')
@@ -508,8 +512,12 @@ playerRouter.route('/:id')
             .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, getSpecificValidate, getSpecific)
             // Stage 4 — checkPlayerOwnership عنده فرع proScout صريح من المرحلة 2،
             // وupdateValidate فيه teamExistsInScope، فإعادة الإسناد لفريق برّه
-            // الدوري بترفض زي الإنشاء بالظبط.
-            .patch(protect, allowedTo(ROLES.COACH, ROLES.PRO_SCOUT), checkPlayerOwnership, updateValidate, update)
+            // الدوري بترفض زي الإنشاء بالظبط. observer-matches-and-players —
+            // checkPlayerOwnership عنده فرع observer صريح من الأول (مصفوفة
+            // observers، بلا اعتماد على مين أنشأ المستند)، وupdateValidate فيه
+            // كمان فحص جديد بيمنع الأوبزيرفر يعدّي حدود التصنيف (محترف↔ناشئ) عن
+            // طريق تغيير team — راجع teamMatchesExistingClassification.
+            .patch(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, updateValidate, update)
             .delete(protect, allowedTo(ROLES.ADMIN), deleteValidate, deleting)
 
 playerRouter.route('/:id/status')
@@ -537,6 +545,6 @@ playerRouter.route('/:id/coach')
 // الفحص القديم جوه الكنترولر اتساب مكانه كما هو (بقى زيادة للكوتش، بس شيله
 // تغيير سلوك لرول قائم برّه نطاق المرحلة).
 playerRouter.route('/:id/profileImg')
-            .patch(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.PRO_SCOUT), upload.single('profileImg'), checkPlayerOwnership, uploadProfileImg)
+            .patch(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), upload.single('profileImg'), checkPlayerOwnership, uploadProfileImg)
 
 export default playerRouter;

@@ -4,6 +4,7 @@ import fs from "fs";
 import mongoose from "mongoose";
 
 import Player from "../models/playedModel.js";
+import Team from "../models/teamModel.js";
 import User from "../models/userModel.js";
 import ScoutingReport from "../models/scoutingReportModel.js";
 import PlayerMedia from "../models/playerMediaModel.js";
@@ -28,6 +29,19 @@ export const setUserIdToBody = (req, res, next) => {
     // Nested Router
     if(!req.body.coach) req.body.coach = req.params.id;
     next();
+}
+
+// observer-matches-and-players — مفيش علم isProfessional بيتبعت من العميل (زي
+// proScout بالظبط، lockField("isProfessional") لسه قائم لكل الرولات بلا استثناء).
+// بدل كده بيتشتق من دوري الفريق المختار وقت الإنشاء: فريق league:"professional"
+// → لاعب محترف، أي حاجة تانية (فريق دوري ممتاز، teamName نص حر، أو من غير فريق
+// خالص) → لاعب ناشئ، زي الكوتش بالظبط. ده قرار مالك صريح (بدل تعديل دستوري
+// على C-4) — اللاعب المحترف لازم يبقى له فريق مسجّل، مش teamName نص حر، لأن
+// مفيش طريقة تانية نعرف بيها دوري الفريق.
+async function resolveIsProfessionalForObserver(teamId) {
+    if (!teamId) return false;
+    const team = await Team.findById(teamId).select("league");
+    return team?.league === "professional";
 }
 
 // @desc    Create new AgeGroup
@@ -63,13 +77,30 @@ export const create = asyncHandler(async (req, res, next) => {
     // العميل بتتكتب فوقها هنا (وlockField("createdBy") بيرفضها قبل كده أصلاً).
     req.body.createdBy = req.user._id;
 
-    // Stage 4b — لاعبو الـproScout محترفون: مدى سنة ميلاد أوسع (1996→2019) وبدون
-    // فئة عمرية. الفرعين في playedModel pre-save hooks بيقرأوا العلم ده.
-    //
-    // الإسناد صريح للقيمتين مش `= (role === PRO_SCOUT)` بس، عشان الكوتش ياخد
-    // false صراحةً وميعتمدش على default المخطط — ولإن أي قيمة جاية من العميل
-    // بتتكتب فوقها هنا (وlockField بيرفضها قبل كده أصلاً).
-    req.body.isProfessional = req.user.role === ROLES.PRO_SCOUT;
+    // observer-matches-and-players — اللاعب اللي أوبزيرفر بينشئه بيتحط في
+    // observers بتاعته من الأول، زي ما coach بيتحط لملكية الكوتش بالظبط. ده هو
+    // اللي بيخلي ownerFields.observer ("observers") يشمله تلقائياً في القوائم
+    // وcheckPlayerOwnership، من غير أي طبقة سكوب جديدة — لاعب من غير coach (زي
+    // proScout) + معيَّن لصاحبه في observers = مرئي لصاحبه والأدمن بس، بالظبط
+    // زي ما لو أدمن عيّنه لأوبزيرفر تاني لاعب موجود (§9، ملاحظات الأوبزيرفر
+    // والميديا بتفضل مقصورة على كاتبها/رافعها بس — طبقة موجودة أصلاً، مش جديدة).
+    if (req.user.role === ROLES.OBSERVER) {
+        req.body.observers = [req.user._id];
+    }
+
+    // Stage 4b (proScout) — لاعبو الـproScout محترفون دايماً: مدى سنة ميلاد أوسع
+    // (1996→2019) وبدون فئة عمرية. observer-matches-and-players — نفس التأثير
+    // للأوبزيرفر، بس مشروط بدوري الفريق المختار (resolveIsProfessionalForObserver
+    // فوق)، مش ثابت بالرول زي proScout. لغير الاتنين دول، القيمة false صراحةً —
+    // مش معتمدة على default المخطط — ولإن أي قيمة جاية من العميل بتتكتب فوقها
+    // هنا (وlockField بيرفضها قبل كده أصلاً لكل الرولات بلا استثناء).
+    if (req.user.role === ROLES.PRO_SCOUT) {
+        req.body.isProfessional = true;
+    } else if (req.user.role === ROLES.OBSERVER) {
+        req.body.isProfessional = await resolveIsProfessionalForObserver(req.body.team);
+    } else {
+        req.body.isProfessional = false;
+    }
 
     const player = await Player.create(req.body);
 
