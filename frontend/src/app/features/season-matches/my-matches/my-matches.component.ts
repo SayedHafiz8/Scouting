@@ -10,6 +10,7 @@ import { SeasonMatch, SeasonMatchReport, SeasonMatchMedia, SeasonMatchStatus, Se
 import { Team } from '../../../core/models/team.model';
 import { AgeGroup } from '../../../core/models/age-group.model';
 import { Player } from '../../../core/models/player.model';
+import { Pagination } from '../../../core/models/api-response.model';
 import { SeasonMatchService } from '../services/season-match.service';
 import { PlayerService } from '../../players/services/player.service';
 import { TeamService } from '../../teams/services/team.service';
@@ -73,7 +74,7 @@ interface MediaRow {
           <p class="page-subtitle">{{ 'SEASON_MATCHES.SCHEDULE_SUBTITLE' | translate }}</p>
         </div>
         @if (seasonOptions().length > 0) {
-          <select [(ngModel)]="seasonFilter" (ngModelChange)="load()" class="form-input text-sm !w-auto">
+          <select [(ngModel)]="seasonFilter" (ngModelChange)="onSeasonFilterChange()" class="form-input text-sm !w-auto">
             <option value="">{{ 'SEASON_MATCHES.ALL_SEASONS' | translate }}</option>
             @for (s of seasonOptions(); track s) {
               <option [value]="s">{{ s }}</option>
@@ -107,7 +108,7 @@ interface MediaRow {
         }
         @if (!auth.isAdmin()) {
           <label class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--text-secondary)">
-            <input type="checkbox" [ngModel]="attendingOnly()" (ngModelChange)="attendingOnly.set($event)" class="rounded" />
+            <input type="checkbox" [ngModel]="attendingOnly()" (ngModelChange)="onAttendingOnlyChange($event)" class="rounded" />
             {{ 'SEASON_MATCHES.ATTENDING_ONLY' | translate }}
           </label>
         }
@@ -291,6 +292,29 @@ interface MediaRow {
             </table>
           </div>
         </div>
+        @if (pagination() && pagination()!.numberOfPages > 1) {
+          <div class="flex items-center justify-between pt-2">
+            <p class="text-sm" style="color:var(--text-muted)">
+              {{ 'SEASON_MATCHES.PAGE_OF' | translate:{ current: pagination()!.currentPage, total: pagination()!.numberOfPages } }}
+            </p>
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn btn-secondary btn-sm" [disabled]="page() === 1"
+                      (click)="changePage(page() - 1)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+                {{ 'SEASON_MATCHES.PREV' | translate }}
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" [disabled]="page() === pagination()!.numberOfPages"
+                      (click)="changePage(page() + 1)">
+                {{ 'SEASON_MATCHES.NEXT' | translate }}
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        }
       }
 
       <!-- Observer secondary view — the next scheduled match for each observed player's team -->
@@ -359,8 +383,12 @@ export class MyMatchesComponent implements OnInit {
   readonly selectedAgeGroupId = signal<string | null>(null);
   readonly attendingOnly = signal(false);
 
+  private static readonly PAGE_SIZE = 20;
+
   readonly loading = signal(true);
   readonly matches = signal<SeasonMatch[]>([]);
+  readonly pagination = signal<Pagination | null>(null);
+  readonly page = signal(1);
   readonly allSeasons = signal<string[]>([]);
   readonly expandedMatchId = signal<string | null>(null);
   readonly matchReports = signal<SeasonMatchReport[]>([]);
@@ -393,13 +421,14 @@ export class MyMatchesComponent implements OnInit {
   // القيد القديم اللي كان بيقصره على ماتشات حضرها + ماتش قادم واحد لكل لاعب متابَع اتلغى، لأنه كان
   // انعكاس فرونت إند لقيد سيرفر اتلغى هو نفسه في seasonMatchController (Stage 1). لوحة
   // "اللاعبين اللي بتابعهم" (observedRows) فضلت زي ما هي — مش جزء من الفلترة هنا.
-  readonly visibleMatches = computed(() => {
-    let list = this.matches();
-    if (this.attendingOnly()) {
-      list = list.filter(m => this.isAttending(m));
-    }
-    return list;
-  });
+  //
+  // Pagination stage — "attending only" used to filter matches() client-side, over
+  // whichever page had already loaded; now that matches() is one server page at a
+  // time (page/limit below), a client-only filter would silently hide attended
+  // matches sitting on a page the user never fetched. It's now the server-side
+  // ?attendees=<id> filter instead (load()), so matches() is already exactly what
+  // should render — this stays a pass-through, not a second filtering layer.
+  readonly visibleMatches = computed(() => this.matches());
 
   // Precomputed row view-models — see the MatchRow comment above. The template's
   // @for iterates this, not visibleMatches() directly.
@@ -454,6 +483,7 @@ export class MyMatchesComponent implements OnInit {
     if (league === 'professional') this.selectedAgeGroupId.set(null);
     this.expandedMatchId.set(null);
     this.resultMatchId.set(null);
+    this.page.set(1);
     this.load();
   }
 
@@ -463,6 +493,7 @@ export class MyMatchesComponent implements OnInit {
     this.selectedAgeGroupId.set(ag._id);
     this.expandedMatchId.set(null);
     this.resultMatchId.set(null);
+    this.page.set(1);
     this.load();
   }
 
@@ -470,15 +501,43 @@ export class MyMatchesComponent implements OnInit {
     return this.selectedLeague() === 'premier' && this.selectedAgeGroupId() === ag._id;
   }
 
+  // فلتر الموسم اتغيّر → نرجع لأول صفحة، وإلا ممكن نقف على صفحة متبقاش موجودة
+  // لو النتايج بقت أقل من عدد صفحات الفلتر السابق (نفس قاعدة age-group-detail.component.ts)
+  onSeasonFilterChange(): void {
+    this.page.set(1);
+    this.load();
+  }
+
+  changePage(page: number): void {
+    this.page.set(page);
+    this.load();
+  }
+
+  onAttendingOnlyChange(value: boolean): void {
+    this.attendingOnly.set(value);
+    this.page.set(1);
+    this.load();
+  }
+
   load(): void {
     this.loading.set(true);
-    const filters: SeasonMatchFilters = { league: this.selectedLeague(), season: this.seasonFilter || undefined, sort: 'matchDate' };
+    const filters: SeasonMatchFilters = {
+      league: this.selectedLeague(),
+      season: this.seasonFilter || undefined,
+      sort: 'matchDate',
+      page: this.page(),
+      limit: MyMatchesComponent.PAGE_SIZE,
+    };
     if (this.selectedLeague() === 'premier' && this.selectedAgeGroupId()) {
       filters.ageGroup = this.selectedAgeGroupId()!;
+    }
+    if (this.attendingOnly() && !this.auth.isAdmin()) {
+      filters.attendees = this.currentUserId;
     }
     this.seasonMatchService.getAll(filters).subscribe({
       next: (res) => {
         this.matches.set(res.data?.documents ?? []);
+        this.pagination.set(res.pagination ?? null);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),

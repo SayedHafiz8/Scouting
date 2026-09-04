@@ -67,8 +67,11 @@ async function setup(role: UserRole, matches: SeasonMatch[] = [makeMatch()]) {
   };
 
   getAllSpy = jasmine.createSpy('getAll').and.returnValue(
-    of({ status: 'success', count: matches.length, data: { documents: matches } } as unknown as
-      ApiResponse<PaginatedResponse<{ documents: SeasonMatch[] }>>)
+    of({
+      status: 'success', count: matches.length,
+      data: { documents: matches },
+      pagination: { currentPage: 1, limit: 20, numberOfPages: 1 },
+    } as unknown as ApiResponse<PaginatedResponse<{ documents: SeasonMatch[] }>>)
   );
 
   const updatedMatch = (id: string, overrides: Partial<SeasonMatch>) =>
@@ -284,6 +287,86 @@ describe('MyMatchesComponent — premier tabs are per-age-group (observer-matche
   it('proScout never computes premier tabs (no toggle to feed)', async () => {
     await setup('proScout', [makeMatch({ league: 'professional' })]);
     expect((fixture.componentInstance as any).premierAgeGroupTabs()).toEqual([]);
+  });
+});
+
+// Pagination — the schedule used to fetch every match matching the current
+// filters in one request (limit defaulted server-side to 50); it now pages at
+// 20, and "attending only" moved from a client-side filter to a server-side
+// ?attendees=<id> filter so it isn't blind to matches sitting on a page that
+// was never fetched.
+describe('MyMatchesComponent — pagination (observer-matches-and-players)', () => {
+  it('load() requests page 1 at the fixed page size', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    (fixture.componentInstance as any).selectLeague('professional');
+    const loadCall = getAllSpy.calls.mostRecent();
+    expect(loadCall.args[0]).toEqual(jasmine.objectContaining({ page: 1, limit: 20 }));
+  });
+
+  it('changePage() requests the new page and updates page()', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    component.selectLeague('professional');
+    getAllSpy.calls.reset();
+
+    component.changePage(3);
+
+    expect(component.page()).toBe(3);
+    expect(getAllSpy).toHaveBeenCalledWith(jasmine.objectContaining({ page: 3, limit: 20 }));
+  });
+
+  it('changing the season resets to page 1', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    component.selectLeague('professional');
+    component.changePage(2);
+    expect(component.page()).toBe(2);
+
+    component.onSeasonFilterChange();
+    expect(component.page()).toBe(1);
+  });
+
+  it('switching age-group tabs resets to page 1', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+      makeMatch({ _id: 'm2', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+    ]);
+    const component = fixture.componentInstance as any;
+    component.changePage(2);
+    expect(component.page()).toBe(2);
+
+    component.selectAgeGroupTab({ _id: 'ag2012', name: '2012', birthYear: 2012 });
+    expect(component.page()).toBe(1);
+  });
+
+  it('"attending only" filters server-side via ?attendees=<me>, not client-side', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    component.selectLeague('professional');
+    getAllSpy.calls.reset();
+
+    component.onAttendingOnlyChange(true);
+
+    expect(component.page()).toBe(1);
+    expect(getAllSpy).toHaveBeenCalledWith(jasmine.objectContaining({ attendees: 'scout-1' }));
+  });
+
+  it('admin never sends ?attendees=, even if attendingOnly() were somehow set', async () => {
+    await setup('admin', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    component.attendingOnly.set(true);
+    getAllSpy.calls.reset();
+
+    component.load();
+
+    const call = getAllSpy.calls.mostRecent().args[0];
+    expect(call.attendees).toBeUndefined();
+  });
+
+  it('visibleMatches() is a pass-through of matches() — no second client-side filter', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    expect(component.visibleMatches()).toBe(component.matches());
   });
 });
 
