@@ -584,10 +584,15 @@ describe('proScout — season match scope (US2, FR-004, FR-006)', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// scenario 20 — انحدار: سكوب الأوبزيرفر على المباريات لم يتغير (Principle III)
+// scenario 20 (superseded) — الأوبزيرفر ماعادش مقيّد بفرق لاعبيه المتابَعين على
+// المباريات. القيد ده كان محمي دستورياً (Principle III) واتلغى عمداً في مرحلة
+// لاحقة (observer-matches-and-players) عشان الأوبزيرفر يقدر يختار أي مباراة من
+// الجدولين. التست ده بيثبت الحاجة الوحيدة اللي المفروض تفضل زي ما هي: سكوب
+// proScout (`league: professional` بس) معزول تماماً عن فرع الأوبزيرفر — أي
+// توسيع/تضييق في فرع منهم ما بيسربش للتاني.
 // ═══════════════════════════════════════════════════════════════════════════
-describe('observer match scope unchanged by Stage 2 (scenario 20, FR-009)', () => {
-  it('an observer still sees exactly the matches of their assigned players teams', async () => {
+describe('observer match scope is unrestricted, and stays isolated from proScout scope', () => {
+  it('an observer sees the full schedule — both leagues, including matches unrelated to their assigned players', async () => {
     const admin = await createAdmin();
     const coach = await createCoach();
     const observer = await createObserver();
@@ -596,20 +601,20 @@ describe('observer match scope unchanged by Stage 2 (scenario 20, FR-009)', () =
     const teamB = await createTeam(ageGroup._id, { league: 'premier' });
     const teamC = await createTeam(ageGroup._id, { league: 'professional' });
 
-    // اللاعب المتابَع من الأوبزيرفر في teamA
+    // اللاعب المتابَع من الأوبزيرفر في teamA — النطاق الجديد ما بيعتمدش على ده أصلاً
     await createPlayerDoc({
       name: 'Watched', coach: coach.user._id, createdBy: coach.user._id,
       team: teamA._id, status: 'observed', observers: [observer.user._id],
     });
 
-    const mine = await SeasonMatch.create({
+    const involvesObservedTeam = await SeasonMatch.create({
       ageGroup: ageGroup._id, season: '2025/2026', league: 'premier',
       matchDate: new Date('2026-03-01T00:00:00.000Z'),
       homeTeam: teamA._id, awayTeam: teamB._id, createdBy: admin.user._id,
     });
-    // مباراة مالهاش علاقة بلاعبيه — ومحترفين كمان، عشان نتأكد إن سكوب proScout
-    // الجديد ما اتسربش لفرع الأوبزيرفر
-    await SeasonMatch.create({
+    // مباراة مالهاش علاقة بلاعبيه المتابَعين — ومحترفين كمان — لازم تبقى مرئية
+    // برضه، بعكس السلوك القديم (scenario 20 الأصلية)
+    const unrelatedProfessionalMatch = await SeasonMatch.create({
       ageGroup: ageGroup._id, season: '2025/2026', league: 'professional',
       matchDate: new Date('2026-03-02T00:00:00.000Z'),
       homeTeam: teamC._id, awayTeam: teamB._id, createdBy: admin.user._id,
@@ -620,8 +625,37 @@ describe('observer match scope unchanged by Stage 2 (scenario 20, FR-009)', () =
       .set('Authorization', 'Bearer ' + observer.token);
 
     expect(res.status).toBe(200);
+    expect(res.body.count).toBe(2);
+    const ids = res.body.data.documents.map((d) => String(d._id));
+    expect(ids).toContain(String(involvesObservedTeam._id));
+    expect(ids).toContain(String(unrelatedProfessionalMatch._id));
+  });
+
+  it('proScout scope stays exactly league:professional — the observer branch removal did not widen it', async () => {
+    const scout = await createProScout();
+    const premierTeamHome = await createTeam(ageGroup._id, { league: 'premier' });
+    const premierTeamAway = await createTeam(ageGroup._id, { league: 'premier' });
+    const proTeamHome = await createTeam(ageGroup._id, { league: 'professional' });
+    const proTeamAway = await createTeam(ageGroup._id, { league: 'professional' });
+
+    const proMatch = await SeasonMatch.create({
+      ageGroup: ageGroup._id, season: '2025/2026', league: 'professional',
+      matchDate: new Date('2026-03-01T00:00:00.000Z'),
+      homeTeam: proTeamHome._id, awayTeam: proTeamAway._id, createdBy: scout.user._id,
+    });
+    await SeasonMatch.create({
+      ageGroup: ageGroup._id, season: '2025/2026', league: 'premier',
+      matchDate: new Date('2026-03-02T00:00:00.000Z'),
+      homeTeam: premierTeamHome._id, awayTeam: premierTeamAway._id, createdBy: scout.user._id,
+    });
+
+    const res = await request(app)
+      .get('/api/v1/seasonMatches')
+      .set('Authorization', 'Bearer ' + scout.token);
+
+    expect(res.status).toBe(200);
     expect(res.body.count).toBe(1);
-    expect(String(res.body.data.documents[0]._id)).toBe(String(mine._id));
+    expect(String(res.body.data.documents[0]._id)).toBe(String(proMatch._id));
   });
 });
 

@@ -1,7 +1,6 @@
 import asyncHandler from "express-async-handler";
 
 import SeasonMatch from "../models/seasonMatchModel.js";
-import Player from "../models/playedModel.js";
 import AppError from "../utils/appError.js";
 import { creating, gettingAll, updating, deleteOne } from "../services/services.js";
 import { decorateMedia } from "./playerMediaController.js";
@@ -30,21 +29,18 @@ const SEASON_MATCH_SORT_FIELDS = ["matchDate"];
 
 // سكوب المباريات لكل رول — switch صريح بدل الـif القديم (Principle II).
 //
-// أوبزيرفر بيشوف بس مباريات فرق اللاعبين اللي الأدمن حطّه يتابعهم (Player.observers) —
-// مش كل جدول المباريات زي الكوتش/الأدمن. لو مفيش لاعب متحدد ليه فريق أصلاً، يشوف صفر مباريات.
-// الفرع ده محمي دستورياً (Principle III) ومحفوظ كما هو حرفياً.
+// الأوبزيرفر كان مقصور على مباريات فرق اللاعبين اللي الأدمن حطّه يتابعهم فقط
+// (Player.observers → team) — قيد دستوري (Principle III) اتلغى عمداً في مرحلة
+// لاحقة: الأوبزيرفر بقى يشوف الجدول كامل بالدورين (زي الكوتش/الأدمن بالظبط)
+// عشان يقدر يختار أي مباراة ويحضرها بنفسه، مش يتقيد بفرق لاعبينه المتابَعين.
+// التغيير موضوعه صراحةً هو المرحلة دي (سبب استثناء Principle III من نفسه)،
+// واتأكد بتست انحدار إن باقي الرولات (كوتش/أدمن/proScout) فضلوا زي ما هم بالظبط.
 async function seasonMatchBaseFilterFor(req) {
     switch (req.user.role) {
         case ROLES.ADMIN:
         case ROLES.COACH:
+        case ROLES.OBSERVER:
             return {};
-
-        case ROLES.OBSERVER: {
-            const teamIds = (await Player.find({ observers: req.user._id }).distinct("team")).filter(Boolean);
-            return teamIds.length
-                ? { $or: [{ homeTeam: { $in: teamIds } }, { awayTeam: { $in: teamIds } }] }
-                : { _id: { $in: [] } };
-        }
 
         // Stage 2 — دوري المحترفين بس. بيرجع ملفوف في $and من الطبقة المركزية:
         // `league` مُدرج في SEASON_MATCH_FILTERS تحت، فنطاق غير ملفوف كان
