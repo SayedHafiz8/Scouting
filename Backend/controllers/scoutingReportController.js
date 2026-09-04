@@ -156,10 +156,15 @@ export const getAll = asyncHandler(async (req, res, next) => {
     // داخل سكوب اللاعب. لو احتجناه بعدين، $text على notes هو الشكل الصح.
     const features = new ApiFeature(ScoutingReport.find(baseFilter), req.query, req.params, req.user);
 
-    const documentCount = await ScoutingReport.countDocuments(features.query.getFilter());
-    features.sort(REPORT_SORT_FIELDS).limitFields().paginate(documentCount);
+    // perf audit — العدّ والجلب مستقلين، فبيتنفذوا مع بعض. نفس الفلتر للاتنين.
+    const countFilter = features.query.getFilter();
+    features.sort(REPORT_SORT_FIELDS).limitFields().applyPagination();
 
-    const documents = await features.query.populate(reportPopulate);
+    const [documentCount, documents] = await Promise.all([
+        ScoutingReport.countDocuments(countFilter),
+        features.query.populate(reportPopulate),
+    ]);
+    features.buildPagination(documentCount);
 
     // للأدمن بس: عدد ريبورتات الكوتشات مقابل الأوبزيرفرز على اللاعب ده (مستقل عن فلتر authorRole الحالي، عشان يبان في شكل الأيقونتين مع بعض)
     let authorCounts;

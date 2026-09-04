@@ -171,10 +171,15 @@ export const getAll = asyncHandler(async (req, res, next) => {
     // نص طويل مالوش معنى في الـprefix. (نفس قرار notes في التقارير.)
     const features = new ApiFeature(PlayerMedia.find(baseFilter), req.query, req.params, req.user);
 
-    const documentCount = await PlayerMedia.countDocuments(features.query.getFilter());
-    features.sort(MEDIA_SORT_FIELDS).limitFields().paginate(documentCount);
+    // perf audit — العدّ والجلب مستقلين، فبيتنفذوا مع بعض. نفس الفلتر للاتنين.
+    const countFilter = features.query.getFilter();
+    features.sort(MEDIA_SORT_FIELDS).limitFields().applyPagination();
 
-    const documents = await features.query;
+    const [documentCount, documents] = await Promise.all([
+        PlayerMedia.countDocuments(countFilter),
+        features.query,
+    ]);
+    features.buildPagination(documentCount);
 
     res.status(200).json({
         status: "success",

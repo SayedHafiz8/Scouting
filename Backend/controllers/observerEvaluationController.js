@@ -109,12 +109,15 @@ export const getAll = asyncHandler(async (req, res, next) => {
         req.user
     );
 
-    const documentCount = await ObserverEvaluation.countDocuments(
-        features.query.getFilter()
-    );
-    features.sort(EVALUATION_SORT_FIELDS).limitFields().paginate(documentCount);
+    // perf audit — العدّ والجلب مستقلين، فبيتنفذوا مع بعض. نفس الفلتر للاتنين.
+    const countFilter = features.query.getFilter();
+    features.sort(EVALUATION_SORT_FIELDS).limitFields().applyPagination();
 
-    const documents = await features.query.populate(populate);
+    const [documentCount, documents] = await Promise.all([
+        ObserverEvaluation.countDocuments(countFilter),
+        features.query.populate(populate),
+    ]);
+    features.buildPagination(documentCount);
 
     res.status(200).json({
         status: "success",

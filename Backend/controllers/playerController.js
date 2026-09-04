@@ -370,10 +370,18 @@ export const getAll = asyncHandler(async (req, res, next) => {
         features.query = features.query.find({ status: { $in: ["pending", "observed"] } });
     }
 
-    const documentCount = await Player.countDocuments(features.query.getFilter());
-    features.sort(PLAYER_SORT_FIELDS).limitFields().paginate(documentCount);
+    // perf audit — العدّ والجلب مستقلين (العدد للبيانات الوصفية بس، مش لـ
+    // skip/limit) فبيتنفذوا مع بعض. نفس الفلتر بالظبط بيروح للاتنين.
+    const countFilter = features.query.getFilter();
+    features.sort(PLAYER_SORT_FIELDS).limitFields().applyPagination();
 
-    let documents = await features.query;
+    const [documentCount, fetched] = await Promise.all([
+        Player.countDocuments(countFilter),
+        features.query,
+    ]);
+    features.buildPagination(documentCount);
+
+    let documents = fetched;
     // FR-014 — الـproScout بياخد نفس قناع الكوتش: مايشوفش مصفوفة observers
     // و"observed" بتتعرضله "pending". القراءة دي هي المنع-بالافتراض
     // (Principle II): فتح صفحة تفاصيل اللاعب للرول ده معناه رد مالوش فرع قناع
