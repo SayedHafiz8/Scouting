@@ -40,9 +40,14 @@ const SEARCH_DEBOUNCE_MS = 300;
             {{ 'PLAYERS.TOTAL' | translate:{count: ''} }}
           </p>
         </div>
-        <!-- Stage 4 (FR-007) — proScout may create players, so it gets the control. -->
-        @if (auth.isCoach() || auth.isProScout()) {
-          <a routerLink="/players/new" class="btn btn-primary">
+        <!-- Stage 4 (FR-007) — proScout may create players, so it gets the control.
+             observer-matches-and-players — observer joins too. context=professional
+             is a hint for player-form, distinct from this page's own isProfessional
+             filter param: while inside the professional lens (professionalOnly()),
+             an observer's "Add" must land in the professional context, since — unlike
+             proScout — that role isn't determined by identity alone. -->
+        @if (auth.isCoach() || auth.isProScout() || auth.isObserver()) {
+          <a routerLink="/players/new" [queryParams]="professionalOnly() ? { context: 'professional' } : {}" class="btn btn-primary">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
@@ -161,6 +166,41 @@ const SEARCH_DEBOUNCE_MS = 300;
           <p class="text-sm" style="color:var(--text-secondary)">{{ 'PLAYERS.PICK_GROUP' | translate }}</p>
 
           <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <!-- observer-matches-and-players — a professional-league card alongside the
+                 age-group ones, entered the same way as any age-group card, before adding
+                 a player. Admin keeps its existing chip-based route into this lens
+                 (Principle III, unchanged); this card is additive for observer only. -->
+            @if (auth.isObserver()) {
+              <button type="button"
+                      class="relative overflow-hidden rounded-2xl text-left group/card age-group-card age-group-card--professional"
+                      [attr.aria-label]="('PLAYERS.PROFESSIONAL_LEAGUE' | translate)"
+                      (click)="toggleProfessional()">
+                <div style="position:absolute;top:-24px;inset-inline-end:-20px;width:96px;height:96px;border-radius:50%;
+                            filter:blur(28px);pointer-events:none;background:rgba(251,191,36,0.28);
+                            opacity:0.75;transition:opacity 0.2s"
+                     class="group-hover/card:opacity-100"></div>
+
+                <div class="flex items-center justify-center rounded-xl mb-4"
+                     style="width:42px;height:42px;background:rgba(251,191,36,0.22);position:relative">
+                  <svg style="width:20px;height:20px;color:#fbbf24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+                  </svg>
+                </div>
+
+                <p class="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style="color:#fcd34d">
+                  {{ 'PLAYERS.PROFESSIONAL_LEAGUE' | translate }}
+                </p>
+                <p class="text-2xl font-black tabular-nums leading-none" style="color:var(--text-primary)">—</p>
+
+                <div class="flex items-center gap-1.5 mt-3">
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums"
+                        style="background:rgba(251,191,36,0.22);color:#fbbf24">
+                    {{ professionalCount() }}
+                    <span class="font-medium opacity-90">{{ 'PLAYERS.PLAYERS_WORD' | translate }}</span>
+                  </span>
+                </div>
+              </button>
+            }
             @for (g of visibleGroups(); track g._id) {
               @if ((groupCounts()[g._id] ?? 0) > 0) {
                 <!-- Populated group — vivid accent, glow, pulsing "has players" dot -->
@@ -338,8 +378,8 @@ const SEARCH_DEBOUNCE_MS = 300;
         <app-empty-state
           [title]="'PLAYERS.EMPTY_TITLE' | translate"
           [message]="keyword ? ('PLAYERS.EMPTY_SEARCH' | translate) : ('PLAYERS.EMPTY_FIRST' | translate)"
-          [actionLabel]="(auth.isCoach() || auth.isProScout()) && !keyword ? ('PLAYERS.ADD' | translate) : null"
-          (actionClicked)="router.navigate(['/players/new'])"
+          [actionLabel]="(auth.isCoach() || auth.isProScout() || auth.isObserver()) && !keyword ? ('PLAYERS.ADD' | translate) : null"
+          (actionClicked)="goToNewPlayer()"
           icon="players"
         />
       } @else {
@@ -492,7 +532,7 @@ const SEARCH_DEBOUNCE_MS = 300;
                   {{ 'PLAYERS.VIEW_REPORTS' | translate }}
                 </a>
                 <div class="flex gap-1">
-                  @if (auth.isCoach()) {
+                  @if (auth.isCoach() || auth.isObserver()) {
                     <a [routerLink]="['/players', player._id, 'edit']"
                        class="btn btn-ghost btn-icon btn-sm" title="Edit">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -501,7 +541,11 @@ const SEARCH_DEBOUNCE_MS = 300;
                       </svg>
                     </a>
                   }
-                  @if (!auth.isCoach()) {
+                  <!-- observer-matches-and-players — was "@if (!auth.isCoach())", so an
+                       observer saw a delete button the backend has always rejected
+                       (DELETE /players/:id is admin-only). Corrected to the role that
+                       can actually delete, now that observer is a real write-capable role. -->
+                  @if (auth.isAdmin()) {
                     <button class="btn btn-ghost btn-icon btn-sm" style="color:#f43f5e" title="Delete"
                             (click)="confirmDelete(player)">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -594,6 +638,17 @@ const SEARCH_DEBOUNCE_MS = 300;
       transform: translateY(-2px);
       opacity: 0.9;
     }
+    /* observer-matches-and-players — gold accent so the professional card reads
+       as its own category at a glance, not a stray age-group card. */
+    .age-group-card--professional {
+      background: linear-gradient(150deg, rgba(251,191,36,0.14) 0%, rgba(217,119,6,0.07) 100%);
+      border: 1px solid rgba(251,191,36,0.35);
+    }
+    .age-group-card--professional:hover {
+      transform: translateY(-3px);
+      border-color: rgba(251,191,36,0.55);
+      box-shadow: 0 12px 30px rgba(251,191,36,0.22);
+    }
     .age-group-pulse-dot {
       animation: ageGroupPulse 2s ease-in-out infinite;
     }
@@ -648,6 +703,14 @@ export class PlayerListComponent implements OnInit {
   goToPlayer(playerId: string): void {
     const queryParams = this.observerFilter ? { authorRole: 'observer' } : {};
     this.router.navigate(['/players', playerId], { queryParams });
+  }
+
+  // observer-matches-and-players — empty-state's action button, unlike the header's
+  // routerLink, navigates imperatively — same context=professional hint applies.
+  goToNewPlayer(): void {
+    this.router.navigate(['/players/new'], {
+      queryParams: this.professionalOnly() ? { context: 'professional' } : {},
+    });
   }
 
   openAvatar(event: Event, url: string, name: string): void {
@@ -760,8 +823,14 @@ export class PlayerListComponent implements OnInit {
   // players", which cuts across every birth year. Routing it through the existing
   // flat-list path is the whole of FR-002 — no parallel template, no per-element
   // @if, and it reuses a code path that already has test coverage.
+  //
+  // observer-matches-and-players — auth.isObserver() removed from this list.
+  // Observer now gets the same age-group grid a coach sees (plus the professional
+  // card above), instead of always skipping straight to a flat list — that flat
+  // list stays for the admin's "?observer=<id>" lens (observerFilter, unchanged)
+  // and for orphaned/professional, which are still flat views for every role.
   private skipGroupsView(): boolean {
-    return !!this.observerFilter || this.auth.isObserver() || this.auth.isProScout() || this.orphanedOnly() || this.professionalOnly();
+    return !!this.observerFilter || this.auth.isProScout() || this.orphanedOnly() || this.professionalOnly();
   }
 
   // Decide which view to show based on the ageGroup query param

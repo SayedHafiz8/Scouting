@@ -104,7 +104,7 @@ const MAX_PLAYER_IMAGE_MB = 4;
                 </select>
               </div>
               @if (form.get('dateOfBirth')?.invalid && form.get('dateOfBirth')?.touched) {
-                <p class="field-error">{{ 'PLAYERS.FORM.DOB_ERR' | translate }}</p>
+                <p class="field-error">{{ (professionalContext() ? 'PLAYERS.FORM.DOB_ERR_SCOUT' : 'PLAYERS.FORM.DOB_ERR') | translate }}</p>
               }
             </div>
 
@@ -135,14 +135,14 @@ const MAX_PLAYER_IMAGE_MB = 4;
                   <svg style="width:12px;height:12px;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                   </svg>
-                  {{ (auth.isProScout() ? 'PLAYERS.FORM.TEAM_EMPTY_SCOUT' : 'PLAYERS.FORM.TEAM_EMPTY') | translate }}
+                  {{ (professionalContext() ? 'PLAYERS.FORM.TEAM_EMPTY_SCOUT' : 'PLAYERS.FORM.TEAM_EMPTY') | translate }}
                 </p>
               } @else if (!teamPickerUnlocked()) {
                 <p class="text-xs mt-1.5 flex items-center gap-1" style="color:var(--text-muted)">
                   <svg style="width:12px;height:12px;flex-shrink:0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                   </svg>
-                  {{ (auth.isProScout() ? 'PLAYERS.FORM.TEAM_HINT_SCOUT' : 'PLAYERS.FORM.TEAM_HINT') | translate }}
+                  {{ (professionalContext() ? 'PLAYERS.FORM.TEAM_HINT_SCOUT' : 'PLAYERS.FORM.TEAM_HINT') | translate }}
                 </p>
               }
             </div>
@@ -301,6 +301,21 @@ export class PlayerFormComponent implements OnInit {
   private selectedFile: File | null = null;
   private playerId = '';
 
+  // observer-matches-and-players — which entry point the observer used to reach
+  // this form: the professional card (routed with ?context=professional) or an
+  // age-group card / the ordinary "Add" button (no param → youth). On edit there
+  // is no query param at all, and isProfessional is locked post-creation anyway,
+  // so entryContext is instead resolved from the fetched player's own
+  // isProfessional — see initEditMode(). Irrelevant for every other role.
+  private readonly entryContext = signal<'youth' | 'professional'>('youth');
+
+  // Generalizes every former `auth.isProScout()` branch below: proScout is always
+  // professional by role; an observer is professional only in the professional
+  // entry context; coach and admin never are.
+  readonly professionalContext = computed(() =>
+    this.auth.isProScout() || (this.auth.isObserver() && this.entryContext() === 'professional')
+  );
+
   // The age group matching the currently entered birth date — null until a valid date is chosen.
   // Drives which teams appear in the Team dropdown (teams are always scoped to one age group).
   ageGroupForDob(): AgeGroup | undefined {
@@ -321,7 +336,11 @@ export class PlayerFormComponent implements OnInit {
     // always lists the full professional set. The backend still enforces which
     // teams are allowed — teamScopeFor confines this role to league=professional,
     // so passing the league below narrows the request, it does not grant anything.
-    if (this.auth.isProScout()) {
+    // observer-matches-and-players — same shape for an observer in the
+    // professional entry context; the backend derives isProfessional from
+    // whichever team ends up selected, so scoping the picker here is what makes
+    // that derivation land on the right classification, not a grant of its own.
+    if (this.professionalContext()) {
       teamCtrl?.enable({ emitEvent: false });
       this.teamService.getAll(undefined, 'professional').subscribe(res => {
         const list = res.data?.documents ?? [];
@@ -420,15 +439,15 @@ export class PlayerFormComponent implements OnInit {
   private readonly MAX_BIRTH_YEAR = 2019;
 
   get dobYears(): number[] {
-    const min = this.auth.isProScout() ? this.PRO_MIN_BIRTH_YEAR : this.YOUTH_MIN_BIRTH_YEAR;
+    const min = this.professionalContext() ? this.PRO_MIN_BIRTH_YEAR : this.YOUTH_MIN_BIRTH_YEAR;
     return Array.from({ length: this.MAX_BIRTH_YEAR - min + 1 }, (_, i) => min + i);
   }
 
   // Stage 4b — the Team dropdown is gated on an age group for youth players, because
-  // teams are age-group scoped. Professional players have no age group, so for
-  // proScout the picker is simply always available (see syncTeamsForDob).
+  // teams are age-group scoped. Professional players have no age group, so in the
+  // professional context the picker is simply always available (see syncTeamsForDob).
   teamPickerUnlocked(): boolean {
-    return this.auth.isProScout() ? true : !!this.ageGroupForDob();
+    return this.professionalContext() ? true : !!this.ageGroupForDob();
   }
   readonly dobMonths = [
     { value: 1, en: 'January', ar: 'يناير' },
@@ -532,15 +551,46 @@ export class PlayerFormComponent implements OnInit {
     // Team starts locked until a birth date resolves to an age group
     this.form.get('team')?.disable({ emitEvent: false });
 
-    // Stage 4b — proScout has no age-group dimension: its players are professional
-    // adults, for whom the server skips the derivation entirely. So it neither needs
-    // nor requests /ages, and its team list does not depend on one.
-    //
-    // Backend audit fix S2 (constitution v1.3.0, C-3) closed
-    // TODO(AGES_UNAUTHENTICATED_READ): GET /ages now requires auth and denies
-    // proScout with 403. This early-return stays regardless — the role has no
-    // age-group dimension to request in the first place.
-    if (this.auth.isProScout()) {
+    this.playerId = this.route.snapshot.paramMap.get('playerId') ?? '';
+    this.isEdit.set(!!this.playerId);
+
+    // observer-matches-and-players — on create, context comes from the query
+    // param and is known synchronously (professionalContext() is then resolvable
+    // immediately, same as proScout always being resolvable by role). On edit,
+    // there is no query param and isProfessional is locked post-creation anyway,
+    // so entryContext can only be resolved from the player itself — deferring
+    // the team/age-group setup until it loads (initEditMode below). Every other
+    // combination (proScout any mode, coach/admin any mode, observer creating)
+    // is synchronous and takes the ordinary path.
+    if (this.isEdit() && this.auth.isObserver()) {
+      this.initEditMode();
+      return;
+    }
+
+    if (!this.isEdit() && this.auth.isObserver()) {
+      const ctx = this.route.snapshot.queryParamMap.get('context');
+      this.entryContext.set(ctx === 'professional' ? 'professional' : 'youth');
+    }
+
+    this.initTeamAndAgeGroupSources();
+    if (this.isEdit()) {
+      this.playerService.getOne(this.playerId).subscribe(res => {
+        this.applyLoadedPlayer((res.data as any)?.player ?? (res.data as any)?.document);
+      });
+    }
+  }
+
+  // Stage 4b — proScout has no age-group dimension: its players are professional
+  // adults, for whom the server skips the derivation entirely. So it neither needs
+  // nor requests /ages, and its team list does not depend on one.
+  // observer-matches-and-players — same shape in the professional entry context.
+  //
+  // Backend audit fix S2 (constitution v1.3.0, C-3) closed
+  // TODO(AGES_UNAUTHENTICATED_READ): GET /ages now requires auth and denies
+  // proScout with 403. This early-return stays regardless — the role has no
+  // age-group dimension to request in the first place.
+  private initTeamAndAgeGroupSources(): void {
+    if (this.professionalContext()) {
       this.syncTeamsForDob();
     } else {
       this.http.get<PaginatedResponse<{ documents: AgeGroup[] }>>(this.agesBase).subscribe(res => {
@@ -549,43 +599,51 @@ export class PlayerFormComponent implements OnInit {
       });
       this.form.get('dateOfBirth')?.valueChanges.subscribe(() => this.syncTeamsForDob());
     }
+  }
 
-    this.playerId = this.route.snapshot.paramMap.get('playerId') ?? '';
-    if (this.playerId) {
-      this.isEdit.set(true);
-      this.playerService.getOne(this.playerId).subscribe(res => {
-        const p = (res.data as any)?.player ?? (res.data as any)?.document;
-        if (p) {
-          // جنسية اللاعب متسجلة أصلاً بقيمة مش موجودة في القايمة الحالية (اتضافت
-          // زمان قبل الفيتشر، أو دولة نادرة) → نعرضها كـ"غير موجودة" بالقيمة
-          // المحفوظة جاهزة في الحقل الحر، مش نضيّعها
-          const knownCountry = COUNTRIES.some(c => c.en === p.nationality);
-          // Load the country's regions first so the saved city can be selected
-          this.refreshCities(knownCountry ? (p.nationality ?? '') : '');
-          // team comes back populated as an object ({_id,...}) — the select needs just the id.
-          // No team but a free-text teamName → select shows the "other" option with the name filled in.
-          const teamId = typeof p.team === 'object' && p.team ? p.team._id : (p.team ?? '');
-          const dob = p.dateOfBirth?.split('T')[0] ?? '';
-          this.form.patchValue({
-            ...p,
-            nationality: knownCountry ? p.nationality : (p.nationality ? '__other__' : ''),
-            nationalityOther: knownCountry ? '' : (p.nationality ?? ''),
-            city: knownCountry ? p.city : '',
-            cityOther: knownCountry ? '' : (p.city ?? ''),
-            team: teamId || (p.teamName ? '__other__' : ''),
-            teamName: p.teamName ?? '',
-            dateOfBirth: dob,
-          });
-          this.syncNationalityMode();
-          // One-time — populates the day/month/year selects from the loaded value.
-          // Not wired to valueChanges: commitDob() below writes intermediate '' values
-          // while the user is still mid-pick, and re-deriving from THOSE would wipe out
-          // whichever field they'd already chosen before the other two catch up.
-          this.syncDobPartsFromControl(dob);
-          if (p.profileImg) this.imagePreview.set(p.profileImg);
-        }
-      });
-    }
+  // observer-matches-and-players — the one case where professionalContext() isn't
+  // resolvable before the player loads. Fetches first, sets entryContext from the
+  // loaded isProfessional, THEN sets up team/age-group sources (order matters: an
+  // observer editing a professional player must not take the youth /ages path even
+  // momentarily) — and only then patches the form.
+  private initEditMode(): void {
+    this.playerService.getOne(this.playerId).subscribe(res => {
+      const p = (res.data as any)?.player ?? (res.data as any)?.document;
+      this.entryContext.set(p?.isProfessional ? 'professional' : 'youth');
+      this.initTeamAndAgeGroupSources();
+      this.applyLoadedPlayer(p);
+    });
+  }
+
+  private applyLoadedPlayer(p: any): void {
+    if (!p) return;
+    // جنسية اللاعب متسجلة أصلاً بقيمة مش موجودة في القايمة الحالية (اتضافت
+    // زمان قبل الفيتشر، أو دولة نادرة) → نعرضها كـ"غير موجودة" بالقيمة
+    // المحفوظة جاهزة في الحقل الحر، مش نضيّعها
+    const knownCountry = COUNTRIES.some(c => c.en === p.nationality);
+    // Load the country's regions first so the saved city can be selected
+    this.refreshCities(knownCountry ? (p.nationality ?? '') : '');
+    // team comes back populated as an object ({_id,...}) — the select needs just the id.
+    // No team but a free-text teamName → select shows the "other" option with the name filled in.
+    const teamId = typeof p.team === 'object' && p.team ? p.team._id : (p.team ?? '');
+    const dob = p.dateOfBirth?.split('T')[0] ?? '';
+    this.form.patchValue({
+      ...p,
+      nationality: knownCountry ? p.nationality : (p.nationality ? '__other__' : ''),
+      nationalityOther: knownCountry ? '' : (p.nationality ?? ''),
+      city: knownCountry ? p.city : '',
+      cityOther: knownCountry ? '' : (p.city ?? ''),
+      team: teamId || (p.teamName ? '__other__' : ''),
+      teamName: p.teamName ?? '',
+      dateOfBirth: dob,
+    });
+    this.syncNationalityMode();
+    // One-time — populates the day/month/year selects from the loaded value.
+    // Not wired to valueChanges: commitDob() below writes intermediate '' values
+    // while the user is still mid-pick, and re-deriving from THOSE would wipe out
+    // whichever field they'd already chosen before the other two catch up.
+    this.syncDobPartsFromControl(dob);
+    if (p.profileImg) this.imagePreview.set(p.profileImg);
   }
 
   onFileSelect(event: Event): void {

@@ -329,6 +329,7 @@
       "DOB_MONTH": "Month",
       "DOB_YEAR": "Year",
       "DOB_ERR": "Player's birth year must be between 2007 and 2019",
+      "DOB_ERR_SCOUT": "Player's birth year must be between 1996 and 2019",
       "TEAM": "Team",
       "TEAM_PH": "No team",
       "TEAM_ERR": "Team is required",
