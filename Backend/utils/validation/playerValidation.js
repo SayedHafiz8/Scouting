@@ -6,6 +6,7 @@ import Team from "../../models/teamModel.js";
 import Player from "../../models/playedModel.js";
 import { teamScopeFor } from "../../services/scope.js";
 import { logScopeDenial } from "../accessLog.js";
+import { ROLES } from "../../constants/roles.js";
 
 // Stage 2 — نفس نقطة الحقيقة اللي checkTeamScope (middlewares/ownership.js)
 // بيستخدمها. من غيره كان فيه تحقق تاني (Team.findById خام) بيرجع "الفريق موجود"
@@ -49,6 +50,31 @@ const teamExistsInScope = (val, { req }) =>
 
 
 
+
+// observer-matches-and-players — isProfessional بيتشتق من دوري الفريق وقت
+// الإنشاء بس (playerController.resolveIsProfessionalForObserver)، وlockField
+// تحت بيمنع تعديله مباشرة زي كل الرولات. لكن lockField لوحدها ماكانتش كافية:
+// عيد إسناد team لفريق دوري مختلف عن تصنيف اللاعب الحالي كان هيغيّر نفس الأثر
+// بالتفاف — يرفع "محترف" عن لاعب أو يحطه على واحد ناشئ من غير ما يلمس
+// isProfessional خالص. الفحص ده بيقفل الالتفاف ده للأوبزيرفر تحديداً؛ باقي
+// الرولات زي ما هي بالظبط (Principle III — الكوتش وproScout ماكانش عندهم
+// اعتماد بين team وisProfessional من الأساس).
+const teamMatchesExistingClassification = async (teamId, { req }) => {
+    if (req.user.role !== ROLES.OBSERVER) return true;
+    if (!teamId) return true; // بيتشال team (تعيين teamName بدله) — مفيش تصادم يتفحص هنا
+
+    const [player, team] = await Promise.all([
+        Player.findById(req.params.id).select("isProfessional"),
+        Team.findById(teamId).select("league"),
+    ]);
+    if (!player || !team) return true; // فحوصات تانية (الوجود، teamExistsInScope) بتتكفل بالحالة دي
+
+    const teamIsProfessional = team.league === "professional";
+    if (Boolean(player.isProfessional) !== teamIsProfessional) {
+        throw new Error("Cannot reassign this player's team across the professional/youth boundary");
+    }
+    return true;
+};
 
 // فيلد ممنوع يتبعت من العميل خالص (بيتحدد من السيرفر بس) — نفس الـhelper المستخدم
 // في scoutingValidation/coachEvaluationValidation/observerEvaluationValidation
@@ -174,7 +200,8 @@ export const updateValidate = [
     check('team')
         .optional({ nullable: true })
         .isMongoId().withMessage('Invalid Team Id')
-        .custom(teamExistsInScope),
+        .custom(teamExistsInScope)
+        .custom(teamMatchesExistingClassification),
     check('teamName')
         .optional({ nullable: true })
         .isString().withMessage('teamName must be text')

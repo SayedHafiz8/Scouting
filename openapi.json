@@ -2614,9 +2614,6 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -5612,11 +5609,10 @@
     },
     "/ages": {
       "get": {
-        "summary": "List all age groups (public)",
+        "summary": "List all age groups (admin, coach, or observer)",
         "tags": [
           "AgeGroups"
         ],
-        "security": [],
         "responses": {
           "200": {
             "description": "List of age groups",
@@ -5647,6 +5643,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       },
@@ -5718,11 +5720,10 @@
     },
     "/ages/{id}": {
       "get": {
-        "summary": "Get a specific age group by ID (public)",
+        "summary": "Get a specific age group by ID (admin, coach, or observer)",
         "tags": [
           "AgeGroups"
         ],
-        "security": [],
         "parameters": [
           {
             "in": "path",
@@ -5757,6 +5758,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"

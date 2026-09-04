@@ -115,9 +115,6 @@ function pageText(): string {
 describe('MyMatchesComponent — US1 (browse professional-league matches)', () => {
   for (const role of ['coach', 'observer', 'admin'] as UserRole[]) {
     it(`${role}: age-group column and league toggle are still present (regression, FR-007)`, async () => {
-      // Past match + attendees:['scout-1'] so the observer's stricter visibleMatches
-      // filter (past-and-attending only) still shows a row — this loop is about the
-      // age-group/league-toggle markup, not observer's own filtering logic.
       await setup(role, [makeMatch({ matchDate: '2020-01-01T00:00:00.000Z', attendees: ['scout-1'] })]);
       expect(pageText()).toContain('SEASON_MATCHES.AGE_GROUP');
       const leagueButtons = fixture.nativeElement.querySelectorAll('button[type="button"]');
@@ -208,5 +205,41 @@ describe('MyMatchesComponent — US2 (attendance and result entry)', () => {
       status: 'completed',
       result: { homeScore: 3, awayScore: 0 },
     });
+  });
+});
+
+// observer-matches-and-players, stage 2 — the client-side restriction that used to
+// confine an observer to attended past matches + one upcoming match per observed
+// player is gone; the backend scope change (stage 1) already opened the full
+// schedule, so the frontend must stop narrowing it a second time.
+describe('MyMatchesComponent — observer schedule is unrestricted (observer-matches-and-players)', () => {
+  it('an observer sees an upcoming match they are not attending, unrelated to any observed player', async () => {
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    await setup('observer', [makeMatch({ matchDate: future, attendees: [], league: 'premier' })]);
+    expect((fixture.componentInstance as any).visibleMatches().length).toBe(1);
+  });
+
+  it('an observer sees a past match they did not attend', async () => {
+    await setup('observer', [makeMatch({ matchDate: '2020-01-01T00:00:00.000Z', attendees: [], league: 'premier' })]);
+    expect((fixture.componentInstance as any).visibleMatches().length).toBe(1);
+  });
+});
+
+// The precomputed row view-model (CLAUDE.md — no function calls inside a list-loop
+// template) must expose exactly what the template renders per row.
+describe('MyMatchesComponent — matchRows() view-model', () => {
+  it('carries the resolved team names, age-group label and per-row flags the template reads', async () => {
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    await setup('coach', [makeMatch({ matchDate: future, attendees: [], league: 'premier' })]);
+
+    const rows = (fixture.componentInstance as any).matchRows();
+    expect(rows.length).toBe(1);
+    expect(rows[0].homeName).toBe('Al Ahly A');
+    expect(rows[0].awayName).toBe('Zamalek A');
+    expect(rows[0].ageGroupLabel).toBe('U18');
+    expect(rows[0].isPast).toBeFalse();
+    expect(rows[0].isAttending).toBeFalse();
+    expect(rows[0].canToggleAttend).toBeTrue();
+    expect(rows[0].attendeeCount).toBe(0);
   });
 });

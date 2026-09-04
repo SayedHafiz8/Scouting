@@ -334,7 +334,7 @@ describe('GET /api/v1/seasonMatches', () => {
     expect(res.body.data.documents.length).toBe(1);
   });
 
-  it('an observer only sees matches for the team(s) of the player(s) they were assigned to observe', async () => {
+  it('an observer sees the full schedule, not just matches for the team(s) of the player(s) they observe', async () => {
     const { token: adminToken } = await createAdmin();
     const { token: coachToken } = await createCoach();
     const { token: observerToken, user: observer } = await createObserver();
@@ -344,14 +344,15 @@ describe('GET /api/v1/seasonMatches', () => {
     const player = await createPlayer(coachToken);
     await Player.findByIdAndUpdate(player._id, { team: teamA._id, observers: [observer._id] });
 
-    // visible: teamA (the observed player's team) is involved
-    const visible = await createMatch(adminToken, matchPayload({
+    // involves the observed player's team
+    const observedTeamMatch = await createMatch(adminToken, matchPayload({
       ageGroup: ageGroupA._id.toString(),
       homeTeam: teamA._id.toString(),
       awayTeam: teamB._id.toString(),
     }));
-    // not visible: neither team has anything to do with the observed player
-    await createMatch(adminToken, matchPayload({
+    // does NOT involve the observed player's team at all — under the old, now-removed
+    // team-restricted scope this would have been invisible to the observer
+    const unrelatedMatch = await createMatch(adminToken, matchPayload({
       ageGroup: ageGroupA._id.toString(),
       homeTeam: teamB._id.toString(),
       awayTeam: teamC._id.toString(),
@@ -362,11 +363,15 @@ describe('GET /api/v1/seasonMatches', () => {
       .set('Authorization', `Bearer ${observerToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.documents.length).toBe(1);
-    expect(res.body.data.documents[0]._id).toBe(visible.body.data.document._id);
+    expect(res.body.data.documents.length).toBe(2);
+    const ids = res.body.data.documents.map((m) => m._id);
+    expect(ids).toContain(observedTeamMatch.body.data.document._id);
+    expect(ids).toContain(unrelatedMatch.body.data.document._id);
   });
 
-  it('an observer with no assigned players (or an assigned player with no team) sees zero matches', async () => {
+  it('an observer with no assigned players at all still sees zero matches', async () => {
+    // القيد اللي اتلغى هو "الفريق" — قيد "عنده لاعب أصلاً" فضل قائم عمداً، عشان
+    // حساب أوبزيرفر لسه من غير أي علاقة حقيقية بالمنصة ميشوفش الجدول كامل بالصدفة.
     const { token: adminToken } = await createAdmin();
     const { token: observerToken } = await createObserver();
     const { ageGroupA, home, away } = await setupFixtures();
@@ -383,6 +388,76 @@ describe('GET /api/v1/seasonMatches', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.documents.length).toBe(0);
+  });
+
+  it('an observer sees both premier and professional matches in one list, once they have an assigned player', async () => {
+    const { token: adminToken } = await createAdmin();
+    const { token: coachToken } = await createCoach();
+    const { token: observerToken, user: observer } = await createObserver();
+    const { ageGroupA, home, away } = await setupFixtures('premier');
+    const proTeams = await setupFixtures('professional');
+
+    const player = await createPlayer(coachToken);
+    await Player.findByIdAndUpdate(player._id, { observers: [observer._id] });
+
+    const premierMatch = await createMatch(adminToken, matchPayload({
+      league: 'premier',
+      ageGroup: ageGroupA._id.toString(),
+      homeTeam: home._id.toString(),
+      awayTeam: away._id.toString(),
+    }));
+    const proMatch = await createMatch(adminToken, matchPayload({
+      league: 'professional',
+      homeTeam: proTeams.home._id.toString(),
+      awayTeam: proTeams.away._id.toString(),
+    }));
+
+    const res = await request(app)
+      .get('/api/v1/seasonMatches')
+      .set('Authorization', `Bearer ${observerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.documents.length).toBe(2);
+    const ids = res.body.data.documents.map((m) => m._id);
+    expect(ids).toContain(premierMatch.body.data.document._id);
+    expect(ids).toContain(proMatch.body.data.document._id);
+  });
+
+  it('an observer can narrow the schedule with ?league=, once they have an assigned player', async () => {
+    const { token: adminToken } = await createAdmin();
+    const { token: coachToken } = await createCoach();
+    const { token: observerToken, user: observer } = await createObserver();
+    const { ageGroupA, home, away } = await setupFixtures('premier');
+    const proTeams = await setupFixtures('professional');
+
+    const player = await createPlayer(coachToken);
+    await Player.findByIdAndUpdate(player._id, { observers: [observer._id] });
+
+    await createMatch(adminToken, matchPayload({
+      league: 'premier',
+      ageGroup: ageGroupA._id.toString(),
+      homeTeam: home._id.toString(),
+      awayTeam: away._id.toString(),
+    }));
+    await createMatch(adminToken, matchPayload({
+      league: 'professional',
+      homeTeam: proTeams.home._id.toString(),
+      awayTeam: proTeams.away._id.toString(),
+    }));
+
+    const premier = await request(app)
+      .get('/api/v1/seasonMatches?league=premier')
+      .set('Authorization', `Bearer ${observerToken}`);
+    expect(premier.status).toBe(200);
+    expect(premier.body.data.documents.length).toBe(1);
+    expect(premier.body.data.documents[0].league).toBe('premier');
+
+    const professional = await request(app)
+      .get('/api/v1/seasonMatches?league=professional')
+      .set('Authorization', `Bearer ${observerToken}`);
+    expect(professional.status).toBe(200);
+    expect(professional.body.data.documents.length).toBe(1);
+    expect(professional.body.data.documents[0].league).toBe('professional');
   });
 
   it('filters by attendees — a coach can fetch only matches they self-enrolled in', async () => {
@@ -695,6 +770,94 @@ describe('GET/PATCH/DELETE /api/v1/seasonMatches/:id', () => {
     expect(res.status).toBe(403);
   });
 
+  it('a self-enrolled attendee observer can update status/result via the status endpoint on match day', async () => {
+    const { token: adminToken } = await createAdmin();
+    const { token: observerToken, user: observer } = await createObserver();
+    const { ageGroupA, home, away } = await setupFixtures();
+
+    // نفس منطق تست الكوتش فوق بالظبط — UTC عشان audit-backend C3
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 5, 15, 9, 0, 0)));
+    const matchDate = new Date(Date.UTC(2026, 5, 16, 0, 0, 0));
+
+    try {
+      const created = await createMatch(adminToken, matchPayload({
+        ageGroup: ageGroupA._id.toString(),
+        homeTeam: home._id.toString(),
+        awayTeam: away._id.toString(),
+        matchDate: matchDate.toISOString(),
+      }));
+      const id = created.body.data.document._id;
+
+      await attend(observerToken, id);
+
+      vi.setSystemTime(new Date(Date.UTC(2026, 5, 16, 15, 0, 0)));
+
+      const res = await request(app)
+        .patch(`/api/v1/seasonMatches/${id}/status`)
+        .set('Authorization', `Bearer ${observerToken}`)
+        .send({ status: 'completed', result: { homeScore: 2, awayScore: 1 } });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.document.status).toBe('completed');
+      expect(res.body.data.document.result.homeScore).toBe(2);
+      expect(String(res.body.data.document.updatedBy)).toBe(String(observer._id));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('an observer who is not an attendee cannot update status (403)', async () => {
+    const { token: adminToken } = await createAdmin();
+    const { token: observerToken } = await createObserver();
+    const { ageGroupA, home, away } = await setupFixtures();
+
+    const created = await createMatch(adminToken, matchPayload({
+      ageGroup: ageGroupA._id.toString(),
+      homeTeam: home._id.toString(),
+      awayTeam: away._id.toString(),
+    }));
+    const id = created.body.data.document._id;
+
+    const res = await request(app)
+      .patch(`/api/v1/seasonMatches/${id}/status`)
+      .set('Authorization', `Bearer ${observerToken}`)
+      .send({ status: 'completed' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('an observer still cannot edit or delete a match — write endpoints stay admin-only (403)', async () => {
+    const { token: adminToken } = await createAdmin();
+    const { token: observerToken } = await createObserver();
+    const { ageGroupA, home, away } = await setupFixtures();
+
+    const created = await createMatch(adminToken, matchPayload({
+      ageGroup: ageGroupA._id.toString(),
+      homeTeam: home._id.toString(),
+      awayTeam: away._id.toString(),
+    }));
+    const id = created.body.data.document._id;
+
+    const patchRes = await request(app)
+      .patch(`/api/v1/seasonMatches/${id}`)
+      .set('Authorization', `Bearer ${observerToken}`)
+      .send({ venue: 'Somewhere' });
+    expect(patchRes.status).toBe(403);
+
+    const deleteRes = await request(app)
+      .delete(`/api/v1/seasonMatches/${id}`)
+      .set('Authorization', `Bearer ${observerToken}`);
+    expect(deleteRes.status).toBe(403);
+
+    const postRes = await createMatch(observerToken, matchPayload({
+      ageGroup: ageGroupA._id.toString(),
+      homeTeam: home._id.toString(),
+      awayTeam: away._id.toString(),
+    }));
+    expect(postRes.status).toBe(403);
+  });
+
   it('admin deletes a match (204)', async () => {
     const { token } = await createAdmin();
     const { ageGroupA, home, away } = await setupFixtures();
@@ -867,6 +1030,22 @@ describe('POST/DELETE /api/v1/seasonMatches/:id/attend', () => {
 
     const res = await attend(observerToken, created.body.data.document._id);
     expect(res.status).toBe(200);
+  });
+
+  it('an observer can self-enroll in a professional-league match too', async () => {
+    const { token: adminToken } = await createAdmin();
+    const { token: observerToken, user: observer } = await createObserver();
+    const proTeams = await setupFixtures('professional');
+
+    const created = await createMatch(adminToken, matchPayload({
+      league: 'professional',
+      homeTeam: proTeams.home._id.toString(),
+      awayTeam: proTeams.away._id.toString(),
+    }));
+
+    const res = await attend(observerToken, created.body.data.document._id);
+    expect(res.status).toBe(200);
+    expect(res.body.data.document.attendees.map((a) => String(a._id ?? a))).toContain(String(observer._id));
   });
 
   it('cannot attend a cancelled match (400)', async () => {

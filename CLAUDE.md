@@ -118,6 +118,10 @@ i18n is English + Arabic (`src/assets/i18n/*.json`) — the UI is bilingual, so 
 - **No function calls inside a list loop in a template.** Anything bound inside `@for` is re-evaluated on every change-detection pass, for every row. Use a `computed()`, or precompute the value onto the row when the data is loaded. The player card is the worst offender today — 16 calls per card × 20 cards ≈ 320 evaluations per pass, including a `calcAge()` that allocates three `Date` objects each time. **That is not yet fixed**: this rule is a constraint on new code, not a description of the current state. No component uses `OnPush` either (0 of 50), so every pass really does walk the whole tree.
 - **Hover effects belong in CSS `:hover`, never `(mouseenter)` in the template.** A template listener runs inside the Angular zone, so a mouse crossing a card triggers a full change-detection pass; `:hover` never reaches JavaScript at all. Removing twelve such handlers cut hover scripting time 81ms → 18ms at normal CPU and 3697ms → 502ms at 4× throttle (production bundles, interleaved A/B). If the element carries inline `style` for the properties you want to animate, move them into the class first — inline styles outrank any stylesheet rule, so `:hover` cannot override them where they sit.
 
+## Working with Claude
+
+- When the user explicitly rejects an architectural option, every subsequent plan or report drops that option entirely. A reasoned technical objection to the *accepted* option is welcome; re-asking the same already-decided question is not.
+
 ## Conventions
 
 - Much of the Backend's explanatory commentary is in Arabic, often marking security decisions (`B1`, `C3`, `F4`… refer to items from a security review). Preserve these when editing nearby code; they document *why* a constraint exists.

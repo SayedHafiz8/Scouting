@@ -28,6 +28,40 @@ interface ObservedPlayerRow {
   nextMatch: SeasonMatch | null;
 }
 
+// Precomputed once per data change (in a computed()), not per change-detection pass —
+// see CLAUDE.md's "no function calls inside a list loop in a template" rule. The
+// underlying methods (isPastMatch, isAttending, teamName, …) stay as the single
+// definition of each rule; only the template stops calling them per row per pass.
+interface MatchRow {
+  match: SeasonMatch;
+  homeName: string;
+  awayName: string;
+  ageGroupLabel: string;
+  isPast: boolean;
+  isAttending: boolean;
+  canEnterResult: boolean;
+  canToggleAttend: boolean;
+  attendeeCount: number;
+}
+
+interface ReportRow {
+  id: string;
+  playerId: string;
+  playerName: string;
+  overallRating: number;
+}
+
+interface MediaRow {
+  id: string;
+  type: 'image' | 'video';
+  href: string | null;
+  showLink: boolean;
+  title: string;
+  uploaderName: string;
+  reviewStatus?: 'pending' | 'approved' | 'rejected' | null;
+  reviewBadgeClass: string;
+}
+
 @Component({
   selector: 'app-my-matches',
   imports: [FormsModule, CommonModule, RouterLink, SkeletonLoaderComponent, EmptyStateComponent, TranslatePipe],
@@ -72,7 +106,7 @@ interface ObservedPlayerRow {
 
       @if (loading()) {
         <app-skeleton-loader type="table-row" [count]="4" />
-      } @else if (visibleMatches().length === 0) {
+      } @else if (matchRows().length === 0) {
         <app-empty-state [title]="'SEASON_MATCHES.SCHEDULE_EMPTY' | translate" [message]="'SEASON_MATCHES.SCHEDULE_EMPTY_MSG' | translate" />
       } @else {
         <div class="card overflow-hidden">
@@ -90,56 +124,56 @@ interface ObservedPlayerRow {
                 </tr>
               </thead>
               <tbody>
-                @for (m of visibleMatches(); track m._id) {
-                  <tr [class]="'border-b last:border-0' + (isPastMatch(m) ? ' cursor-pointer hover:opacity-80' : '')" style="border-color:var(--border-subtle)"
-                      (click)="isPastMatch(m) && toggleMatchReports(m)">
-                    <td class="px-4 py-3.5 whitespace-nowrap" style="color:var(--text-secondary)">{{ m.matchDate | date:'mediumDate' }}</td>
+                @for (row of matchRows(); track row.match._id) {
+                  <tr [class]="'border-b last:border-0' + (row.isPast ? ' cursor-pointer hover:opacity-80' : '')" style="border-color:var(--border-subtle)"
+                      (click)="row.isPast && toggleMatchReports(row.match)">
+                    <td class="px-4 py-3.5 whitespace-nowrap" style="color:var(--text-secondary)">{{ row.match.matchDate | date:'mediumDate' }}</td>
                     <td class="px-4 py-3.5 font-medium" style="color:var(--text-primary)">
-                      {{ teamName(m.homeTeam) }} <span style="color:var(--text-muted)">vs</span> {{ teamName(m.awayTeam) }}
-                      @if (m.status === 'completed' && m.result) {
-                        <span class="ms-1.5 text-xs font-semibold" style="color:var(--text-muted)">({{ m.result.homeScore }}–{{ m.result.awayScore }})</span>
+                      {{ row.homeName }} <span style="color:var(--text-muted)">vs</span> {{ row.awayName }}
+                      @if (row.match.status === 'completed' && row.match.result) {
+                        <span class="ms-1.5 text-xs font-semibold" style="color:var(--text-muted)">({{ row.match.result.homeScore }}–{{ row.match.result.awayScore }})</span>
                       }
-                      @if (isAttending(m)) {
+                      @if (row.isAttending) {
                         <span class="ms-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-green-500/90 text-white align-middle">{{ 'SEASON_MATCHES.ATTENDING' | translate }}</span>
                       }
-                      @if (isPastMatch(m)) {
-                        <svg class="inline-block w-3 h-3 ms-1.5 align-middle transition-transform" [class.rotate-180]="expandedMatchId() === m._id"
+                      @if (row.isPast) {
+                        <svg class="inline-block w-3 h-3 ms-1.5 align-middle transition-transform" [class.rotate-180]="expandedMatchId() === row.match._id"
                              fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <polyline points="6 9 12 15 18 9"/>
                         </svg>
                       }
                     </td>
                     @if (!auth.isProScout()) {
-                      <td class="px-4 py-3.5" style="color:var(--text-secondary)">{{ ageGroupName(m.ageGroup) }}</td>
+                      <td class="px-4 py-3.5" style="color:var(--text-secondary)">{{ row.ageGroupLabel }}</td>
                     }
-                    <td class="px-4 py-3.5" style="color:var(--text-secondary)">{{ m.venue || '—' }}</td>
+                    <td class="px-4 py-3.5" style="color:var(--text-secondary)">{{ row.match.venue || '—' }}</td>
                     <td class="px-4 py-3.5 text-right" (click)="$event.stopPropagation()">
-                      @if (canEnterResult(m)) {
-                        <button type="button" class="btn btn-ghost btn-sm inline-flex items-center gap-1.5" (click)="openResultForm(m)">
+                      @if (row.canEnterResult) {
+                        <button type="button" class="btn btn-ghost btn-sm inline-flex items-center gap-1.5" (click)="openResultForm(row.match)">
                           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                           </svg>
-                          {{ (m.status === 'completed' ? 'SEASON_MATCHES.EDIT_RESULT' : 'SEASON_MATCHES.ENTER_RESULT') | translate }}
+                          {{ (row.match.status === 'completed' ? 'SEASON_MATCHES.EDIT_RESULT' : 'SEASON_MATCHES.ENTER_RESULT') | translate }}
                         </button>
-                      } @else if (!auth.isAdmin() && m.status !== 'cancelled' && canToggleAttend(m)) {
-                        <button type="button" class="btn btn-sm" [disabled]="attendBusyId() === m._id"
-                                [class]="isAttending(m) ? 'btn-secondary' : 'btn-primary'" (click)="toggleAttend(m)">
-                          {{ (isAttending(m) ? 'SEASON_MATCHES.UNATTEND' : 'SEASON_MATCHES.ATTEND') | translate }}
+                      } @else if (!auth.isAdmin() && row.match.status !== 'cancelled' && row.canToggleAttend) {
+                        <button type="button" class="btn btn-sm" [disabled]="attendBusyId() === row.match._id"
+                                [class]="row.isAttending ? 'btn-secondary' : 'btn-primary'" (click)="toggleAttend(row.match)">
+                          {{ (row.isAttending ? 'SEASON_MATCHES.UNATTEND' : 'SEASON_MATCHES.ATTEND') | translate }}
                         </button>
-                      } @else if (!auth.isAdmin() && m.status !== 'cancelled') {
+                      } @else if (!auth.isAdmin() && row.match.status !== 'cancelled') {
                         <span class="text-xs" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.ATTENDANCE_LOCKED' | translate }}</span>
                       } @else if (auth.isAdmin()) {
                         <span class="text-xs inline-flex items-center gap-1" style="color:var(--text-muted)">
                           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
-                          {{ attendeeIds(m).length }}
+                          {{ row.attendeeCount }}
                         </span>
                       } @else {
                         <span class="text-xs" style="color:var(--text-muted)">—</span>
                       }
                     </td>
                   </tr>
-                  @if (resultMatchId() === m._id) {
+                  @if (resultMatchId() === row.match._id) {
                     <tr (click)="$event.stopPropagation()">
                       <td [attr.colspan]="columnCount()" class="px-4 py-4" style="background:var(--bg-secondary)">
                         <div class="flex flex-wrap items-end gap-3">
@@ -154,51 +188,51 @@ interface ObservedPlayerRow {
                           @if (resultForm.status === 'completed') {
                             <div class="flex items-end gap-2">
                               <div>
-                                <label class="block text-xs font-medium mb-1 truncate max-w-[140px]" style="color:var(--text-secondary)">{{ teamName(m.homeTeam) }}</label>
+                                <label class="block text-xs font-medium mb-1 truncate max-w-[140px]" style="color:var(--text-secondary)">{{ row.homeName }}</label>
                                 <input [(ngModel)]="resultForm.homeScore" type="number" min="0" class="form-input text-sm" style="width:70px" />
                               </div>
                               <span class="pb-2.5 text-sm" style="color:var(--text-muted)">–</span>
                               <div>
-                                <label class="block text-xs font-medium mb-1 truncate max-w-[140px]" style="color:var(--text-secondary)">{{ teamName(m.awayTeam) }}</label>
+                                <label class="block text-xs font-medium mb-1 truncate max-w-[140px]" style="color:var(--text-secondary)">{{ row.awayName }}</label>
                                 <input [(ngModel)]="resultForm.awayScore" type="number" min="0" class="form-input text-sm" style="width:70px" />
                               </div>
                             </div>
                           }
                           <div class="flex gap-2">
-                            <button type="button" class="btn btn-primary btn-sm" [disabled]="savingResult()" (click)="saveResult(m)">{{ 'COMMON.SAVE' | translate }}</button>
+                            <button type="button" class="btn btn-primary btn-sm" [disabled]="savingResult()" (click)="saveResult(row.match)">{{ 'COMMON.SAVE' | translate }}</button>
                             <button type="button" class="btn btn-secondary btn-sm" (click)="cancelResultForm()">{{ 'COMMON.CANCEL' | translate }}</button>
                           </div>
                         </div>
                       </td>
                     </tr>
                   }
-                  @if (expandedMatchId() === m._id) {
+                  @if (expandedMatchId() === row.match._id) {
                     <tr>
                       <td [attr.colspan]="columnCount()" class="px-4 py-4" style="background:var(--bg-secondary)">
                         <div class="flex gap-1 mb-3" (click)="$event.stopPropagation()">
                           <button type="button" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                                   [class]="matchDetailTab() === 'reports' ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'"
                                   (click)="matchDetailTab.set('reports')">
-                            {{ 'SEASON_MATCHES.TABS.REPORTS' | translate }} ({{ matchReports().length }})
+                            {{ 'SEASON_MATCHES.TABS.REPORTS' | translate }} ({{ matchReportRows().length }})
                           </button>
                           <button type="button" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                                   [class]="matchDetailTab() === 'media' ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'"
                                   (click)="matchDetailTab.set('media')">
-                            {{ 'SEASON_MATCHES.TABS.MEDIA' | translate }} ({{ matchMedia().length }})
+                            {{ 'SEASON_MATCHES.TABS.MEDIA' | translate }} ({{ matchMediaRows().length }})
                           </button>
                         </div>
 
                         @if (matchReportsLoading()) {
                           <app-skeleton-loader type="table-row" [count]="2" />
                         } @else if (matchDetailTab() === 'reports') {
-                          @if (matchReports().length === 0) {
+                          @if (matchReportRows().length === 0) {
                             <p class="text-xs" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.NO_REPORTS' | translate }}</p>
                           } @else {
                             <ul class="space-y-1.5">
-                              @for (r of matchReports(); track r._id) {
+                              @for (r of matchReportRows(); track r.id) {
                                 <li class="flex items-center justify-between text-sm">
-                                  <a [routerLink]="['/players', reportPlayerId(r), 'reports', r._id]" class="font-medium hover:underline" style="color:var(--text-primary)" (click)="$event.stopPropagation()">
-                                    {{ reportPlayerName(r) }}
+                                  <a [routerLink]="['/players', r.playerId, 'reports', r.id]" class="font-medium hover:underline" style="color:var(--text-primary)" (click)="$event.stopPropagation()">
+                                    {{ r.playerName }}
                                   </a>
                                   <span class="text-xs font-semibold" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.OVERALL_RATING' | translate }}: {{ r.overallRating }}</span>
                                 </li>
@@ -206,11 +240,11 @@ interface ObservedPlayerRow {
                             </ul>
                           }
                         } @else {
-                          @if (matchMedia().length === 0) {
+                          @if (matchMediaRows().length === 0) {
                             <p class="text-xs" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.NO_MEDIA' | translate }}</p>
                           } @else {
                             <ul class="space-y-1.5">
-                              @for (item of matchMedia(); track item._id) {
+                              @for (item of matchMediaRows(); track item.id) {
                                 <li class="flex items-center justify-between text-sm gap-2">
                                   <div class="flex items-center gap-2 min-w-0">
                                     <svg class="w-3.5 h-3.5 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -221,17 +255,17 @@ interface ObservedPlayerRow {
                                       }
                                     </svg>
                                     <!-- Video playback is admin-only (bandwidth control); coaches/observers see the title only -->
-                                    @if (item.type !== 'video' || auth.isAdmin()) {
-                                      <a [href]="item.embedUrl || item.url" target="_blank" rel="noopener" class="font-medium hover:underline truncate" style="color:var(--text-primary)" (click)="$event.stopPropagation()">
-                                        {{ item.title || mediaPlayerName(item) }}
+                                    @if (item.showLink) {
+                                      <a [href]="item.href" target="_blank" rel="noopener" class="font-medium hover:underline truncate" style="color:var(--text-primary)" (click)="$event.stopPropagation()">
+                                        {{ item.title }}
                                       </a>
                                     } @else {
-                                      <span class="font-medium truncate" style="color:var(--text-primary)">{{ item.title || mediaPlayerName(item) }}</span>
+                                      <span class="font-medium truncate" style="color:var(--text-primary)">{{ item.title }}</span>
                                     }
-                                    <span class="text-xs flex-shrink-0" style="color:var(--text-muted)">— {{ mediaUploaderName(item) }}</span>
+                                    <span class="text-xs flex-shrink-0" style="color:var(--text-muted)">— {{ item.uploaderName }}</span>
                                   </div>
                                   @if (item.reviewStatus) {
-                                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-md flex-shrink-0" [class]="reviewBadgeClass(item.reviewStatus)">
+                                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-md flex-shrink-0" [class]="item.reviewBadgeClass">
                                       {{ 'MEDIA.REVIEW.' + item.reviewStatus.toUpperCase() | translate }}
                                     </span>
                                   }
@@ -342,21 +376,43 @@ export class MyMatchesComponent implements OnInit {
   // which has no age-group column (FR-002).
   readonly columnCount = computed(() => this.auth.isProScout() ? 4 : 5);
 
+  // الأوبزيرفر بقى يشوف الجدول كامل زي الكوتش/الأدمن بالظبط (observer-matches-and-players) —
+  // القيد القديم اللي كان بيقصره على ماتشات حضرها + ماتش قادم واحد لكل لاعب متابَع اتلغى، لأنه كان
+  // انعكاس فرونت إند لقيد سيرفر اتلغى هو نفسه في seasonMatchController (Stage 1). لوحة
+  // "اللاعبين اللي بتابعهم" (observedRows) فضلت زي ما هي — مش جزء من الفلترة هنا.
   readonly visibleMatches = computed(() => {
     let list = this.matches();
     if (this.attendingOnly()) {
       list = list.filter(m => this.isAttending(m));
     }
-    // الأوبزيرفر يشوف بس: الماتشات السابقة اللي حضرها فعلاً + الماتش القادم بتاع كل لاعب متابعه —
-    // مش كل جدول فريقه، عشان يقدر يقرر يحضر ولا لأ من غير ما يتلخبط بماتشات بعيدة
-    if (this.auth.isObserver()) {
-      const allowedUpcomingIds = new Set(
-        this.observedRows().map(r => r.nextMatch?._id).filter((id): id is string => !!id)
-      );
-      list = list.filter(m => this.isPastMatch(m) ? this.isAttending(m) : allowedUpcomingIds.has(m._id));
-    }
     return list;
   });
+
+  // Precomputed row view-models — see the MatchRow comment above. The template's
+  // @for iterates this, not visibleMatches() directly.
+  readonly matchRows = computed<MatchRow[]>(() => this.visibleMatches().map(m => this.toRow(m)));
+
+  readonly matchReportRows = computed<ReportRow[]>(() =>
+    this.matchReports().map(r => ({
+      id: r._id,
+      playerId: this.reportPlayerId(r),
+      playerName: this.reportPlayerName(r),
+      overallRating: r.overallRating,
+    }))
+  );
+
+  readonly matchMediaRows = computed<MediaRow[]>(() =>
+    this.matchMedia().map(item => ({
+      id: item._id,
+      type: item.type,
+      href: item.embedUrl || item.url,
+      showLink: item.type !== 'video' || this.auth.isAdmin(),
+      title: item.title || this.mediaPlayerName(item),
+      uploaderName: this.mediaUploaderName(item),
+      reviewStatus: item.reviewStatus,
+      reviewBadgeClass: item.reviewStatus ? this.reviewBadgeClass(item.reviewStatus) : '',
+    }))
+  );
 
   ngOnInit(): void {
     this.loadAllSeasons();
@@ -410,6 +466,20 @@ export class MyMatchesComponent implements OnInit {
     if (this.auth.isAdmin()) return this.isPastMatch(m);
     // الكشاف/الأوبزيرفر لازم يكون حاضر المباراة ويسجل نتيجتها يوم المباراة نفسه بس
     return this.isMatchDay(m) && this.isAttending(m);
+  }
+
+  private toRow(m: SeasonMatch): MatchRow {
+    return {
+      match: m,
+      homeName: this.teamName(m.homeTeam),
+      awayName: this.teamName(m.awayTeam),
+      ageGroupLabel: this.ageGroupName(m.ageGroup),
+      isPast: this.isPastMatch(m),
+      isAttending: this.isAttending(m),
+      canEnterResult: this.canEnterResult(m),
+      canToggleAttend: this.canToggleAttend(m),
+      attendeeCount: this.attendeeIds(m).length,
+    };
   }
 
   toggleAttend(m: SeasonMatch): void {

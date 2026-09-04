@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
-import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
@@ -465,20 +465,137 @@ describe('PlayerListComponent — other roles keep the age-group UI (FR-014)', (
     expect(countsSpy).toHaveBeenCalled();
   });
 
-  it('an observer keeps its own flat list — unchanged by this stage', async () => {
+  // observer-matches-and-players — an observer now gets the same age-group grid
+  // a coach sees, instead of always skipping straight to a flat list. The flat
+  // list stays for the admin's ?observer=<id> lens (observerFilter) and for
+  // orphaned/professional, tested separately below.
+  it('an observer now sees the age-group picker too', async () => {
     const comp = await setup('observer');
-    expect(comp.flatView()).toBeTrue();
+    expect(comp.flatView()).toBeFalse();
+    expect(countsSpy).toHaveBeenCalled();
   });
 
-  it('an observer does not get the Add player control', async () => {
-    // The widened gate is proScout-specific; it must not leak to other roles.
+  it('an observer gets the Add player control', async () => {
     await setup('observer');
-    expect(addButton()).toBeNull();
+    expect(addButton()).toBeTruthy();
   });
 
   it('an admin does not get the Add player control', async () => {
     await setup('admin');
     expect(addButton()).toBeNull();
+  });
+});
+
+// observer-matches-and-players — the professional card added to the age-group
+// grid, entered the same way as any age-group card. Additive for observer only;
+// admin keeps its existing chip-based route into this lens (professionalChip()
+// above, unchanged), and coach/proScout get neither.
+const professionalCard = () => compiled.querySelector('.age-group-card--professional');
+
+describe('PlayerListComponent — professional card in the grid (observer-matches-and-players)', () => {
+  // setup() flushes /ages asynchronously (loadGroupCounts's own subscribe fires
+  // inside that flush), so a second detectChanges() is needed to paint the grid
+  // (as opposed to the status-chips row, which isn't gated behind the loading
+  // skeleton and so doesn't need one — see professionalChip() tests above).
+  it('is offered to an observer', async () => {
+    await setup('observer');
+    fixture.detectChanges();
+    expect(professionalCard()).toBeTruthy();
+  });
+
+  it('is absent for a coach', async () => {
+    await setup('coach');
+    fixture.detectChanges();
+    expect(professionalCard()).toBeNull();
+  });
+
+  it('is absent for an admin', async () => {
+    await setup('admin');
+    fixture.detectChanges();
+    expect(professionalCard()).toBeNull();
+  });
+
+  it('is absent for a proScout', async () => {
+    await setup('proScout');
+    fixture.detectChanges();
+    expect(professionalCard()).toBeNull();
+  });
+
+  it('clicking it enters the professional lens', async () => {
+    await setup('observer');
+    fixture.detectChanges();
+    (professionalCard() as HTMLButtonElement).click();
+
+    expect(navigateSpy).toHaveBeenCalled();
+    const [, extras] = navigateSpy.calls.mostRecent().args;
+    expect(extras.queryParams).toEqual({ isProfessional: 'true' });
+  });
+});
+
+// observer-matches-and-players — the Add-player link's context hint. A new
+// param, distinct from this page's own isProfessional filter param, so the
+// create route and the list route don't share ambiguous meaning.
+describe('PlayerListComponent — Add player context hint (observer-matches-and-players)', () => {
+  it('carries context=professional while the professional lens is active', async () => {
+    await setup('observer', { isProfessional: 'true' });
+    const link = addButton() as HTMLAnchorElement;
+    expect(link).toBeTruthy();
+    const debugEl = fixture.debugElement.query(el => el.nativeElement === link);
+    const routerLink = debugEl.injector.get(RouterLink);
+    expect(routerLink.queryParams).toEqual({ context: 'professional' });
+  });
+
+  it('carries no context param outside the professional lens', async () => {
+    await setup('observer');
+    const link = addButton() as HTMLAnchorElement;
+    const debugEl = fixture.debugElement.query(el => el.nativeElement === link);
+    const routerLink = debugEl.injector.get(RouterLink);
+    expect(routerLink.queryParams).toEqual({});
+  });
+});
+
+// observer-matches-and-players — the Edit link and Delete button, now that
+// observer is a write-capable role. Delete was previously "@if (!auth.isCoach())",
+// which meant an observer saw a delete button the backend has always rejected
+// (DELETE /players/:id is admin-only); corrected to admin-only rendering.
+describe('PlayerListComponent — Edit/Delete controls per role (observer-matches-and-players)', () => {
+  const player = {
+    _id: 'p1', name: 'Test Player', dateOfBirth: '2012-01-01', city: 'Cairo',
+    address: 'x', phoneNumber: '01000000000', nationality: 'Egyptian',
+    position: 'CM', preferredFoot: 'right', status: 'pending',
+    createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z',
+  } as any;
+
+  async function setupWithOnePlayer(role: TestRole) {
+    const comp = await setup(role, { ageGroup: 'ag1' });
+    getAllSpy.and.returnValue(of({ status: 'success', count: 1, pagination: null, data: { documents: [player] } }));
+    comp.load();
+    fixture.detectChanges();
+    return comp;
+  }
+
+  // [routerLink]="[...]" is a directive input (an array), never reflected as a
+  // plain DOM attribute — title="Edit" is the reliable selector, matching how
+  // deleteBtn() below already queries by its title attribute.
+  const editLink = () => compiled.querySelector(`a[title="Edit"]`);
+  const deleteBtn = () => compiled.querySelector('button[title="Delete"]');
+
+  it('a coach sees Edit but not Delete', async () => {
+    await setupWithOnePlayer('coach');
+    expect(editLink()).toBeTruthy();
+    expect(deleteBtn()).toBeNull();
+  });
+
+  it('an observer sees Edit but not Delete', async () => {
+    await setupWithOnePlayer('observer');
+    expect(editLink()).toBeTruthy();
+    expect(deleteBtn()).toBeNull();
+  });
+
+  it('an admin sees Delete but not Edit', async () => {
+    await setupWithOnePlayer('admin');
+    expect(editLink()).toBeNull();
+    expect(deleteBtn()).toBeTruthy();
   });
 });
 

@@ -1248,7 +1248,6 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
             };
         };
         put?: never;
@@ -3754,7 +3753,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all age groups (public) */
+        /** List all age groups (admin, coach, or observer) */
         get: {
             parameters: {
                 query?: never;
@@ -3780,6 +3779,8 @@ export interface paths {
                         };
                     };
                 };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
             };
         };
         put?: never;
@@ -3835,7 +3836,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a specific age group by ID (public) */
+        /** Get a specific age group by ID (admin, coach, or observer) */
         get: {
             parameters: {
                 query?: never;
@@ -3862,6 +3863,8 @@ export interface paths {
                         };
                     };
                 };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
             };
         };
