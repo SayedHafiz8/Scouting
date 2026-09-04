@@ -26,6 +26,7 @@ let getAllSpy: jasmine.Spy;
 let attendSpy: jasmine.Spy;
 let unattendSpy: jasmine.Spy;
 let updateStatusSpy: jasmine.Spy;
+let playersGetAllSpy: jasmine.Spy;
 
 function makeUser(role: UserRole): User {
   return {
@@ -84,6 +85,8 @@ async function setup(role: UserRole, matches: SeasonMatch[] = [makeMatch()]) {
   updateStatusSpy = jasmine.createSpy('updateStatus').and.callFake((id: string, payload: any) =>
     of(updatedMatch(id, payload) as unknown as ApiResponse<{ document: SeasonMatch }>));
 
+  playersGetAllSpy = jasmine.createSpy('players.getAll').and.returnValue(of({ data: { documents: [] } }));
+
   const seasonMatchServiceStub = {
     getAll: getAllSpy,
     getOne: jasmine.createSpy('getOne'),
@@ -99,7 +102,7 @@ async function setup(role: UserRole, matches: SeasonMatch[] = [makeMatch()]) {
       provideTranslateService({ lang: 'en', fallbackLang: 'en' }),
       { provide: AuthService, useValue: authStub },
       { provide: SeasonMatchService, useValue: seasonMatchServiceStub },
-      { provide: PlayerService, useValue: { getAll: jasmine.createSpy('getAll').and.returnValue(of({ data: { documents: [] } })) } },
+      { provide: PlayerService, useValue: { getAll: playersGetAllSpy } },
       { provide: TeamService, useValue: { getOne: jasmine.createSpy('getOne').and.returnValue(of({ data: { document: null } })) } },
       { provide: ToastService, useValue: { success: jasmine.createSpy('success'), error: jasmine.createSpy('error') } },
     ],
@@ -367,6 +370,43 @@ describe('MyMatchesComponent — pagination (observer-matches-and-players)', () 
     await setup('coach', [makeMatch({ league: 'professional' })]);
     const component = fixture.componentInstance as any;
     expect(component.visibleMatches()).toBe(component.matches());
+  });
+});
+
+// Perf audit — the "my observed players" panel is collapsed by default, but its
+// data load (GET /players, then GET /teams/:id per team, then GET /seasonMatches
+// per age group — ~11 requests in 3 sequential waves) used to fire unconditionally
+// in ngOnInit. It now loads on first expand, once.
+describe('MyMatchesComponent — observed-players panel loads lazily', () => {
+  it('does not request observed players on init, while the panel is collapsed', async () => {
+    await setup('observer', [makeMatch({ league: 'professional' })]);
+    expect((fixture.componentInstance as any).observedOpen()).toBeFalse();
+    expect(playersGetAllSpy).not.toHaveBeenCalled();
+  });
+
+  it('requests them on the first expand', async () => {
+    await setup('observer', [makeMatch({ league: 'professional' })]);
+    (fixture.componentInstance as any).toggleObservedPanel();
+
+    expect((fixture.componentInstance as any).observedOpen()).toBeTrue();
+    expect(playersGetAllSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-request on collapse and re-expand', async () => {
+    await setup('observer', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+
+    component.toggleObservedPanel();   // open  → loads
+    component.toggleObservedPanel();   // close
+    component.toggleObservedPanel();   // open again → no new request
+
+    expect(component.observedOpen()).toBeTrue();
+    expect(playersGetAllSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a coach never touches that panel at all', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    expect(playersGetAllSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -320,7 +320,7 @@ interface MediaRow {
       <!-- Observer secondary view — the next scheduled match for each observed player's team -->
       @if (auth.isObserver()) {
         <div class="card overflow-hidden">
-          <button type="button" class="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold" style="color:var(--text-primary)" (click)="observedOpen.set(!observedOpen())">
+          <button type="button" class="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold" style="color:var(--text-primary)" (click)="toggleObservedPanel()">
             <span>{{ 'SEASON_MATCHES.OBSERVED_PLAYERS' | translate }}</span>
             <svg class="w-4 h-4 transition-transform" [class.rotate-180]="observedOpen()" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
@@ -402,6 +402,7 @@ export class MyMatchesComponent implements OnInit {
   readonly observedOpen = signal(false);
   readonly observedLoading = signal(true);
   readonly observedRows = signal<ObservedPlayerRow[]>([]);
+  private observedLoaded = false;
 
   // Result entry — any attendee (coach or observer) can report the result of a match they attended, once it's happened
   readonly resultMatchId = signal<string | null>(null);
@@ -468,9 +469,11 @@ export class MyMatchesComponent implements OnInit {
       this.load();
     }
     this.loadAllSeasons();
-    if (this.auth.isObserver()) {
-      this.loadObservedRows();
-    }
+    // perf audit 2026-09-04 — loadObservedRows() كانت بتتنادى هنا من غير أي شرط،
+    // رغم إن اللوحة نفسها مقفولة افتراضياً (observedOpen = false). وهي مش طلب
+    // واحد: GET /players ← بعدها GET /teams/:id لكل فريق ← بعدها GET /seasonMatches
+    // لكل فئة — تلات موجات متتالية، ~11 طلب في حالة نموذجية، وكل واحد فيهم بنفسه
+    // 3-6 رحلات قاعدة بيانات. دلوقتي بتتحمّل عند أول فتح للوحة بس (مرة واحدة).
   }
 
   private get currentUserId(): string {
@@ -511,6 +514,17 @@ export class MyMatchesComponent implements OnInit {
   changePage(page: number): void {
     this.page.set(page);
     this.load();
+  }
+
+  // اللوحة بتتحمّل عند أول فتح بس؛ الفتحات اللي بعد كده بتعرض نفس البيانات من
+  // غير أي طلبات جديدة (نفس سلوك الكاش اللي كان ضمنياً لما كانت بتتحمّل في ngOnInit).
+  toggleObservedPanel(): void {
+    const opening = !this.observedOpen();
+    this.observedOpen.set(opening);
+    if (opening && !this.observedLoaded) {
+      this.observedLoaded = true;
+      this.loadObservedRows();
+    }
   }
 
   onAttendingOnlyChange(value: boolean): void {
