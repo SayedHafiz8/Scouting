@@ -143,7 +143,75 @@ describe('ReportFormComponent — professional players are scoped by league, not
   });
 });
 
+// A proScout is not tied to match day — the server grants the same licence in
+// resolveMatchTypeFields. The form therefore offers every fixture the club has
+// already played, newest first, instead of today's only.
+describe('ReportFormComponent — a professional player can be reported on at any time', () => {
+  it("asks for every fixture already played, not just today's", async () => {
+    await setup(professionalPlayer());
+
+    const filters = matchesGetAllSpy.calls.mostRecent().args[0];
+    expect(filters['matchDate[lte]']).toBeTruthy();   // لحد النهارده
+    expect(filters['matchDate[gte]']).toBeUndefined(); // من غير حد أدنى — أي تاريخ فات
+    expect(filters.sort).toBe('-matchDate');           // الأحدث الأول
+  });
+
+  it('offers the fixture list and the training/friendly buttons together while nothing is picked', async () => {
+    const comp = await setup(
+      professionalPlayer(),
+      [makeMatch('m1', PRO_TEAM, { _id: 'other', name: 'Pro Away Club' })]
+    );
+
+    expect(comp.showFixturePicker()).toBeTrue();
+    expect(comp.showTypeButtons()).toBeTrue();
+  });
+
+  it('hides the training/friendly buttons once a fixture is picked', async () => {
+    const comp = await setup(
+      professionalPlayer(),
+      [makeMatch('m1', PRO_TEAM, { _id: 'other', name: 'Pro Away Club' })]
+    );
+
+    comp.onSeasonMatchChange('m1');
+    fixture.detectChanges();
+
+    expect(comp.selectedSeasonMatch()).toBe('m1');
+    expect(comp.showTypeButtons()).toBeFalse();
+  });
+
+  it('still offers training/friendly when the club has played nothing yet', async () => {
+    const comp = await setup(professionalPlayer(), []);
+    expect(comp.showFixturePicker()).toBeFalse();
+    expect(comp.showTypeButtons()).toBeTrue();
+  });
+});
+
 describe('ReportFormComponent — youth players keep the age-group scope unchanged', () => {
+  it("still asks for today's fixtures only — a bounded window on both sides", async () => {
+    await setup(youthPlayer());
+
+    const filters = matchesGetAllSpy.calls.mostRecent().args[0];
+    expect(filters['matchDate[gte]']).toBeTruthy();
+    expect(filters['matchDate[lte]']).toBeTruthy();
+    expect(filters.sort).toBe('matchDate');
+  });
+
+  it("shows the fixture picker alone when there is a match today — no type buttons", async () => {
+    const comp = await setup(
+      youthPlayer(),
+      [makeMatch('ym1', YOUTH_TEAM, { _id: 'yother', name: 'Other Youth Club' })]
+    );
+
+    expect(comp.showFixturePicker()).toBeTrue();
+    expect(comp.showTypeButtons()).toBeFalse();
+  });
+
+  it('shows the type buttons alone when there is no match today', async () => {
+    const comp = await setup(youthPlayer(), []);
+    expect(comp.showFixturePicker()).toBeFalse();
+    expect(comp.showTypeButtons()).toBeTrue();
+  });
+
   it('requests teams by age group, with no league filter', async () => {
     await setup(youthPlayer());
     expect(teamsGetAllSpy).toHaveBeenCalledWith('ag2012', undefined);

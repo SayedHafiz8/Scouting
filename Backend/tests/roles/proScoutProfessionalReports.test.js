@@ -8,10 +8,14 @@ import ScoutingReport from '../../models/scoutingReportModel.js';
 import {
   seedAgeGroups,
   createProScout,
+  createCoach,
+  createPlayer,
   reportPayload,
   playerPayload,
   dobForAge,
+  defaultTeamIds,
 } from '../helpers/factory.js';
+import Player from '../../models/playedModel.js';
 
 // ============================================================================
 // proScout بيكتب تقرير على لاعبه المحترف.
@@ -140,6 +144,100 @@ describe('proScout files a report on its own professional player', () => {
       .send({ ...reportPayload(), matchType: 'official' });
 
     expect(res.status).toBe(400);
+  });
+
+  it('files an official report on a fixture from a past date — no same-day window', async () => {
+    const player = await professionalPlayerWithTeam();
+    const lastWeek = new Date();
+    lastWeek.setUTCDate(lastWeek.getUTCDate() - 7);
+    const past = await SeasonMatch.create({
+      season: '2026/2027', league: 'professional',
+      homeTeam: proTeam._id, awayTeam: awayTeam._id,
+      matchDate: new Date(Date.UTC(lastWeek.getUTCFullYear(), lastWeek.getUTCMonth(), lastWeek.getUTCDate())),
+      createdBy: scout.user._id,
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/players/${player._id}/reports`)
+      .set(...auth(scout.token))
+      .send({ ...reportPayload(), matchType: 'official', seasonMatch: past._id.toString() });
+
+    expect(res.status).toBe(201);
+
+    const saved = await ScoutingReport.findById(res.body.data.document._id);
+    expect(saved.seasonMatch.toString()).toBe(past._id.toString());
+    // الضمانة الأصلية لسه قايمة: التاريخ بتاع المباراة نفسها، مش تاريخ الكتابة
+    expect(saved.matchDate.getTime()).toBe(past.matchDate.getTime());
+  });
+
+  it('⚠️ cannot attach a report to a fixture belonging to another club', async () => {
+    const player = await professionalPlayerWithTeam();
+    const otherA = await Team.create({ name: 'Foreign A', clubName: 'Foreign A', league: 'professional' });
+    const otherB = await Team.create({ name: 'Foreign B', clubName: 'Foreign B', league: 'professional' });
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const foreign = await SeasonMatch.create({
+      season: '2026/2027', league: 'professional',
+      homeTeam: otherA._id, awayTeam: otherB._id,
+      matchDate: new Date(Date.UTC(yesterday.getUTCFullYear(), yesterday.getUTCMonth(), yesterday.getUTCDate())),
+      createdBy: scout.user._id,
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/players/${player._id}/reports`)
+      .set(...auth(scout.token))
+      .send({ ...reportPayload(), matchType: 'official', seasonMatch: foreign._id.toString() });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/does not involve this player's team/i);
+  });
+
+  it('⚠️ cannot report on a fixture that has not been played yet', async () => {
+    const player = await professionalPlayerWithTeam();
+    const nextWeek = new Date();
+    nextWeek.setUTCDate(nextWeek.getUTCDate() + 7);
+    const future = await SeasonMatch.create({
+      season: '2026/2027', league: 'professional',
+      homeTeam: proTeam._id, awayTeam: awayTeam._id,
+      matchDate: new Date(Date.UTC(nextWeek.getUTCFullYear(), nextWeek.getUTCMonth(), nextWeek.getUTCDate())),
+      createdBy: scout.user._id,
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/players/${player._id}/reports`)
+      .set(...auth(scout.token))
+      .send({ ...reportPayload(), matchType: 'official', seasonMatch: future._id.toString() });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/not been played yet/i);
+  });
+
+  // Principle III — الرخصة دي للـproScout وحده. الكوتش لسه محكوم بيوم المباراة
+  // بالظبط زي ما كان، حتى لو بعت seasonMatch صراحةً في الـbody.
+  it('⚠️ a coach still cannot backdate — the relaxation is proScout-only', async () => {
+    const coach = await createCoach();
+    const player = await createPlayer(coach.token);
+    const p = await Player.findById(player._id).select('ageGroup');
+    const teamIds = await defaultTeamIds(p.ageGroup);
+
+    const lastWeek = new Date();
+    lastWeek.setUTCDate(lastWeek.getUTCDate() - 7);
+    const past = await SeasonMatch.create({
+      season: '2026/2027', league: 'premier', ageGroup: p.ageGroup,
+      homeTeam: teamIds.homeTeam, awayTeam: teamIds.awayTeam,
+      matchDate: new Date(Date.UTC(lastWeek.getUTCFullYear(), lastWeek.getUTCMonth(), lastWeek.getUTCDate())),
+      createdBy: coach.user._id,
+    });
+
+    await Player.findByIdAndUpdate(player._id, { team: teamIds.homeTeam });
+
+    const res = await request(app)
+      .post(`/api/v1/players/${player._id}/reports`)
+      .set(...auth(coach.token))
+      .send({ ...reportPayload(), matchType: 'official', seasonMatch: past._id.toString() });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/scheduled match/i);
   });
 
   it('reads its own professional report back', async () => {

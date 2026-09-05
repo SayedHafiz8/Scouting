@@ -132,8 +132,9 @@ const MENTAL_FIELDS: RatingField[] = [
                 </div>
               </div>
 
-              @if (hasTeam() && seasonMatchOptionsLoaded() && seasonMatchOptions().length > 0) {
-                <!-- اللاعب متسجل في فريق وله مباراة رسمية النهارده — لازم يختارها، مفيش إدخال يدوي -->
+              @if (showFixturePicker()) {
+                <!-- اللاعب متسجل في فريق وله مباريات يقدر يربط بيها التقرير.
+                     للناشئ: مباراة النهارده بس. للمحترف: أي مباراة اتلعبت. -->
                 <div class="space-y-1.5 mb-2">
                   <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
                     {{ 'REPORTS.FORM.SEASON_MATCH' | translate }}
@@ -147,8 +148,10 @@ const MENTAL_FIELDS: RatingField[] = [
                   </select>
                   <p class="text-[11px]" style="color:var(--text-muted)">{{ 'REPORTS.FORM.SEASON_MATCH_HINT' | translate }}</p>
                 </div>
-              } @else if (hasTeam()) {
-                <!-- فريق اللاعب متسجل لكن مفيش مباراة رسمية النهارده — يختار تدريب ولا مباراة ودية -->
+              }
+
+              @if (showTypeButtons()) {
+                <!-- مفيش مباراة مختارة — يختار تدريب ولا مباراة ودية -->
                 <div class="space-y-2.5">
                   <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
                     {{ 'REPORTS.FORM.REPORT_TYPE' | translate }}
@@ -190,7 +193,9 @@ const MENTAL_FIELDS: RatingField[] = [
                     <p class="field-error">{{ 'REPORTS.FORM.REPORT_TYPE_ERR' | translate }}</p>
                   }
                 </div>
-              } @else {
+              }
+
+              @if (!hasTeam()) {
                 <!-- اللاعب مش متسجل في أي فريق — مفيش جدول مباريات نربطه بيه، فالإدخال يدوي (اختيار أو كتابة اسم) -->
                 <div class="flex items-end gap-3">
                   <div class="flex-1 space-y-1.5">
@@ -496,6 +501,22 @@ export class ReportFormComponent implements OnInit {
   // اللاعب متسجل في فريق فعلي؟ لو أيوه، لازم يختار مباراة النهارده بس (مفيش إدخال يدوي للفرق)
   readonly hasTeam = signal(false);
 
+  // اللاعب محترف؟ بيحدد نطاق التحميل (الدوري بدل الفئة العمرية) وكمان بيفتح
+  // اختيار أي مباراة اتلعبت مش مباراة النهارده بس — الرخصة دي للـproScout وحده،
+  // ومطبَّقة على السيرفر في resolveMatchTypeFields بنفس الشرط.
+  readonly isProfessional = signal(false);
+
+  // قايمة مباريات معروضة + لسه مختارش منها حاجة → لسه ممكن يكتب تدريب/ودية.
+  // للناشئ ده مستحيل يحصل (القايمة إما فيها ماتش النهارده وإما فاضية)، فمساره متغيرش.
+  readonly showFixturePicker = computed(() =>
+    this.hasTeam() && this.seasonMatchOptionsLoaded() && this.seasonMatchOptions().length > 0
+  );
+
+  readonly showTypeButtons = computed(() =>
+    this.hasTeam() &&
+    (this.seasonMatchOptions().length === 0 || (this.isProfessional() && !this.selectedSeasonMatch()))
+  );
+
   // القيمة الخاصة اللي بتظهر في السيلكت لما يختار "الفريق مش موجود في القايمة"
   readonly OTHER_TEAM = '__other__';
   readonly homeIsOther = signal(false);
@@ -672,6 +693,7 @@ export class ReportFormComponent implements OnInit {
         const ageGroupId = player?.ageGroup ? (typeof player.ageGroup === 'string' ? player.ageGroup : player.ageGroup._id) : null;
         const teamId = this.teamId(player?.team ?? undefined);
         this.hasTeam.set(!!teamId);
+        this.isProfessional.set(isProfessional);
 
         // لاعب ناشئ من غير فئة عمرية = حالة مالهاش نطاق نحمّل بيه، زي ما كانت
         if (!ageGroupId && !isProfessional) {
@@ -694,18 +716,22 @@ export class ReportFormComponent implements OnInit {
           });
 
         if (teamId) {
-          // اللاعب متسجل في فريق — نبص هل له مباراة رسمية النهارده بس (مش أي فريق ولا أي يوم)
-          const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
           const dayEnd = new Date(); dayEnd.setHours(23, 59, 59, 999);
-          this.seasonMatchService.getAll({
-            ...(isProfessional ? { league: 'professional' as const } : { ageGroup: ageGroupId }),
-            sort: 'matchDate',
-            'matchDate[gte]': dayStart.toISOString(), 'matchDate[lte]': dayEnd.toISOString(),
-          }).subscribe({
+
+          // الـproScout مش مقيّد بيوم المباراة (نفس الرخصة في
+          // resolveMatchTypeFields على السيرفر): بيشوف كل مباريات ناديه اللي
+          // اتلعبت، من الأحدث للأقدم، ويكتب تقريره عليها وقت ما يقدر. الناشئ
+          // زي ما هو بالظبط — مباريات النهارده بس.
+          const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+          const windowFilters = isProfessional
+            ? { league: 'professional' as const, sort: '-matchDate', 'matchDate[lte]': dayEnd.toISOString() }
+            : { ageGroup: ageGroupId, sort: 'matchDate', 'matchDate[gte]': dayStart.toISOString(), 'matchDate[lte]': dayEnd.toISOString() };
+
+          this.seasonMatchService.getAll(windowFilters).subscribe({
             next: matchRes => {
-              const todaysMatches = (matchRes.data?.documents ?? [])
+              const own = (matchRes.data?.documents ?? [])
                 .filter(m => this.teamId(m.homeTeam) === teamId || this.teamId(m.awayTeam) === teamId);
-              this.seasonMatchOptions.set(todaysMatches);
+              this.seasonMatchOptions.set(own);
               this.seasonMatchOptionsLoaded.set(true);
             },
             error: () => this.seasonMatchOptionsLoaded.set(true),
@@ -772,7 +798,11 @@ export class ReportFormComponent implements OnInit {
   submit(): void {
     this.submitted.set(true);
 
-    if (this.hasTeam() && this.seasonMatchOptions().length === 0) {
+    // نفس التفريع الثلاثي بتاع القالب بالظبط: مباراة مختارة، ولا تدريب/ودية،
+    // ولا إدخال يدوي للاعب من غير فريق.
+    if (this.selectedSeasonMatch()) {
+      // مفيش مطلوب زيادة — المباراة بتملأ الفرق والتاريخ من السيرفر
+    } else if (this.showTypeButtons()) {
       if (!this.matchType()) return;
       if (this.matchType() === 'friendly' && !this.awayTeam() && !this.form.get('awayTeamName')?.value) return;
     } else if (!this.hasTeam()) {
@@ -793,15 +823,19 @@ export class ReportFormComponent implements OnInit {
       mental: v.mental,
     };
 
-    if (this.hasTeam() && this.seasonMatchOptions().length === 0) {
-      // مفيش مباراة رسمية النهارده — تدريب أو ودية
+    if (this.selectedSeasonMatch()) {
+      // مباراة من الجدول — السيرفر بياخد منها الفرق وmatchDate الحقيقي.
+      // matchType بيتبعت official صراحةً عشان المحترف اللي بيختار مباراة قديمة
+      // يعدّي من فرع الـproScout في resolveMatchTypeFields مش من فرع النهارده.
+      payload['seasonMatch'] = this.selectedSeasonMatch();
+      payload['matchType'] = 'official';
+    } else if (this.showTypeButtons()) {
+      // مفيش مباراة مختارة — تدريب أو ودية
       payload['matchType'] = this.matchType();
       if (this.matchType() === 'friendly') {
         if (this.awayIsOther()) payload['awayTeamName'] = v.awayTeamName;
         else payload['awayTeam'] = v.awayTeam;
       }
-    } else if (this.selectedSeasonMatch()) {
-      payload['seasonMatch'] = this.selectedSeasonMatch();
     } else {
       if (this.homeIsOther()) payload['homeTeamName'] = v.homeTeamName; else payload['homeTeam'] = v.homeTeam;
       if (this.awayIsOther()) payload['awayTeamName'] = v.awayTeamName; else payload['awayTeam'] = v.awayTeam;

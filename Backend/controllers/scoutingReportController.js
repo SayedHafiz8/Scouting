@@ -78,6 +78,49 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
     // official
     if (!player?.team) return next();
 
+    // الـproScout مش مقيّد بيوم المباراة: بيكتب تقاريره وقت ما يقدر، مش لازم
+    // في نفس يوم اللعب. القيد ده كان محسوس بشكل خاص عليه لأن مباريات دوري
+    // المحترفين قليلة ومتباعدة، فكان معناه عملياً إن التقرير الرسمي شبه مقفول.
+    //
+    // اللي **ما اتغيّرش** هو الضمانة اللي القيد أصلاً موجود عشانها: التقرير
+    // لازم يترتبط بمباراة **حقيقية من الجدول**، وmatchDate بيتاخد من المباراة
+    // نفسها (في resolveSeasonMatchToBody تحت) مش من تاريخ الإنشاء. يعني تقرير
+    // على مباراة الأسبوع اللي فات بيتسجّل بتاريخ المباراة الصح، مش النهاردة.
+    // ده بالظبط اللي كان بيتكسر قبل ما القاعدة دي تتكتب.
+    //
+    // والمباراة لازم تكون بتاعت فريق اللاعب نفسه — مينفعش يربط تقريره بأي
+    // مباراة في الجدول.
+    if (req.user.role === ROLES.PRO_SCOUT && req.body.seasonMatch) {
+        const chosen = await SeasonMatch.findById(req.body.seasonMatch).setOptions({ skipPopulate: true });
+
+        if (!chosen) {
+            return next(new AppError("Season match not found", 404));
+        }
+
+        const playerTeamId = player.team.toString();
+        const involvesPlayerTeam =
+            chosen.homeTeam?.toString() === playerTeamId ||
+            chosen.awayTeam?.toString() === playerTeamId;
+
+        if (!involvesPlayerTeam) {
+            return next(new AppError("That match does not involve this player's team", 400));
+        }
+
+        // القيد الوحيد اللي فضل على التوقيت: مباراة لسه ماتلعبتش. تقرير على
+        // مباراة في المستقبل مالوش معنى — مفيش حاجة اتشافت عشان تتقيّم. المقارنة
+        // بنهاية يوم المباراة بالـUTC عشان ماتش النهاردة (متخزّن منتصف ليل UTC)
+        // يفضل مسموح طول اليوم.
+        if (chosen.matchDate >= utcDayRange(new Date()).end) {
+            return next(new AppError("You cannot report on a match that has not been played yet", 400));
+        }
+
+        delete req.body.homeTeam;
+        delete req.body.homeTeamName;
+        delete req.body.awayTeam;
+        delete req.body.awayTeamName;
+        return next();
+    }
+
     // audit-backend C3 — "النهاردة" بيوم UTC كامل، مش يوم بتوقيت السيرفر.
     // matchDate متخزّن منتصف ليل UTC، فيوم محلي كان بيزح النافذة بفرق التوقيت
     // ويخلي ماتش النهاردة يقع برّه النافذة في آخر/أول ساعات اليوم.
