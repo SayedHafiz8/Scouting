@@ -253,7 +253,10 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
 
             <!-- Actions -->
             <div class="px-5 pb-5 pt-3 space-y-2" style="border-top:1px solid var(--border-subtle)">
-              @if (auth.isCoach()) {
+              <!-- PATCH /players/:id بيقبل الكوتش والأوبزيرفر والـproScout،
+                   وcheckPlayerOwnership بيقصر كل واحد على لاعبيه. الزرار كان
+                   على الكوتش وحده، فالتانيين مكانش قدامهم مدخل للتعديل من هنا. -->
+              @if (auth.isCoach() || auth.isObserver() || auth.isProScout()) {
                 <a [routerLink]="['/players', player()!._id, 'edit']" class="btn btn-secondary btn-sm w-full">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>

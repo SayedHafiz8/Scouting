@@ -74,6 +74,7 @@ async function setup(player: Player, admin = true) {
       isAdmin,
       isCoach: signal(!admin),
       isObserver: signal(false),
+      isProScout: signal(false),
       currentUser: signal({ _id: 'u1', role: admin ? 'admin' : 'coach' }),
     };
 

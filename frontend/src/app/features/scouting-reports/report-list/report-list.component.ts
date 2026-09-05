@@ -35,7 +35,10 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
             <span class="text-xs ml-1" style="color:var(--text-muted)">{{ 'REPORTS.OF' | translate:{ total: reports().length } }}</span>
           }
         </p>
-        @if (auth.isCoach() || auth.isObserver()) {
+        <!-- proScout بيكتب تقارير على لاعبيه زي الكوتش والأوبزيرفر بالظبط
+             (POST /players/:id/reports فيه ROLES.PRO_SCOUT من مرحلة إنشاء الدور)،
+             لكن الزراير هنا كانت مستثنياه، فمكانش عنده أي مدخل للفورم أصلاً. -->
+        @if (auth.isCoach() || auth.isObserver() || auth.isProScout()) {
           <a [routerLink]="['new']" class="btn btn-primary btn-sm">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -135,7 +138,7 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
           <app-empty-state
             [title]="'REPORTS.EMPTY_TITLE' | translate"
             [message]="'REPORTS.EMPTY_MSG' | translate"
-            [actionLabel]="(auth.isCoach() || auth.isObserver()) ? ('REPORTS.ADD' | translate) : null"
+            [actionLabel]="(auth.isCoach() || auth.isObserver() || auth.isProScout()) ? ('REPORTS.ADD' | translate) : null"
             (actionClicked)="navigateToNew()"
             icon="reports"
           />
@@ -190,7 +193,9 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                       </svg>
                     </a>
-                    @if (auth.isCoach() || auth.isObserver()) {
+                    <!-- checkReportOwnership بيسمح للـproScout يعدّل تقريره هو
+                         بس، على لاعب جوه نطاقه — فالزرار مايوعدش بأكتر من كده. -->
+                    @if (auth.isCoach() || auth.isObserver() || auth.isProScout()) {
                       <a [routerLink]="[report._id]" class="btn btn-ghost btn-icon btn-sm" title="Edit">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>

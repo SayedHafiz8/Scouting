@@ -537,7 +537,9 @@ const SEARCH_DEBOUNCE_MS = 300;
                   {{ 'PLAYERS.VIEW_REPORTS' | translate }}
                 </a>
                 <div class="flex gap-1">
-                  @if (auth.isCoach() || auth.isObserver()) {
+                  <!-- PATCH /players/:id بيقبل proScout (checkPlayerOwnership
+                       بيقصره على لاعبيه هو) — الزرار كان ناقص بس. -->
+                  @if (auth.isCoach() || auth.isObserver() || auth.isProScout()) {
                     <a [routerLink]="['/players', player._id, 'edit']"
                        class="btn btn-ghost btn-icon btn-sm" title="Edit">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
