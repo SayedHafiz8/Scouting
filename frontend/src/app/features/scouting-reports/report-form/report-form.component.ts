@@ -617,7 +617,7 @@ export class ReportFormComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.loadAgeGroupScopedOptions();
+    this.loadScopedOptions();
 
     this.reportId = this.route.snapshot.paramMap.get('reportId') ?? '';
     if (this.reportId) {
@@ -652,15 +652,29 @@ export class ReportFormComponent implements OnInit {
     }
   }
 
-  private loadAgeGroupScopedOptions(): void {
+  // اللاعب المحترف مالوش فئة عمرية أصلاً (playedModel: اشتقاق ageGroup بيتخطى
+  // للمحترفين) — والدالة دي كانت مبنية على الفئة العمرية وحدها، فكانت بتعمل
+  // return بدري لأي لاعب محترف قبل ما تحمّل أي حاجة. النتيجة للـproScout:
+  //   • قايمة الفرق بتفضل فاضية — سواء كخصم في ودية أو في الاختيار اليدوي
+  //   • مباريات النهارده مابتتحملش خالص، فالتقرير الرسمي (official) مستحيل
+  //     يترتبط بمباراة محترفين حقيقية حتى لو فيه واحدة مجدولة النهارده فعلاً
+  // الباك إند مكانش فيه مشكلة: resolveMatchTypeFields بيدوّر بالفريق والتاريخ
+  // من غير أي قيد على الدوري، وبيقبل المباراة المحترفين عادي.
+  //
+  // الحل: نطاق المحترفين بالدوري (league: professional) بدل الفئة العمرية —
+  // نفس اللي player-form.component.ts بيعمله بالظبط في سياق المحترفين، ونفس
+  // النطاق اللي السيرفر مطبّقه للـproScout أصلاً في teamScopeFor/seasonMatchScopeFor.
+  private loadScopedOptions(): void {
     this.playerService.getOne(this.playerId).subscribe({
       next: res => {
         const player = (res.data as any)?.document;
+        const isProfessional = !!player?.isProfessional;
         const ageGroupId = player?.ageGroup ? (typeof player.ageGroup === 'string' ? player.ageGroup : player.ageGroup._id) : null;
         const teamId = this.teamId(player?.team ?? undefined);
         this.hasTeam.set(!!teamId);
 
-        if (!ageGroupId) {
+        // لاعب ناشئ من غير فئة عمرية = حالة مالهاش نطاق نحمّل بيه، زي ما كانت
+        if (!ageGroupId && !isProfessional) {
           this.teamOptionsLoaded.set(true);
           this.seasonMatchOptionsLoaded.set(true);
           return;
@@ -668,21 +682,24 @@ export class ReportFormComponent implements OnInit {
 
         // قايمة الفرق المسجلة دايمًا محملة — للاختيار اليدوي (لاعب من غير فريق) أو كخصم في
         // مباراة ودية (لاعب متسجل). فريق اللاعب نفسه بيتشال من الاختيارات (مينفعش يلعب ضد نفسه)
-        this.teamService.getAll(ageGroupId).subscribe({
-          next: teamRes => {
-            const teams = teamRes.data?.documents ?? [];
-            this.teamOptions.set(teamId ? teams.filter(t => t._id !== teamId) : teams);
-            this.teamOptionsLoaded.set(true);
-          },
-          error: () => this.teamOptionsLoaded.set(true),
-        });
+        this.teamService
+          .getAll(isProfessional ? undefined : ageGroupId, isProfessional ? 'professional' : undefined)
+          .subscribe({
+            next: teamRes => {
+              const teams = teamRes.data?.documents ?? [];
+              this.teamOptions.set(teamId ? teams.filter(t => t._id !== teamId) : teams);
+              this.teamOptionsLoaded.set(true);
+            },
+            error: () => this.teamOptionsLoaded.set(true),
+          });
 
         if (teamId) {
           // اللاعب متسجل في فريق — نبص هل له مباراة رسمية النهارده بس (مش أي فريق ولا أي يوم)
           const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
           const dayEnd = new Date(); dayEnd.setHours(23, 59, 59, 999);
           this.seasonMatchService.getAll({
-            ageGroup: ageGroupId, sort: 'matchDate',
+            ...(isProfessional ? { league: 'professional' as const } : { ageGroup: ageGroupId }),
+            sort: 'matchDate',
             'matchDate[gte]': dayStart.toISOString(), 'matchDate[lte]': dayEnd.toISOString(),
           }).subscribe({
             next: matchRes => {
