@@ -44,16 +44,17 @@ Net: 3 reclassified (all in `seasonMatchRouter.js`, all widening `proScout`'s ac
 | Operation | Current `allowedTo` | proScout | Enforcing layer |
 |---|---|---|---|
 | `GET /players` | coach, admin, observer, proScout | SCOPED | `playerScopeFor` base filter |
-| `POST /players` | coach, proScout | ALLOW | `teamExistsInScope`; `create` sets `createdBy`, deletes `coach` for non-coach roles |
+| `POST /players` | coach, admin, observer, proScout | ALLOW | `teamExistsInScope`; `create` sets `createdBy`/`coach`/`observers` per role — admin's assignment fields (`coach`/`observers`/`proScout`) re-validated against `User` role |
 | `GET /players/counts` | coach, admin, observer, proScout | SCOPED | `$and: [scope, match]` |
 | `GET /players/reports/average-ratings` | coach, admin, observer, proScout | SCOPED | id-narrowing + author constraint |
 | `GET /players/:id` | coach, admin, observer, proScout | SCOPED | `checkPlayerOwnership` |
-| `PATCH /players/:id` | coach, proScout | ALLOW | `checkPlayerOwnership` + `teamExistsInScope` |
+| `PATCH /players/:id` | coach, admin, observer, proScout | ALLOW | `checkPlayerOwnership` + `teamExistsInScope`; ownership fields (`coach`/`observers`/`createdBy`) stay locked for every role, admin included — reassignment goes through the dedicated `/:id/coach`, `/:id/observers`, `/:id/proScout` routes |
 | `DELETE /players/:id` | admin | DENY | admin-only |
 | `PATCH /players/:id/status` | admin | DENY | admin-only |
 | `PATCH /players/:id/observers` | admin | DENY | admin-only |
 | `PATCH /players/:id/coach` | admin | DENY | admin-only |
-| `PATCH /players/:id/profileImg` | coach, admin, proScout | ALLOW | `checkPlayerOwnership` |
+| `PATCH /players/:id/proScout` | admin | DENY | admin-only — assigns `createdBy` (the proScout-scope axis), mirrors `/:id/coach` |
+| `PATCH /players/:id/profileImg` | coach, admin, observer, proScout | ALLOW | `checkPlayerOwnership` |
 
 ## 2. `scoutingReportRouter.js` — `/players/:playerId/reports`
 

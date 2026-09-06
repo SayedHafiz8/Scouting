@@ -72,7 +72,7 @@
  *         $ref: '#/components/responses/Unauthorized'
  *
  *   post:
- *     summary: Create a player (coach or proScout; proScout is confined to professional-league teams and is not recorded as the player's coach)
+ *     summary: Create a player (coach, observer, proScout, or admin — admin may assign the player to a coach/observers/proScout in the same request)
  *     tags: [Players]
  *     requestBody:
  *       required: true
@@ -109,6 +109,18 @@
  *                 type: number
  *               notes:
  *                 type: string
+ *               coach:
+ *                 type: string
+ *                 description: Admin only. Id of an existing active user whose role is `coach`.
+ *               observers:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Admin only. Ids of existing active users whose role is `observer`.
+ *               proScout:
+ *                 type: string
+ *                 description: >
+ *                   Admin only. Id of an existing active user whose role is `proScout` —
+ *                   sets `createdBy` to this id, the axis proScout scope is keyed on.
  *     responses:
  *       201:
  *         description: Player created
@@ -164,7 +176,7 @@
  *         $ref: '#/components/responses/NotFound'
  *
  *   patch:
- *     summary: Update a player's details (coach or proScout, each within its own data scope)
+ *     summary: Update a player's details (coach, observer, proScout, or admin — each within its own data scope; ownership fields stay locked here for every role, admin included, see /players/{id}/coach, /observers and /proScout)
  *     tags: [Players]
  *     parameters:
  *       - in: path
@@ -327,6 +339,56 @@
  *       404:
  *         $ref: '#/components/responses/NotFound'
  *
+ * /players/{id}/proScout:
+ *   patch:
+ *     summary: Assign (or re-assign) the proScout a player is scoped to (admin only)
+ *     description: >
+ *       Sets `createdBy` to the given proScout's id — the axis proScout read/write
+ *       scope is keyed on (services/scope.js playerScopeFor). Mirrors
+ *       PATCH /players/{id}/coach for the proScout ownership axis.
+ *     tags: [Players]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [proScout]
+ *             properties:
+ *               proScout:
+ *                 type: string
+ *                 description: Id of an existing active user whose role is `proScout`
+ *     responses:
+ *       200:
+ *         description: proScout assigned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     document:
+ *                       $ref: '#/components/schemas/Player'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *
  * /players/counts:
  *   get:
  *     summary: Player counts grouped by age group (coach sees own; admin sees all, or a specific coach/observer via query)
@@ -457,8 +519,8 @@
  *       404: { $ref: '#/components/responses/NotFound' }
  */
 import express from "express";
-import { getAll, create, getSpecific, deleting, update, setUserIdToBody, updatePlayerStatus, updatePlayerObservers, assignPlayerCoach, uploadProfileImg, getCountsByAgeGroup } from "../controllers/playerController.js";
-import { createValidate, getAllValidate, deleteValidate, getSpecificValidate, updateValidate, updatePlayerStatusValidator, updatePlayerObserversValidator, assignPlayerCoachValidator } from "../utils/validation/playerValidation.js";
+import { getAll, create, getSpecific, deleting, update, setUserIdToBody, updatePlayerStatus, updatePlayerObservers, assignPlayerCoach, assignPlayerProScout, uploadProfileImg, getCountsByAgeGroup } from "../controllers/playerController.js";
+import { createValidate, getAllValidate, deleteValidate, getSpecificValidate, updateValidate, updatePlayerStatusValidator, updatePlayerObserversValidator, assignPlayerCoachValidator, assignPlayerProScoutValidator } from "../utils/validation/playerValidation.js";
 import { allowedTo, protect } from "../controllers/authController.js";
 import { checkPlayerOwnership } from "../middlewares/ownership.js";
 import upload from "../middlewares/uploadMiddleware.js";
@@ -499,9 +561,17 @@ playerRouter.use('/:playerId/media', mediaRouter)
 // الثلاث بالضبط. اللاعب بيتحط في observers بتاعه من الأول (create)، فـ
 // ownerFields.observer الموجودة أصلاً بتشمله من غير أي تعديل في طبقة السكوب —
 // راجع playerController.create وownerFields تحت.
+//
+// admin-assign-players-reports-media — الأدمن بقى يقدر يعمل POST/PATCH كمان،
+// عشان يعمل create للاعب ويسنده لكوتش/أوبزيرفرز/proScout بنفسه. الفرق عن كل
+// رول تاني: الأدمن هو الوحيد اللي lockField بتاعة coach/observers/proScout
+// بتفكّ له (lockFieldExceptAdmin في playerValidation.js) — القيمة اللي بيبعتها
+// بتتحقق في الكنترولر (لازم يوزر فعلي بنفس الرول)، مش هنا. createdBy/status/
+// ageGroup/isProfessional فاضلين مقفولين لكل الرولات بما فيها الأدمن — الإسناد
+// بيحصل عن طريق حقل proScout/observers في الـbody، مش createdBy مباشرة.
 playerRouter.route('/')
             .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),getAllValidate ,getAll)
-            .post(protect,allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),setUserIdToBody, createValidate,create)
+            .post(protect,allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),setUserIdToBody, createValidate,create)
 
 // Counts per age group — must be declared before '/:id' so "counts" isn't treated as an id
 playerRouter.route('/counts')
@@ -517,7 +587,12 @@ playerRouter.route('/:id')
             // observers، بلا اعتماد على مين أنشأ المستند)، وupdateValidate فيه
             // كمان فحص جديد بيمنع الأوبزيرفر يعدّي حدود التصنيف (محترف↔ناشئ) عن
             // طريق تغيير team — راجع teamMatchesExistingClassification.
-            .patch(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, updateValidate, update)
+            // admin-assign-players-reports-media — checkPlayerOwnership بيعمل short-circuit
+            // للأدمن (بلا فحوصات)، فمفيش تعديل مطلوب هنا. الحقول القابلة للإسناد (coach/
+            // observers/proScout) لسه مقفولة في updateValidate لكل الرولات بما فيها الأدمن —
+            // إعادة الإسناد بتعدّي على /:id/coach و/:id/observers و/:id/proScout المخصصين، مش
+            // PATCH العام (findByIdAndUpdate خام، مش نقطة كتابة ملكية آمنة).
+            .patch(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, updateValidate, update)
             .delete(protect, allowedTo(ROLES.ADMIN), deleteValidate, deleting)
 
 playerRouter.route('/:id/status')
@@ -531,6 +606,12 @@ playerRouter.route('/:id/observers')
 // وأدمن-فقط لأنه نقل ملكية لبيانات لاعب قاصر
 playerRouter.route('/:id/coach')
             .patch(protect, allowedTo(ROLES.ADMIN), assignPlayerCoachValidator, assignPlayerCoach)
+
+// admin-assign-players-reports-media — نفس فكرة /:id/coach بالظبط لكن للـcreatedBy
+// (المحور اللي الـproScout بيتسكوب بيه، services/scope.js:playerScopeFor). أدمن-فقط،
+// لأنه بيغيّر مين شايف اللاعب على محور كامل، مش تفصيل عرض.
+playerRouter.route('/:id/proScout')
+            .patch(protect, allowedTo(ROLES.ADMIN), assignPlayerProScoutValidator, assignPlayerProScout)
 
 // Stage 4 (research R7) — الحارس اتنقل لطبقته الصح.
 //

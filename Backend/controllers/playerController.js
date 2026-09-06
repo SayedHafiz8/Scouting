@@ -38,7 +38,10 @@ export const setUserIdToBody = (req, res, next) => {
 // خالص) → لاعب ناشئ، زي الكوتش بالظبط. ده قرار مالك صريح (بدل تعديل دستوري
 // على C-4) — اللاعب المحترف لازم يبقى له فريق مسجّل، مش teamName نص حر، لأن
 // مفيش طريقة تانية نعرف بيها دوري الفريق.
-async function resolveIsProfessionalForObserver(teamId) {
+//
+// admin-assign-players-reports-media — اتسمّت من resolveIsProfessionalForObserver
+// لـresolveIsProfessionalFromTeam لأنها بقت مستخدمة للأدمن كمان، مش الأوبزيرفر بس.
+async function resolveIsProfessionalFromTeam(teamId) {
     if (!teamId) return false;
     const team = await Team.findById(teamId).select("league");
     return team?.league === "professional";
@@ -68,14 +71,61 @@ export const create = asyncHandler(async (req, res, next) => {
     // ليه الـproScout مالوش coach أصلاً: الحقل معناه "الكوتش المالك للاعب"،
     // وassignPlayerCoach بيرفض أي يوزر مش role: coach. اللاعب بيبقى "يتيم" (§9)
     // والأدمن بيلمّه من عدسة ?coach=none ويعيّنله كوتش حقيقي.
+    // admin-assign-players-reports-media — الأدمن هو الرول الوحيد اللي ممكن يبعت
+    // coach/observers/proScout في الـbody (lockFieldExceptAdmin في الفاليديشن).
+    // القيمة لازم تتحقق هنا: يوزر فعلي موجود وبنفس الرول المطلوب بالظبط — مش مجرد
+    // ObjectId شكله صح. لو مش أدمن، الفرع else الأصلي بيمسح coach زي ما كان تماماً
+    // (منع بالافتراض — أي رول خامس مستقبلي يرث الفرع الآمن، مش القابل للاستغلال).
+    let assignedProScoutId = null;
     if (req.user.role === ROLES.COACH) {
         req.body.coach = req.user._id;
+    } else if (req.user.role === ROLES.ADMIN) {
+        if (req.body.coach) {
+            const coachUser = await User.findOne({ _id: req.body.coach, role: ROLES.COACH }).select("_id");
+            if (!coachUser) {
+                return next(new AppError("The selected coach is not a valid active coach", 400));
+            }
+            req.body.coach = coachUser._id;
+        } else {
+            delete req.body.coach;
+        }
+
+        if (req.body.observers) {
+            const validObserverIds = await validateObserverIds(req.body.observers);
+            if (!validObserverIds) {
+                return next(new AppError("One or more selected observers are not valid", 400));
+            }
+            req.body.observers = validObserverIds;
+            // لازم status: "observed" عشان لوحة الأوبزيرفرز في player-detail تفضل
+            // قابلة لإعادة الفتح والتعديل بعد كده (اللوحة مقفولة على الحالة دي).
+            if (validObserverIds.length) req.body.status = "observed";
+        } else {
+            delete req.body.observers;
+        }
+
+        if (req.body.proScout) {
+            const scoutUser = await User.findOne({ _id: req.body.proScout, role: ROLES.PRO_SCOUT }).select("_id");
+            if (!scoutUser) {
+                return next(new AppError("The selected proScout is not a valid active proScout", 400));
+            }
+            assignedProScoutId = scoutUser._id;
+        }
+        delete req.body.proScout; // مش عمود في المخطط — createdBy تحت هو اللي بيحمل الإسناد
     } else {
         delete req.body.coach;
     }
+
     // Stage 2 — نسبة الإنشاء. الإسناد بيحصل بعد استلام الـbody، فأي قيمة بعتها
     // العميل بتتكتب فوقها هنا (وlockField("createdBy") بيرفضها قبل كده أصلاً).
-    req.body.createdBy = req.user._id;
+    //
+    // admin-assign-players-reports-media — لو الأدمن سنّد اللاعب لـproScout،
+    // createdBy بيحمل الـproScout ده مش الأدمن، عشان طبقة سكوب الـproScout
+    // (services/scope.js:playerScopeFor، { createdBy: <userId> }) تشمله من غير
+    // أي تعديل فيها. الكلفة: createdBy معناها بقى "مين شايف اللاعب دلوقتي" مش
+    // "مين أنشأه فعلياً" لهذا المستند تحديداً — قرار مالك صريح موثّق في الخطة،
+    // ومش تعديل في تعريف C-4 (السكوب { createdBy: me } زي ما هو بالظبط، ومفيش
+    // أي backfill على مستندات قديمة).
+    req.body.createdBy = assignedProScoutId ?? req.user._id;
 
     // observer-matches-and-players — اللاعب اللي أوبزيرفر بينشئه بيتحط في
     // observers بتاعته من الأول، زي ما coach بيتحط لملكية الكوتش بالظبط. ده هو
@@ -90,14 +140,16 @@ export const create = asyncHandler(async (req, res, next) => {
 
     // Stage 4b (proScout) — لاعبو الـproScout محترفون دايماً: مدى سنة ميلاد أوسع
     // (1996→2019) وبدون فئة عمرية. observer-matches-and-players — نفس التأثير
-    // للأوبزيرفر، بس مشروط بدوري الفريق المختار (resolveIsProfessionalForObserver
-    // فوق)، مش ثابت بالرول زي proScout. لغير الاتنين دول، القيمة false صراحةً —
-    // مش معتمدة على default المخطط — ولإن أي قيمة جاية من العميل بتتكتب فوقها
-    // هنا (وlockField بيرفضها قبل كده أصلاً لكل الرولات بلا استثناء).
+    // للأوبزيرفر، بس مشروط بدوري الفريق المختار (resolveIsProfessionalFromTeam
+    // فوق)، مش ثابت بالرول زي proScout. admin-assign-players-reports-media —
+    // نفس الاشتقاق بالظبط للأدمن (مبني على الفريق المختار، مش على مين اتسنّد
+    // له اللاعب). لغير دول، القيمة false صراحةً — مش معتمدة على default المخطط —
+    // ولإن أي قيمة جاية من العميل بتتكتب فوقها هنا (وlockField بيرفضها قبل كده
+    // أصلاً لكل الرولات بلا استثناء).
     if (req.user.role === ROLES.PRO_SCOUT) {
         req.body.isProfessional = true;
-    } else if (req.user.role === ROLES.OBSERVER) {
-        req.body.isProfessional = await resolveIsProfessionalForObserver(req.body.team);
+    } else if (req.user.role === ROLES.OBSERVER || req.user.role === ROLES.ADMIN) {
+        req.body.isProfessional = await resolveIsProfessionalFromTeam(req.body.team);
     } else {
         req.body.isProfessional = false;
     }
@@ -621,6 +673,39 @@ export const assignPlayerCoach = asyncHandler(async (req, res, next) => {
         status: player.status,
         createdAt: new Date(),
     });
+
+    res.status(200).json({
+        status: "success",
+        data: { document: player },
+    });
+});
+
+// admin-assign-players-reports-media — نفس فكرة assignPlayerCoach بالظبط، لكن
+// على محور createdBy (اللي الـproScout بيتسكوب عليه — services/scope.js:playerScopeFor).
+// أدمن-فقط، ونفس ملاحظة "الكلفة" في create: createdBy معناها بقى "مين شايف
+// اللاعب دلوقتي" مش بالضرورة "مين أنشأه".
+// @route   PATCH api/v1/players/:id/proScout
+// @access  private - admin only
+export const assignPlayerProScout = asyncHandler(async (req, res, next) => {
+    const { proScout: proScoutId } = req.body;
+
+    const scoutUser = await User.findOne({ _id: proScoutId, role: ROLES.PRO_SCOUT }).select("_id");
+    if (!scoutUser) {
+        return next(new AppError("The selected proScout is not a valid active proScout", 400));
+    }
+
+    const before = await Player.findById(req.params.id).select("createdBy");
+    if (!before) {
+        return next(new AppError("Player not found", 404));
+    }
+
+    const player = await Player.findByIdAndUpdate(
+        req.params.id,
+        { createdBy: scoutUser._id },
+        { new: true, runValidators: true }
+    ).populate({ path: "team", select: "name clubName" });
+
+    emitAdminDashboardUpdate();
 
     res.status(200).json({
         status: "success",

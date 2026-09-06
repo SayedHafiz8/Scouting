@@ -1417,7 +1417,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Create a player (coach or proScout; proScout is confined to professional-league teams and is not recorded as the player's coach) */
+        /** Create a player (coach, observer, proScout, or admin — admin may assign the player to a coach/observers/proScout in the same request) */
         post: {
             parameters: {
                 query?: never;
@@ -1443,6 +1443,12 @@ export interface paths {
                         height?: number;
                         weight?: number;
                         notes?: string;
+                        /** @description Admin only. Id of an existing active user whose role is `coach`. */
+                        coach?: string;
+                        /** @description Admin only. Ids of existing active users whose role is `observer`. */
+                        observers?: string[];
+                        /** @description Admin only. Id of an existing active user whose role is `proScout` — sets `createdBy` to this id, the axis proScout scope is keyed on. */
+                        proScout?: string;
                     };
                 };
             };
@@ -1533,7 +1539,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Update a player's details (coach or proScout, each within its own data scope) */
+        /** Update a player's details (coach, observer, proScout, or admin — each within its own data scope; ownership fields stay locked here for every role, admin included, see /players/{id}/coach, /observers and /proScout) */
         patch: {
             parameters: {
                 query?: never;
@@ -1669,6 +1675,64 @@ export interface paths {
             };
             responses: {
                 /** @description Coach assigned */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example success */
+                            status?: string;
+                            data?: {
+                                document?: components["schemas"]["Player"];
+                            };
+                        };
+                    };
+                };
+                400: components["responses"]["ValidationError"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
+    "/players/{id}/proScout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Assign (or re-assign) the proScout a player is scoped to (admin only)
+         * @description Sets `createdBy` to the given proScout's id — the axis proScout read/write scope is keyed on (services/scope.js playerScopeFor). Mirrors PATCH /players/{id}/coach for the proScout ownership axis.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Id of an existing active user whose role is `proScout` */
+                        proScout: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description proScout assigned */
                 200: {
                     headers: {
                         [name: string]: unknown;

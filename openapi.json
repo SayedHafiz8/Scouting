@@ -2939,7 +2939,7 @@
         }
       },
       "post": {
-        "summary": "Create a player (coach or proScout; proScout is confined to professional-league teams and is not recorded as the player's coach)",
+        "summary": "Create a player (coach, observer, proScout, or admin — admin may assign the player to a coach/observers/proScout in the same request)",
         "tags": [
           "Players"
         ],
@@ -3011,6 +3011,21 @@
                   },
                   "notes": {
                     "type": "string"
+                  },
+                  "coach": {
+                    "type": "string",
+                    "description": "Admin only. Id of an existing active user whose role is `coach`."
+                  },
+                  "observers": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Admin only. Ids of existing active users whose role is `observer`."
+                  },
+                  "proScout": {
+                    "type": "string",
+                    "description": "Admin only. Id of an existing active user whose role is `proScout` — sets `createdBy` to this id, the axis proScout scope is keyed on.\n"
                   }
                 }
               }
@@ -3104,7 +3119,7 @@
         }
       },
       "patch": {
-        "summary": "Update a player's details (coach or proScout, each within its own data scope)",
+        "summary": "Update a player's details (coach, observer, proScout, or admin — each within its own data scope; ownership fields stay locked here for every role, admin included, see /players/{id}/coach, /observers and /proScout)",
         "tags": [
           "Players"
         ],
@@ -3338,6 +3353,82 @@
         "responses": {
           "200": {
             "description": "Coach assigned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "document": {
+                          "$ref": "#/components/schemas/Player"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/players/{id}/proScout": {
+      "patch": {
+        "summary": "Assign (or re-assign) the proScout a player is scoped to (admin only)",
+        "description": "Sets `createdBy` to the given proScout's id — the axis proScout read/write scope is keyed on (services/scope.js playerScopeFor). Mirrors PATCH /players/{id}/coach for the proScout ownership axis.\n",
+        "tags": [
+          "Players"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "proScout"
+                ],
+                "properties": {
+                  "proScout": {
+                    "type": "string",
+                    "description": "Id of an existing active user whose role is `proScout`"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "proScout assigned",
             "content": {
               "application/json": {
                 "schema": {
