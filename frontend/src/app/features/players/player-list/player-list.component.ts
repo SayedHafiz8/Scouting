@@ -46,7 +46,8 @@ const SEARCH_DEBOUNCE_MS = 300;
              filter param: while inside the professional lens (professionalOnly()),
              an observer's "Add" must land in the professional context, since — unlike
              proScout — that role isn't determined by identity alone. -->
-        @if (auth.isCoach() || auth.isProScout() || auth.isObserver()) {
+        <!-- admin-assign-players-reports-media — admin joins the write-role triad. -->
+        @if (auth.isCoach() || auth.isProScout() || auth.isObserver() || auth.isAdmin()) {
           <a routerLink="/players/new" [queryParams]="professionalOnly() ? { context: 'professional' } : {}" class="btn btn-primary">
             <!-- observer-matches-and-players — the "+" icon is dropped for observer only
                  (requested after the observer players page shipped); coach/proScout keep it,
@@ -383,7 +384,7 @@ const SEARCH_DEBOUNCE_MS = 300;
         <app-empty-state
           [title]="'PLAYERS.EMPTY_TITLE' | translate"
           [message]="keyword ? ('PLAYERS.EMPTY_SEARCH' | translate) : ('PLAYERS.EMPTY_FIRST' | translate)"
-          [actionLabel]="(auth.isCoach() || auth.isProScout() || auth.isObserver()) && !keyword ? ('PLAYERS.ADD' | translate) : null"
+          [actionLabel]="(auth.isCoach() || auth.isProScout() || auth.isObserver() || auth.isAdmin()) && !keyword ? ('PLAYERS.ADD' | translate) : null"
           (actionClicked)="goToNewPlayer()"
           icon="players"
         />
@@ -538,8 +539,11 @@ const SEARCH_DEBOUNCE_MS = 300;
                 </a>
                 <div class="flex gap-1">
                   <!-- PATCH /players/:id بيقبل proScout (checkPlayerOwnership
-                       بيقصره على لاعبيه هو) — الزرار كان ناقص بس. -->
-                  @if (auth.isCoach() || auth.isObserver() || auth.isProScout()) {
+                       بيقصره على لاعبيه هو) — الزرار كان ناقص بس.
+                       admin-assign-players-reports-media — الأدمن اتضاف كمان،
+                       PATCH /players/:id يقبله دلوقتي (checkPlayerOwnership
+                       بيعمل short-circuit له، فيقدر يعدّل أي لاعب). -->
+                  @if (auth.isCoach() || auth.isObserver() || auth.isProScout() || auth.isAdmin()) {
                     <a [routerLink]="['/players', player._id, 'edit']"
                        class="btn btn-ghost btn-icon btn-sm" title="Edit">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

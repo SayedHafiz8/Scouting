@@ -371,7 +371,17 @@
       "NOTES_PH": "Optional notes about the player...",
       "SAVE": "Save Changes",
       "ADD_BTN": "Add Player",
-      "SAVING": "Saving..."
+      "SAVING": "Saving...",
+      "ASSIGN_TO": "Assign to",
+      "ASSIGN_NONE": "None",
+      "ASSIGN_COACH_TAB": "Coach",
+      "ASSIGN_OBSERVER_TAB": "Observer(s)",
+      "ASSIGN_PROSCOUT_TAB": "proScout",
+      "ASSIGN_COACH_PH": "Choose a coach",
+      "ASSIGN_NO_COACHES": "No coaches available",
+      "ASSIGN_NO_OBSERVERS": "No observers available",
+      "ASSIGN_PROSCOUT_PH": "Choose a proScout",
+      "ASSIGN_NO_PROSCOUTS": "No proScouts available"
     },
     "CELEBRATE": {
       "TITLE": "Congratulations!",
@@ -405,7 +415,11 @@
       "ASSIGN_COACH": "Assign a coach",
       "ASSIGN_COACH_BTN": "Assign coach",
       "NO_COACHES": "No coaches available",
-      "COACH_UPDATED": "Coach assigned successfully"
+      "COACH_UPDATED": "Coach assigned successfully",
+      "ASSIGN_PROSCOUT": "Assign a proScout",
+      "ASSIGN_PROSCOUT_BTN": "Assign proScout",
+      "NO_PROSCOUTS": "No proScouts available",
+      "PROSCOUT_UPDATED": "proScout assigned successfully"
     },
     "NO_COACH": "No coach assigned",
     "PROFESSIONAL_LEAGUE": "Professional league",

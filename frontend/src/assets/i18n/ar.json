@@ -371,7 +371,17 @@
       "NOTES_PH": "ملاحظات اختيارية عن اللاعب...",
       "SAVE": "حفظ التغييرات",
       "ADD_BTN": "إضافة لاعب",
-      "SAVING": "جارٍ الحفظ..."
+      "SAVING": "جارٍ الحفظ...",
+      "ASSIGN_TO": "إسناد إلى",
+      "ASSIGN_NONE": "بدون",
+      "ASSIGN_COACH_TAB": "كوتش",
+      "ASSIGN_OBSERVER_TAB": "أوبزيرفر",
+      "ASSIGN_PROSCOUT_TAB": "بروسكاوت",
+      "ASSIGN_COACH_PH": "اختر كوتش",
+      "ASSIGN_NO_COACHES": "مفيش كباتن متاحين",
+      "ASSIGN_NO_OBSERVERS": "مفيش أوبزيرفرز متاحين",
+      "ASSIGN_PROSCOUT_PH": "اختر بروسكاوت",
+      "ASSIGN_NO_PROSCOUTS": "مفيش بروسكاوتس متاحين"
     },
     "CELEBRATE": {
       "TITLE": "مبروك!",
@@ -405,7 +415,11 @@
       "ASSIGN_COACH": "تعيين كوتش",
       "ASSIGN_COACH_BTN": "تعيين كوتش",
       "NO_COACHES": "مفيش كباتن متاحين",
-      "COACH_UPDATED": "تم تعيين الكوتش بنجاح"
+      "COACH_UPDATED": "تم تعيين الكوتش بنجاح",
+      "ASSIGN_PROSCOUT": "تعيين بروسكاوت",
+      "ASSIGN_PROSCOUT_BTN": "تعيين بروسكاوت",
+      "NO_PROSCOUTS": "مفيش بروسكاوتس متاحين",
+      "PROSCOUT_UPDATED": "تم تعيين البروسكاوت بنجاح"
     },
     "NO_COACH": "بدون كوتش",
     "PROFESSIONAL_LEAGUE": "دوري المحترفين",

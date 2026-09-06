@@ -10,6 +10,7 @@ import { of } from 'rxjs';
 import { PlayerFormComponent } from './player-form.component';
 import { PlayerService } from '../services/player.service';
 import { TeamService } from '../../teams/services/team.service';
+import { UserService } from '../../users/services/user.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { LanguageService } from '../../../core/services/language.service';
@@ -26,6 +27,8 @@ import { PaginatedResponse } from '../../../core/models/api-response.model';
 let fixture: ComponentFixture<PlayerFormComponent>;
 let teamsGetAllSpy: jasmine.Spy;
 let getOneSpy: jasmine.Spy;
+let createSpy: jasmine.Spy;
+let usersGetAllSpy: jasmine.Spy;
 
 function makeUser(role: UserRole): User {
   return {
@@ -43,6 +46,12 @@ async function setup(role: UserRole, opts: { playerId?: string; context?: string
   // passed in via opts.player, not reassigned on the spy after setup() returns.
   getOneSpy = jasmine.createSpy('getOne').and.returnValue(
     of({ status: 'success', data: { document: opts.player ?? null } })
+  );
+  createSpy = jasmine.createSpy('create').and.returnValue(
+    of({ status: 'success', data: { document: { _id: 'new1' } } })
+  );
+  usersGetAllSpy = jasmine.createSpy('getAll').and.returnValue(
+    of({ status: 'success', count: 2, data: { documents: [{ _id: 'x1', name: 'Alpha' }, { _id: 'x2', name: 'Beta' }] } })
   );
 
   const authStub = {
@@ -66,8 +75,9 @@ async function setup(role: UserRole, opts: { playerId?: string; context?: string
       provideHttpClientTesting(),
       provideTranslateService({ lang: 'en', fallbackLang: 'en' }),
       { provide: AuthService, useValue: authStub },
-      { provide: PlayerService, useValue: { getOne: getOneSpy, create: jasmine.createSpy('create'), update: jasmine.createSpy('update') } },
+      { provide: PlayerService, useValue: { getOne: getOneSpy, create: createSpy, update: jasmine.createSpy('update') } },
       { provide: TeamService, useValue: { getAll: teamsGetAllSpy } },
+      { provide: UserService, useValue: { getAll: usersGetAllSpy } },
       { provide: ToastService, useValue: { success: jasmine.createSpy(), error: jasmine.createSpy(), warning: jasmine.createSpy() } },
       { provide: LanguageService, useValue: { current: () => 'en' } },
       {
@@ -185,5 +195,116 @@ describe('PlayerFormComponent — edit mode resolves entryContext from the loade
     });
 
     expect((comp as any).professionalContext()).toBeTrue();
+  });
+});
+
+// admin-assign-players-reports-media — the admin-only "assign to" block, create-only.
+describe('PlayerFormComponent — admin "assign to" block (admin-assign-players-reports-media)', () => {
+  const assignToText = () => (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+  it('is offered to an admin on create', async () => {
+    await setup('admin');
+    expect(assignToText()).toContain('PLAYERS.FORM.ASSIGN_TO');
+  });
+
+  it('is not offered to a coach', async () => {
+    await setup('coach');
+    expect(assignToText()).not.toContain('PLAYERS.FORM.ASSIGN_TO');
+  });
+
+  it('is not offered to an admin editing an existing player (reassignment lives on player-detail)', async () => {
+    await setup('admin', { playerId: 'p1', player: { _id: 'p1', name: 'X', dateOfBirth: '2012-01-01' } });
+    expect(assignToText()).not.toContain('PLAYERS.FORM.ASSIGN_TO');
+  });
+
+  it('loads the coach list only once the coach tab is first selected', async () => {
+    const comp = await setup('admin');
+    expect(usersGetAllSpy).not.toHaveBeenCalled();
+
+    comp.selectAssignRole('coach');
+    expect(usersGetAllSpy).toHaveBeenCalledWith({ role: 'coach', sort: 'name' });
+    expect(comp.assignCoachOptions().length).toBe(2);
+
+    comp.selectAssignRole('coach');
+    expect(usersGetAllSpy).toHaveBeenCalledTimes(1); // not reloaded on re-select
+  });
+
+  it('loads observers and proScouts on their own tabs, independently', async () => {
+    const comp = await setup('admin');
+
+    comp.selectAssignRole('observer');
+    expect(usersGetAllSpy).toHaveBeenCalledWith({ role: 'observer', sort: 'name' });
+    expect(comp.assignObserverOptions().length).toBe(2);
+
+    comp.selectAssignRole('proScout');
+    expect(usersGetAllSpy).toHaveBeenCalledWith({ role: 'proScout', sort: 'name' });
+    expect(comp.assignProScoutOptions().length).toBe(2);
+  });
+
+  it('sends coach on submit only when the coach tab is selected and a value is chosen', async () => {
+    const comp = await setup('admin');
+    comp.form.patchValue({
+      name: 'Ahmed Ali', dateOfBirth: '2012-01-01', position: 'CM', preferredFoot: 'right',
+      nationality: 'Egyptian', city: 'Cairo', address: '1 Test St', phoneNumber: '01012345678',
+    });
+    comp.selectAssignRole('coach');
+    comp.assignCoachId.set('x1');
+
+    comp.submit();
+
+    expect(createSpy).toHaveBeenCalled();
+    const payload = createSpy.calls.mostRecent().args[0];
+    expect(payload.coach).toBe('x1');
+    expect(payload.observers).toBeUndefined();
+    expect(payload.proScout).toBeUndefined();
+  });
+
+  it('sends observers as an array on submit when the observer tab is selected', async () => {
+    const comp = await setup('admin');
+    comp.form.patchValue({
+      name: 'Ahmed Ali', dateOfBirth: '2012-01-01', position: 'CM', preferredFoot: 'right',
+      nationality: 'Egyptian', city: 'Cairo', address: '1 Test St', phoneNumber: '01012345678',
+    });
+    comp.selectAssignRole('observer');
+    comp.toggleAssignObserver('x1');
+    comp.toggleAssignObserver('x2');
+
+    comp.submit();
+
+    const payload = createSpy.calls.mostRecent().args[0];
+    expect(payload.observers).toEqual(jasmine.arrayContaining(['x1', 'x2']));
+    expect(payload.coach).toBeUndefined();
+  });
+
+  it('sends nothing extra when no assignment tab was chosen ("None")', async () => {
+    const comp = await setup('admin');
+    comp.form.patchValue({
+      name: 'Ahmed Ali', dateOfBirth: '2012-01-01', position: 'CM', preferredFoot: 'right',
+      nationality: 'Egyptian', city: 'Cairo', address: '1 Test St', phoneNumber: '01012345678',
+    });
+
+    comp.submit();
+
+    const payload = createSpy.calls.mostRecent().args[0];
+    expect(payload.coach).toBeUndefined();
+    expect(payload.observers).toBeUndefined();
+    expect(payload.proScout).toBeUndefined();
+  });
+
+  it('a non-admin submit never carries assignment fields, regardless of any stray local state', async () => {
+    const comp = await setup('coach');
+    comp.form.patchValue({
+      name: 'Ahmed Ali', dateOfBirth: '2012-01-01', position: 'CM', preferredFoot: 'right',
+      nationality: 'Egyptian', city: 'Cairo', address: '1 Test St', phoneNumber: '01012345678',
+    });
+    // simulate stray state — should never happen from the template (block isn't rendered
+    // for a coach) but confirms submit() itself gates on auth.isAdmin(), not just the UI
+    (comp as any).assignRole.set('coach');
+    (comp as any).assignCoachId.set('x1');
+
+    comp.submit();
+
+    const payload = createSpy.calls.mostRecent().args[0];
+    expect(payload.coach).toBeUndefined();
   });
 });

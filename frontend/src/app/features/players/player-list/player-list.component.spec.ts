@@ -480,9 +480,11 @@ describe('PlayerListComponent — other roles keep the age-group UI (FR-014)', (
     expect(addButton()).toBeTruthy();
   });
 
-  it('an admin does not get the Add player control', async () => {
+  // admin-assign-players-reports-media — deliberate behavior change: the admin
+  // can now create (and assign) a player, so it gets the Add control too.
+  it('an admin gets the Add player control', async () => {
     await setup('admin');
-    expect(addButton()).toBeNull();
+    expect(addButton()).toBeTruthy();
   });
 });
 
@@ -592,9 +594,12 @@ describe('PlayerListComponent — Edit/Delete controls per role (observer-matche
     expect(deleteBtn()).toBeNull();
   });
 
-  it('an admin sees Delete but not Edit', async () => {
+  // admin-assign-players-reports-media — deliberate behavior change: PATCH
+  // /players/:id now admits admin (checkPlayerOwnership short-circuits it), so
+  // the Edit link joins Delete instead of being hidden.
+  it('an admin sees both Edit and Delete', async () => {
     await setupWithOnePlayer('admin');
-    expect(editLink()).toBeNull();
+    expect(editLink()).toBeTruthy();
     expect(deleteBtn()).toBeTruthy();
   });
 });
