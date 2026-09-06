@@ -24,9 +24,9 @@ function makeUser(role: UserRole): User {
   };
 }
 
-function makeReport(id = 'r1') {
+function makeReport(id = 'r1', coach: { _id: string; name: string } = { _id: 'u1', name: 'Test User' }) {
   return {
-    _id: id, player: 'p1', coach: { _id: 'u1', name: 'Test User' },
+    _id: id, player: 'p1', coach,
     overallRating: 7, matchDate: '2026-09-01T00:00:00.000Z',
     technical: {}, physical: {}, mental: {},
     createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
@@ -113,13 +113,24 @@ describe('ReportListComponent — the roles that already worked are unchanged', 
     expect(addButton(el)).toBeTruthy();
   });
 
-  it('⚠️ admin still gets no add action — reports are written by scouts, not admins', async () => {
+  // admin-assign-players-reports-media — deliberate behavior change: the admin
+  // can now file a report (on itself, or attributed to an assigned observer via
+  // report-form's "file on behalf of" picker), so it gets the add action too.
+  it('admin now gets the add action', async () => {
     const el = await setup('admin', [makeReport()]);
-    expect(addButton(el)).toBeNull();
+    expect(addButton(el)).toBeTruthy();
   });
 
-  it('⚠️ admin still gets no edit action', async () => {
+  // Edit is still gated to reports the admin actually authored
+  // (denyAdminEditingOthersReport on the server; isAuthoredByMe() here) — this
+  // fixture's report is authored by 'u1', the same id as the admin fixture user.
+  it('admin gets the edit action on a report it authored', async () => {
     const el = await setup('admin', [makeReport()]);
+    expect(editLink(el)).toBeTruthy();
+  });
+
+  it('admin does NOT get the edit action on a report authored by someone else', async () => {
+    const el = await setup('admin', [makeReport('r1', { _id: 'other-user', name: 'Someone Else' })]);
     expect(editLink(el)).toBeNull();
   });
 });

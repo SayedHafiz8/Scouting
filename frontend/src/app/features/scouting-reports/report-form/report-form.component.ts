@@ -5,6 +5,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ScoutingReportService } from '../services/scouting-report.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { AuthService } from '../../../core/auth/auth.service';
 import { RadarChartComponent } from '../../../shared/components/radar-chart/radar-chart.component';
 import { PlayerService } from '../../players/services/player.service';
 import { SeasonMatchService } from '../../season-matches/services/season-match.service';
@@ -131,6 +132,25 @@ const MENTAL_FIELDS: RatingField[] = [
                   <span class="text-xs font-semibold tabular-nums" style="color:var(--text-secondary)">{{ reportDate() }}</span>
                 </div>
               </div>
+
+              <!-- admin-assign-players-reports-media — admin-only, create-only. Populated
+                   from the player's own observers[] (already loaded with the player, no
+                   extra request) — matches the server's requirement that assignedObserver
+                   must already be assigned to this player. -->
+              @if (auth.isAdmin() && !isEdit() && playerObservers().length > 0) {
+                <div class="space-y-1.5 mb-2">
+                  <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                    {{ 'REPORTS.FORM.FILE_ON_BEHALF_OF' | translate }}
+                  </label>
+                  <select [ngModel]="assignedObserver()" (ngModelChange)="assignedObserver.set($event)"
+                          [ngModelOptions]="{standalone: true}" class="form-input">
+                    <option value="">{{ 'REPORTS.FORM.FILE_ON_BEHALF_OF_SELF' | translate }}</option>
+                    @for (o of playerObservers(); track o._id) {
+                      <option [value]="o._id">{{ o.name }}</option>
+                    }
+                  </select>
+                </div>
+              }
 
               @if (showFixturePicker()) {
                 <!-- اللاعب متسجل في فريق وله مباريات يقدر يربط بيها التقرير.
@@ -484,10 +504,17 @@ export class ReportFormComponent implements OnInit {
   private readonly teamService = inject(TeamService);
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
+  readonly auth = inject(AuthService);
 
   readonly loading = signal(false);
   readonly isEdit = signal(false);
   private reportId = '';
+
+  // admin-assign-players-reports-media — admin-only, create-only. The player's
+  // own observers[] (populated {_id,name}, already fetched by loadScopedOptions)
+  // — this is exactly the set the server accepts for assignedObserver.
+  readonly playerObservers = signal<{ _id: string; name: string }[]>([]);
+  readonly assignedObserver = signal('');
 
   // Teams scoped to the player's age group — homeTeam/awayTeam are Team ObjectIds
   readonly teamOptions = signal<Team[]>([]);
@@ -695,6 +722,15 @@ export class ReportFormComponent implements OnInit {
         this.hasTeam.set(!!teamId);
         this.isProfessional.set(isProfessional);
 
+        // admin-assign-players-reports-media — observers[] only reaches an admin
+        // (maskCoachForObserver/maskObservedForCoach never touch it for admin);
+        // reuses the same getOne() call rather than a second request.
+        if (this.auth.isAdmin() && Array.isArray(player?.observers)) {
+          this.playerObservers.set(
+            player.observers.filter((o: any) => o && typeof o === 'object' && o._id)
+          );
+        }
+
         // لاعب ناشئ من غير فئة عمرية = حالة مالهاش نطاق نحمّل بيه، زي ما كانت
         if (!ageGroupId && !isProfessional) {
           this.teamOptionsLoaded.set(true);
@@ -722,10 +758,16 @@ export class ReportFormComponent implements OnInit {
           // resolveMatchTypeFields على السيرفر): بيشوف كل مباريات ناديه اللي
           // اتلعبت، من الأحدث للأقدم، ويكتب تقريره عليها وقت ما يقدر. الناشئ
           // زي ما هو بالظبط — مباريات النهارده بس.
+          //
+          // admin-assign-players-reports-media — نفس الرخصة اتوسّعت للأدمن على
+          // السيرفر (resolveMatchTypeFields)، وبتنطبق على أي لاعب مش المحترفين
+          // بس — فبنستخدم isProfessional() || auth.isAdmin() هنا، مش isProfessional
+          // وحدها، عشان الأدمن يشوف كل مباريات الفريق مش النهارده بس حتى للاعب ناشئ.
           const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-          const windowFilters = isProfessional
-            ? { league: 'professional' as const, sort: '-matchDate', 'matchDate[lte]': dayEnd.toISOString() }
-            : { ageGroup: ageGroupId, sort: 'matchDate', 'matchDate[gte]': dayStart.toISOString(), 'matchDate[lte]': dayEnd.toISOString() };
+          const anyPastMatch = isProfessional || this.auth.isAdmin();
+          const windowFilters = anyPastMatch
+            ? { league: isProfessional ? ('professional' as const) : undefined, ageGroup: isProfessional ? undefined : ageGroupId, sort: '-matchDate' as const, 'matchDate[lte]': dayEnd.toISOString() }
+            : { ageGroup: ageGroupId, sort: 'matchDate' as const, 'matchDate[gte]': dayStart.toISOString(), 'matchDate[lte]': dayEnd.toISOString() };
 
           this.seasonMatchService.getAll(windowFilters).subscribe({
             next: matchRes => {
@@ -839,6 +881,12 @@ export class ReportFormComponent implements OnInit {
     } else {
       if (this.homeIsOther()) payload['homeTeamName'] = v.homeTeamName; else payload['homeTeam'] = v.homeTeam;
       if (this.awayIsOther()) payload['awayTeamName'] = v.awayTeamName; else payload['awayTeam'] = v.awayTeam;
+    }
+
+    // admin-assign-players-reports-media — only ever attached for an admin on
+    // create, and only when a specific observer was chosen (empty = self).
+    if (this.auth.isAdmin() && !this.isEdit() && this.assignedObserver()) {
+      payload['assignedObserver'] = this.assignedObserver();
     }
 
     const req$ = this.isEdit()

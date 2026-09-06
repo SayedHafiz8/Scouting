@@ -37,8 +37,10 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
         </p>
         <!-- proScout بيكتب تقارير على لاعبيه زي الكوتش والأوبزيرفر بالظبط
              (POST /players/:id/reports فيه ROLES.PRO_SCOUT من مرحلة إنشاء الدور)،
-             لكن الزراير هنا كانت مستثنياه، فمكانش عنده أي مدخل للفورم أصلاً. -->
-        @if (auth.isCoach() || auth.isObserver() || auth.isProScout()) {
+             لكن الزراير هنا كانت مستثنياه، فمكانش عنده أي مدخل للفورم أصلاً.
+             admin-assign-players-reports-media — الأدمن اتضاف كمان، إما يكتب
+             تقرير لنفسه أو بالنيابة عن أوبزيرفر معيَّن (report-form). -->
+        @if (auth.isCoach() || auth.isObserver() || auth.isProScout() || auth.isAdmin()) {
           <a [routerLink]="['new']" class="btn btn-primary btn-sm">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -138,7 +140,7 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
           <app-empty-state
             [title]="'REPORTS.EMPTY_TITLE' | translate"
             [message]="'REPORTS.EMPTY_MSG' | translate"
-            [actionLabel]="(auth.isCoach() || auth.isObserver() || auth.isProScout()) ? ('REPORTS.ADD' | translate) : null"
+            [actionLabel]="(auth.isCoach() || auth.isObserver() || auth.isProScout() || auth.isAdmin()) ? ('REPORTS.ADD' | translate) : null"
             (actionClicked)="navigateToNew()"
             icon="reports"
           />
@@ -194,8 +196,12 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
                       </svg>
                     </a>
                     <!-- checkReportOwnership بيسمح للـproScout يعدّل تقريره هو
-                         بس، على لاعب جوه نطاقه — فالزرار مايوعدش بأكتر من كده. -->
-                    @if (auth.isCoach() || auth.isObserver() || auth.isProScout()) {
+                         بس، على لاعب جوه نطاقه — فالزرار مايوعدش بأكتر من كده.
+                         admin-assign-players-reports-media — الأدمن اتضاف، بس
+                         بس لو هو كاتب التقرير ده فعلاً (isAuthoredByMe) — يطابق
+                         denyAdminEditingOthersReport على السيرفر بالظبط، عشان
+                         الزرار مايوعدش بحاجة السيرفر هيرفضها. -->
+                    @if (auth.isCoach() || auth.isObserver() || auth.isProScout() || (auth.isAdmin() && isAuthoredByMe(report))) {
                       <a [routerLink]="[report._id]" class="btn btn-ghost btn-icon btn-sm" title="Edit">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -415,6 +421,14 @@ export class ReportListComponent implements OnInit {
   coachName(report: ScoutingReport): string {
     if (!report.coach) return '';
     return typeof report.coach === 'object' ? (report.coach as any).name ?? '' : '';
+  }
+
+  // admin-assign-players-reports-media — denyAdminEditingOthersReport rejects
+  // an admin PATCHing a report it didn't author (checkReportOwnership's admin
+  // short-circuit means it can still READ any report — this only gates Edit).
+  isAuthoredByMe(report: ScoutingReport): boolean {
+    const authorId = typeof report.coach === 'object' ? (report.coach as any)?._id : report.coach;
+    return !!authorId && authorId === this.auth.currentUser()?._id;
   }
 
   teamName(team: ScoutingReport['homeTeam']): string {

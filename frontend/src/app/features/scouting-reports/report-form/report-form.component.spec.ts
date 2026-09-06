@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { provideTranslateService, TranslateService } from '@ngx-translate/core';
+import { signal } from '@angular/core';
 import { of } from 'rxjs';
 
 import { ReportFormComponent } from './report-form.component';
@@ -9,6 +10,7 @@ import { PlayerService } from '../../players/services/player.service';
 import { SeasonMatchService } from '../../season-matches/services/season-match.service';
 import { TeamService } from '../../teams/services/team.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { AuthService } from '../../../core/auth/auth.service';
 
 // A professional player has no ageGroup at all — playedModel skips the derivation
 // for them. loadScopedOptions() used to key entirely off the age group, so it
@@ -22,6 +24,7 @@ import { ToastService } from '../../../core/services/toast.service';
 let fixture: ComponentFixture<ReportFormComponent>;
 let teamsGetAllSpy: jasmine.Spy;
 let matchesGetAllSpy: jasmine.Spy;
+let createSpy: jasmine.Spy;
 
 const PRO_TEAM = { _id: 'proteam1', name: 'Pro Home Club' };
 const YOUTH_TEAM = { _id: 'youthteam1', name: 'Youth Club' };
@@ -35,13 +38,14 @@ function makeMatch(id: string, home: any, away: any) {
   };
 }
 
-async function setup(player: any, todaysMatches: any[] = [], teams: any[] = []) {
+async function setup(player: any, todaysMatches: any[] = [], teams: any[] = [], isAdmin = false) {
   teamsGetAllSpy = jasmine.createSpy('teams.getAll').and.returnValue(
     of({ status: 'success', count: teams.length, pagination: null, data: { documents: teams } })
   );
   matchesGetAllSpy = jasmine.createSpy('matches.getAll').and.returnValue(
     of({ status: 'success', count: todaysMatches.length, pagination: null, data: { documents: todaysMatches } })
   );
+  createSpy = jasmine.createSpy('create').and.returnValue(of({ status: 'success', data: { document: { _id: 'r1' } } }));
 
   await TestBed.configureTestingModule({
     imports: [ReportFormComponent],
@@ -53,9 +57,17 @@ async function setup(player: any, todaysMatches: any[] = [], teams: any[] = []) 
       { provide: SeasonMatchService, useValue: { getAll: matchesGetAllSpy } },
       {
         provide: ScoutingReportService,
-        useValue: { getOne: jasmine.createSpy('getOne'), create: jasmine.createSpy('create'), update: jasmine.createSpy('update') },
+        useValue: { getOne: jasmine.createSpy('getOne'), create: createSpy, update: jasmine.createSpy('update') },
       },
       { provide: ToastService, useValue: { success: jasmine.createSpy(), error: jasmine.createSpy() } },
+      {
+        provide: AuthService,
+        useValue: {
+          isAdmin: signal(isAdmin),
+          isCoach: signal(false), isObserver: signal(false), isProScout: signal(false),
+          currentUser: signal(isAdmin ? { _id: 'admin1', role: 'admin' } : null),
+        },
+      },
       {
         provide: ActivatedRoute,
         useValue: {
@@ -231,5 +243,58 @@ describe('ReportFormComponent — youth players keep the age-group scope unchang
     expect(matchesGetAllSpy).not.toHaveBeenCalled();
     expect(comp.teamOptionsLoaded()).toBeTrue();
     expect(comp.seasonMatchOptionsLoaded()).toBeTrue();
+  });
+});
+
+// admin-assign-players-reports-media — the "file on behalf of" picker.
+describe('ReportFormComponent — admin "file on behalf of" picker', () => {
+  const obs = [{ _id: 'o1', name: 'Observer One' }, { _id: 'o2', name: 'Observer Two' }];
+
+  it('is populated from the player\'s own observers[] for an admin', async () => {
+    const comp = await setup(youthPlayer({ observers: obs }), [], [], true);
+    expect(comp.playerObservers().length).toBe(2);
+  });
+
+  it('is empty for a non-admin, regardless of the player\'s observers', async () => {
+    const comp = await setup(youthPlayer({ observers: obs }), [], [], false);
+    expect(comp.playerObservers().length).toBe(0);
+  });
+
+  it('sends assignedObserver on submit only when an admin picked one', async () => {
+    const comp = await setup(youthPlayer({ observers: obs, team: null }), [], [], true);
+    comp.assignedObserver.set('o1');
+    comp.onTeamSelectChange('home', comp.OTHER_TEAM);
+    comp.onTeamSelectChange('away', comp.OTHER_TEAM);
+    (comp as any).form.patchValue({ homeTeamName: 'A', awayTeamName: 'B' });
+
+    comp.submit();
+
+    const payload = createSpy.calls.mostRecent().args[1];
+    expect(payload.assignedObserver).toBe('o1');
+  });
+
+  it('omits assignedObserver on submit when the admin left it on "myself"', async () => {
+    const comp = await setup(youthPlayer({ observers: obs, team: null }), [], [], true);
+    comp.onTeamSelectChange('home', comp.OTHER_TEAM);
+    comp.onTeamSelectChange('away', comp.OTHER_TEAM);
+    (comp as any).form.patchValue({ homeTeamName: 'A', awayTeamName: 'B' });
+
+    comp.submit();
+
+    const payload = createSpy.calls.mostRecent().args[1];
+    expect(payload.assignedObserver).toBeUndefined();
+  });
+
+  it('a non-admin submit never carries assignedObserver, even with stray local state', async () => {
+    const comp = await setup(youthPlayer({ observers: obs, team: null }), [], [], false);
+    (comp as any).assignedObserver.set('o1'); // should never happen via the UI (block isn't rendered)
+    comp.onTeamSelectChange('home', comp.OTHER_TEAM);
+    comp.onTeamSelectChange('away', comp.OTHER_TEAM);
+    (comp as any).form.patchValue({ homeTeamName: 'A', awayTeamName: 'B' });
+
+    comp.submit();
+
+    const payload = createSpy.calls.mostRecent().args[1];
+    expect(payload.assignedObserver).toBeUndefined();
   });
 });
