@@ -48,7 +48,7 @@
  *         $ref: '#/components/responses/NotFound'
  *
  *   post:
- *     summary: Upload a companion IMAGE for a video (coach/observer, multipart). Standalone image upload is not supported — every image must accompany a video via linkedVideo. Video uploads go directly to Bunny via POST /media/video.
+ *     summary: Upload a companion IMAGE for a video (coach/observer/proScout/admin, multipart). Standalone image upload is not supported — every image must accompany a video via linkedVideo. Video uploads go directly to Bunny via POST /media/video.
  *     tags: [Media]
  *     parameters:
  *       - in: path
@@ -73,7 +73,12 @@
  *                 type: string
  *               linkedVideo:
  *                 type: string
- *                 description: Required PlayerMedia id of the video (same player, same uploader) this photo accompanies — max 2 images per video
+ *                 description: Required PlayerMedia id of the video (same player, same effective author) this photo accompanies — max 2 images per video
+ *               assignedObserver:
+ *                 type: string
+ *                 description: >
+ *                   Admin only. Id of an observer already assigned to this player —
+ *                   the upload is attributed to that observer instead of the admin.
  *     responses:
  *       201:
  *         description: Image uploaded and stored in Bunny Storage
@@ -99,7 +104,7 @@
  *
  * /players/{playerId}/media/video:
  *   post:
- *     summary: Start a video upload — mints a Bunny Stream video and returns a presigned TUS envelope. seasonMatch is no longer accepted from the client — it is auto-resolved from the player's team fixtures (a 3-day window around the match) and the caller's role.
+ *     summary: Start a video upload — mints a Bunny Stream video and returns a presigned TUS envelope. seasonMatch is no longer accepted from the client — it is auto-resolved from the effective author's team fixtures (a 3-day window around the match).
  *     tags: [Media]
  *     parameters:
  *       - in: path
@@ -123,6 +128,12 @@
  *               fileHash:
  *                 type: string
  *                 description: SHA-256 hex digest of the video file, computed client-side before upload — used to block duplicate uploads of the same video for this player
+ *               assignedObserver:
+ *                 type: string
+ *                 description: >
+ *                   Admin only. Id of an observer already assigned to this player —
+ *                   the upload is attributed (`uploadedBy`) to that observer instead
+ *                   of the admin.
  *     responses:
  *       201:
  *         description: Video created (processing) with a TUS upload envelope
@@ -170,6 +181,13 @@
  *         required: true
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: assignedObserver
+ *         schema:
+ *           type: string
+ *         description: >
+ *           Admin only. Preview the gate as it would resolve for this assigned
+ *           observer instead of the admin itself.
  *     responses:
  *       200:
  *         description: Current gate mode (same for any role — coach and observer are treated identically)
@@ -355,6 +373,7 @@ import {
     reissueEnvelope,
     downloadVideo,
     getUploadEligibility,
+    resolveEffectiveAuthor,
 } from "../controllers/playerMediaController.js";
 import { protect, allowedTo } from "../controllers/authController.js";
 import { checkPlayerOwnership, checkMediaOwnership } from "../middlewares/ownership.js";
@@ -371,13 +390,20 @@ import {
 
 const mediaRouter = express.Router({ mergeParams: true });
 
+// admin-assign-players-reports-media — الأدمن اتضاف لكل مسارات الرفع، بمؤلف
+// فعلي بيتحدد في resolveEffectiveAuthor: صاحب التوكن نفسه، أو أوبزيرفر معيَّن
+// على اللاعب لو الأدمن بعت assignedObserver (lockFieldExceptAdmin في
+// playerMediaValidation.js بيمنع أي رول تاني من إرساله). لازم يتحط **قبل**
+// الفاليديشن نفسها، لأن gate الرفع وفحص linkedVideo بيعتمدوا على القيمة دي.
+
 // ── Bunny video (direct upload) — declared before "/:id" so "video" isn't an id ──
 mediaRouter
     .route("/video")
     .post(
         protect,
-        allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),
+        allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),
         checkPlayerOwnership,
+        resolveEffectiveAuthor("body"),
         videoCreateLimiter,
         createVideoValidator,
         createVideo
@@ -388,9 +414,10 @@ mediaRouter
     .route("/upload-eligibility")
     .get(
         protect,
-        allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),
+        allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),
         checkPlayerOwnership,
         getUploadEligibilityValidator,
+        resolveEffectiveAuthor("query"),
         getUploadEligibility
     );
 
@@ -399,7 +426,7 @@ mediaRouter
     .route("/video/:mediaId/upload-envelope")
     .post(
         protect,
-        allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),
+        allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),
         checkPlayerOwnership,
         videoCreateLimiter,
         reissueEnvelope
@@ -410,9 +437,10 @@ mediaRouter
     .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, getAll)
     .post(
         protect,
-        allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT),
+        allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),
         checkPlayerOwnership,
         upload.single("file"),
+        resolveEffectiveAuthor("body"),
         uploadMediaValidator,
         uploadMedia
     );

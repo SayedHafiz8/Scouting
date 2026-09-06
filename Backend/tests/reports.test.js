@@ -194,9 +194,14 @@ describe('POST /api/v1/players/:playerId/reports', () => {
     expect(res.status).toBe(400);
   });
 
-  it('admin cannot create a report (coach-only)', async () => {
+  // admin-assign-players-reports-media — deliberate behavior change: the admin
+  // can now file a report on any player it can already read (checkPlayerOwnership
+  // short-circuits admin the same way it always has for GET). Full positive/
+  // negative coverage — including that an admin still cannot PATCH someone
+  // else's report — lives in tests/roles/adminReportMediaAuthoring.test.js.
+  it('admin can create a report — author is the admin itself', async () => {
     const { token: coachToken } = await createCoach();
-    const { token: adminToken } = await createAdmin();
+    const { token: adminToken, user: admin } = await createAdmin();
     const player = await createPlayer(coachToken);
 
     const res = await request(app)
@@ -204,7 +209,8 @@ describe('POST /api/v1/players/:playerId/reports', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send(await payloadFor(player));
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
+    expect(res.body.data.document.coach._id).toBe(admin._id.toString());
   });
 
   it('returns 400 when technical fields are missing', async () => {

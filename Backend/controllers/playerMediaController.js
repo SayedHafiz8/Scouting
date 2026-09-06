@@ -1,4 +1,5 @@
 import asyncHandler from "express-async-handler";
+import mongoose from "mongoose";
 import sharp from "sharp";
 import fs from "fs";
 import crypto from "crypto";
@@ -96,6 +97,41 @@ export const setPlayerToBody = (req, res, next) => {
     next();
 };
 
+// admin-assign-players-reports-media — الأدمن بس يقدر يبعت assignedObserver
+// (لازم يبقى أوبزيرفر معيَّن فعلاً على اللاعب). req.effectiveAuthor هو مين
+// هيتسجل فعلياً كـuploadedBy، وهو نفسه اللي بيتحسب عليه gate الرفع
+// (resolveVideoUploadGate) وفحوصات الملكية (in-flight dedupe، linkedVideo،
+// reissueEnvelope) — عشان القرارات دي تتطابق مع اللي هيتخزن فعلاً، مش مع
+// هوية الأدمن اللي بيرفع بالنيابة. لازم يتحط **قبل** createVideoValidator/
+// uploadMediaValidator في السلسلة، لأن الاتنين بيعتمدوا على القيمة دي.
+export const resolveEffectiveAuthor = (source = "body") =>
+    asyncHandler(async (req, res, next) => {
+        const raw = source === "query" ? req.query.assignedObserver : req.body.assignedObserver;
+
+        if (req.user.role !== ROLES.ADMIN || !raw) {
+            req.effectiveAuthor = req.user._id;
+            return next();
+        }
+
+        if (!mongoose.isValidObjectId(raw)) {
+            return next(new AppError("Invalid assignedObserver id", 400));
+        }
+
+        const player = await Player.findById(req.params.playerId).select("observers");
+        const isAssigned = (player?.observers ?? []).some((o) => o.toString() === raw.toString());
+        if (!isAssigned) {
+            return next(new AppError("The selected observer is not assigned to this player", 400));
+        }
+
+        const observerUser = await User.findOne({ _id: raw, role: ROLES.OBSERVER }).select("_id");
+        if (!observerUser) {
+            return next(new AppError("The selected observer is not a valid active observer", 400));
+        }
+
+        req.effectiveAuthor = observerUser._id;
+        next();
+    });
+
 // @desc  Upload a scouting IMAGE (multipart). Video no longer goes through here —
 //        it uploads directly to Bunny via POST /media/video (VPS-free).
 export const uploadMedia = asyncHandler(async (req, res, next) => {
@@ -123,9 +159,14 @@ export const uploadMedia = asyncHandler(async (req, res, next) => {
         const key = buildKey("player-media", "webp");
         await uploadMediaImage(buffer, key, "image/webp");
 
+        // admin-assign-players-reports-media — req.effectiveAuthor بيتحط من
+        // resolveEffectiveAuthor في الراوتر، قبل uploadMediaValidator (اللي بيتحقق
+        // إن linkedVideo مملوك لنفس effectiveAuthor ده، مش لـreq.user._id).
+        const effectiveAuthor = req.effectiveAuthor ?? req.user._id;
+
         const media = await PlayerMedia.create({
             player: req.params.playerId,
-            uploadedBy: req.user._id,
+            uploadedBy: effectiveAuthor,
             type: "image",
             storage: "bunny",
             storageKey: key,
@@ -138,11 +179,13 @@ export const uploadMedia = asyncHandler(async (req, res, next) => {
             linkedVideo: req.body.linkedVideo,
         });
 
-        // عدد الميديا فى الداشبورد بتاع الرافع (كوتش أو أوبزيرفر) بيتحدث لايف
-        if (req.user.role === ROLES.OBSERVER) {
-            emitObserverDashboardUpdate(req.user._id);
-        } else {
-            emitCoachDashboardUpdate(req.user._id);
+        // عدد الميديا فى الداشبورد بتاع الرافع (كوتش أو أوبزيرفر) بيتحدث لايف.
+        // admin-assign-players-reports-media — لو الأدمن رفع لنفسه (بلا assignedObserver)
+        // مفيش داشبورد كوتش/أوبزيرفر يتحدث.
+        if (req.user.role === ROLES.OBSERVER || (req.user.role === ROLES.ADMIN && effectiveAuthor.toString() !== req.user._id.toString())) {
+            emitObserverDashboardUpdate(effectiveAuthor);
+        } else if (req.user.role !== ROLES.ADMIN) {
+            emitCoachDashboardUpdate(effectiveAuthor);
         }
 
         res.status(201).json({
@@ -318,6 +361,10 @@ export const createVideo = asyncHandler(async (req, res, next) => {
     // دلوقتي وهل بيترابط بماتش تلقائي أو لأ
     const seasonMatch = req.mediaGate.mode === "gated" ? req.mediaGate.seasonMatch : null;
     const { limits } = bunnyConfig();
+    // admin-assign-players-reports-media — req.effectiveAuthor بيتحط من
+    // resolveEffectiveAuthor في الراوتر (قبل createVideoValidator، اللي بيستخدمها
+    // برضه في resolveVideoUploadGate تحت).
+    const effectiveAuthor = req.effectiveAuthor ?? req.user._id;
 
     // A1/F6 — one in-flight (processing) video per (player, seasonMatch) for this uploader.
     // If one exists, re-issue its envelope instead of minting a second Bunny video.
@@ -326,7 +373,7 @@ export const createVideo = asyncHandler(async (req, res, next) => {
         seasonMatch,
         type: "video",
         status: "processing",
-        uploadedBy: req.user._id,
+        uploadedBy: effectiveAuthor,
     });
     if (inFlight) {
         return res.status(200).json({
@@ -367,7 +414,7 @@ export const createVideo = asyncHandler(async (req, res, next) => {
     const bunnyVideo = await createStreamVideo(req.body.title);
     const media = await PlayerMedia.create({
         player: playerId,
-        uploadedBy: req.user._id,
+        uploadedBy: effectiveAuthor,
         type: "video",
         storage: "bunny",
         bunnyVideoId: bunnyVideo.guid,
@@ -393,7 +440,11 @@ export const createVideo = asyncHandler(async (req, res, next) => {
 //        whether upload is freeform or will auto-link to a match
 // @route GET /players/:playerId/media/upload-eligibility
 export const getUploadEligibility = asyncHandler(async (req, res, next) => {
-    const gate = await resolveVideoUploadGate(req.params.playerId, req.user.role, req.user._id);
+    // admin-assign-players-reports-media — req.effectiveAuthor بيتحط من
+    // resolveEffectiveAuthor("query") في الراوتر، عشان معاينة الأدمن بالنيابة عن
+    // أوبزيرفر معيَّن تعكس نفس الـgate اللي هيتطبّق فعلياً وقت الإنشاء.
+    const effectiveAuthor = req.effectiveAuthor ?? req.user._id;
+    const gate = await resolveVideoUploadGate(req.params.playerId, req.user.role, effectiveAuthor);
 
     if (gate.mode !== "gated") {
         return res.status(200).json({ status: "success", data: { mode: gate.mode } });
@@ -417,8 +468,9 @@ export const reissueEnvelope = asyncHandler(async (req, res, next) => {
     if (!media || media.player.toString() !== req.params.playerId) {
         return next(new AppError(`No document for this Id: ${req.params.mediaId}`, 404));
     }
-    // ملكية الرافع (الأدمن مش بيرفع فيديوهات)
-    if (media.uploadedBy.toString() !== req.user._id.toString()) {
+    // ملكية الرافع. admin-assign-players-reports-media — الأدمن بقى يقدر يرفع
+    // (بالنيابة عن أوبزيرفر معيَّن)، فبيقدر يكمل رفعه هو نفسه لو الفيديو processing.
+    if (req.user.role !== ROLES.ADMIN && media.uploadedBy.toString() !== req.user._id.toString()) {
         return next(new AppError("You are not allowed to access this media", 403));
     }
     // F3-guard: envelope جديد بس لفيديو لسه processing — مش overwrite لفيديو جاهز

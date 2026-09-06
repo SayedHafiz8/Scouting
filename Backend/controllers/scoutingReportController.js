@@ -90,7 +90,10 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
     //
     // والمباراة لازم تكون بتاعت فريق اللاعب نفسه — مينفعش يربط تقريره بأي
     // مباراة في الجدول.
-    if (req.user.role === ROLES.PRO_SCOUT && req.body.seasonMatch) {
+    // admin-assign-players-reports-media — الأدمن كمان مش مقيّد بيوم المباراة، لنفس
+    // سبب الـproScout بالظبط: بيكتب تقارير وقت ما يقدر (على نفسه أو بالنيابة عن
+    // أوبزيرفر معيَّن)، مش لازم في يوم اللعب. "مايتغيرش" هنا نفسها بالظبط.
+    if ((req.user.role === ROLES.PRO_SCOUT || req.user.role === ROLES.ADMIN) && req.body.seasonMatch) {
         const chosen = await SeasonMatch.findById(req.body.seasonMatch).setOptions({ skipPopulate: true });
 
         if (!chosen) {
@@ -159,19 +162,65 @@ export const resolveSeasonMatchToBody = asyncHandler(async (req, res, next) => {
     next();
 });
 
-// @desc    Create scouting report (author = the logged-in coach OR observer)
+// @desc    Create scouting report (author = the logged-in coach/observer/proScout,
+//          or — admin only — an observer assigned to this player on the admin's behalf)
 // @route   POST /api/v1/scouting
-// @access  Private - coach & observer
+// @access  Private - coach, observer, proScout & admin
 export const create = asyncHandler(async (req, res, next) => {
-    req.body.coach = req.user._id;
+    // admin-assign-players-reports-media — effectiveAuthor هو مين هيتسجل كـcoach
+    // (اسم الحقل تاريخي، هو حقل "المؤلف" الفعلي). افتراضياً صاحب التوكن نفسه —
+    // بيتغير بس لو الأدمن بعت assignedObserver (lockFieldExceptAdmin في
+    // scoutingValidation.js بيمنع أي رول تاني من إرساله أصلاً).
+    let effectiveAuthor = req.user._id;
+    let authorIsObserver = req.user.role === ROLES.OBSERVER;
+
+    if (req.user.role === ROLES.ADMIN && req.body.assignedObserver) {
+        // لازم يبقى أوبزيرفر معيَّن فعلاً على اللاعب ده — من غير الفحص ده التقرير
+        // بيتسجل بمؤلف هيترفض بعد كده بـ403 من checkPlayerOwnership/checkReportOwnership
+        // على نفس اللاعب (بيانات ميتة، مالهاش صاحب يقدر يوصلها).
+        const player = await Player.findById(req.params.playerId).select("observers");
+        const isAssigned = (player?.observers ?? []).some(
+            (o) => o.toString() === req.body.assignedObserver.toString()
+        );
+        if (!isAssigned) {
+            return next(new AppError("The selected observer is not assigned to this player", 400));
+        }
+
+        const observerUser = await User.findOne({ _id: req.body.assignedObserver, role: ROLES.OBSERVER }).select("_id");
+        if (!observerUser) {
+            return next(new AppError("The selected observer is not a valid active observer", 400));
+        }
+
+        effectiveAuthor = observerUser._id;
+        authorIsObserver = true;
+    }
+    delete req.body.assignedObserver;
+
+    // منع تكرار (player, coach, seasonMatch) — المؤشر الفريد في الموديل بيرفضه
+    // برسالة واضحة بس في production (errorMiddleware.dublicateKeyHandler)؛ في
+    // development كان هيطلع 500. الفحص الصريح ده بيقفل الفجوة دي في كل بيئة.
+    if (req.body.seasonMatch) {
+        const duplicate = await ScoutingReport.exists({
+            player: req.params.playerId,
+            coach: effectiveAuthor,
+            seasonMatch: req.body.seasonMatch,
+        });
+        if (duplicate) {
+            return next(new AppError("A report for this match by this author already exists", 400));
+        }
+    }
+
+    req.body.coach = effectiveAuthor;
     const created = await ScoutingReport.create(req.body);
     const document = await ScoutingReport.findById(created._id).populate(reportPopulate);
 
-    // عدد التقارير فى الداشبورد بتاع الكاتب (كوتش أو أوبزيرفر) بيتحدث لايف
-    if (req.user.role === ROLES.OBSERVER) {
-        emitObserverDashboardUpdate(req.user._id);
-    } else {
-        emitCoachDashboardUpdate(req.user._id);
+    // عدد التقارير فى الداشبورد بتاع الكاتب (كوتش أو أوبزيرفر) بيتحدث لايف.
+    // admin-assign-players-reports-media — الأدمن اللي بيؤلف لنفسه (من غير
+    // assignedObserver) مالوش داشبورد كوتش/أوبزيرفر يتحدث، فمفيش emit في الحالة دي.
+    if (authorIsObserver) {
+        emitObserverDashboardUpdate(effectiveAuthor);
+    } else if (req.user.role !== ROLES.ADMIN) {
+        emitCoachDashboardUpdate(effectiveAuthor);
     }
 
     res.status(201).json({

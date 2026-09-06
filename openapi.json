@@ -2481,7 +2481,7 @@
         }
       },
       "post": {
-        "summary": "Create a scouting report for a player (coach, observer, or proScout — each within its own data scope)",
+        "summary": "Create a scouting report for a player (coach, observer, proScout, or admin — each within its own data scope; admin may attribute authorship to an observer assigned to this player)",
         "tags": [
           "Reports"
         ],
@@ -2528,6 +2528,10 @@
                   },
                   "notes": {
                     "type": "string"
+                  },
+                  "assignedObserver": {
+                    "type": "string",
+                    "description": "Admin only. Id of an observer already assigned to this player (in its `observers` array) — the report is authored as that observer instead of the admin.\n"
                   }
                 }
               }
@@ -2679,7 +2683,7 @@
         }
       },
       "patch": {
-        "summary": "Update a scouting report (coach, observer, or proScout — own reports only)",
+        "summary": "Update a scouting report (coach, observer, proScout, or admin — own reports only; admin editing another author's report is rejected even though it can read any report)",
         "tags": [
           "Reports"
         ],
@@ -3807,7 +3811,7 @@
         }
       },
       "post": {
-        "summary": "Upload a companion IMAGE for a video (coach/observer, multipart). Standalone image upload is not supported — every image must accompany a video via linkedVideo. Video uploads go directly to Bunny via POST /media/video.",
+        "summary": "Upload a companion IMAGE for a video (coach/observer/proScout/admin, multipart). Standalone image upload is not supported — every image must accompany a video via linkedVideo. Video uploads go directly to Bunny via POST /media/video.",
         "tags": [
           "Media"
         ],
@@ -3844,7 +3848,11 @@
                   },
                   "linkedVideo": {
                     "type": "string",
-                    "description": "Required PlayerMedia id of the video (same player, same uploader) this photo accompanies — max 2 images per video"
+                    "description": "Required PlayerMedia id of the video (same player, same effective author) this photo accompanies — max 2 images per video"
+                  },
+                  "assignedObserver": {
+                    "type": "string",
+                    "description": "Admin only. Id of an observer already assigned to this player — the upload is attributed to that observer instead of the admin.\n"
                   }
                 }
               }
@@ -3890,7 +3898,7 @@
     },
     "/players/{playerId}/media/video": {
       "post": {
-        "summary": "Start a video upload — mints a Bunny Stream video and returns a presigned TUS envelope. seasonMatch is no longer accepted from the client — it is auto-resolved from the player's team fixtures (a 3-day window around the match) and the caller's role.",
+        "summary": "Start a video upload — mints a Bunny Stream video and returns a presigned TUS envelope. seasonMatch is no longer accepted from the client — it is auto-resolved from the effective author's team fixtures (a 3-day window around the match).",
         "tags": [
           "Media"
         ],
@@ -3922,6 +3930,10 @@
                   "fileHash": {
                     "type": "string",
                     "description": "SHA-256 hex digest of the video file, computed client-side before upload — used to block duplicate uploads of the same video for this player"
+                  },
+                  "assignedObserver": {
+                    "type": "string",
+                    "description": "Admin only. Id of an observer already assigned to this player — the upload is attributed (`uploadedBy`) to that observer instead of the admin.\n"
                   }
                 }
               }
@@ -4001,6 +4013,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "assignedObserver",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Admin only. Preview the gate as it would resolve for this assigned observer instead of the admin itself.\n"
           }
         ],
         "responses": {

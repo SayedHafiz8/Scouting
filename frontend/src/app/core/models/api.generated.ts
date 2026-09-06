@@ -1162,7 +1162,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Create a scouting report for a player (coach, observer, or proScout — each within its own data scope) */
+        /** Create a scouting report for a player (coach, observer, proScout, or admin — each within its own data scope; admin may attribute authorship to an observer assigned to this player) */
         post: {
             parameters: {
                 query?: never;
@@ -1183,6 +1183,8 @@ export interface paths {
                         physical: components["schemas"]["PhysicalSkills"];
                         mental: components["schemas"]["MentalSkills"];
                         notes?: string;
+                        /** @description Admin only. Id of an observer already assigned to this player (in its `observers` array) — the report is authored as that observer instead of the admin. */
+                        assignedObserver?: string;
                     };
                 };
             };
@@ -1321,7 +1323,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Update a scouting report (coach, observer, or proScout — own reports only) */
+        /** Update a scouting report (coach, observer, proScout, or admin — own reports only; admin editing another author's report is rejected even though it can read any report) */
         patch: {
             parameters: {
                 query?: never;
@@ -2006,7 +2008,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Upload a companion IMAGE for a video (coach/observer, multipart). Standalone image upload is not supported — every image must accompany a video via linkedVideo. Video uploads go directly to Bunny via POST /media/video. */
+        /** Upload a companion IMAGE for a video (coach/observer/proScout/admin, multipart). Standalone image upload is not supported — every image must accompany a video via linkedVideo. Video uploads go directly to Bunny via POST /media/video. */
         post: {
             parameters: {
                 query?: never;
@@ -2023,8 +2025,10 @@ export interface paths {
                         file: string;
                         title?: string;
                         description?: string;
-                        /** @description Required PlayerMedia id of the video (same player, same uploader) this photo accompanies — max 2 images per video */
+                        /** @description Required PlayerMedia id of the video (same player, same effective author) this photo accompanies — max 2 images per video */
                         linkedVideo: string;
+                        /** @description Admin only. Id of an observer already assigned to this player — the upload is attributed to that observer instead of the admin. */
+                        assignedObserver?: string;
                     };
                 };
             };
@@ -2064,7 +2068,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start a video upload — mints a Bunny Stream video and returns a presigned TUS envelope. seasonMatch is no longer accepted from the client — it is auto-resolved from the player's team fixtures (a 3-day window around the match) and the caller's role. */
+        /** Start a video upload — mints a Bunny Stream video and returns a presigned TUS envelope. seasonMatch is no longer accepted from the client — it is auto-resolved from the effective author's team fixtures (a 3-day window around the match). */
         post: {
             parameters: {
                 query?: never;
@@ -2083,6 +2087,8 @@ export interface paths {
                         description?: string;
                         /** @description SHA-256 hex digest of the video file, computed client-side before upload — used to block duplicate uploads of the same video for this player */
                         fileHash?: string;
+                        /** @description Admin only. Id of an observer already assigned to this player — the upload is attributed (`uploadedBy`) to that observer instead of the admin. */
+                        assignedObserver?: string;
                     };
                 };
             };
@@ -2168,7 +2174,10 @@ export interface paths {
         /** Preview the video-upload gate for this player without creating anything — lets the UI show whether upload is freeform (title/description required) or will auto-link to a match. */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Admin only. Preview the gate as it would resolve for this assigned observer instead of the admin itself. */
+                    assignedObserver?: string;
+                };
                 header?: never;
                 path: {
                     playerId: string;

@@ -1,10 +1,22 @@
-import { body, param } from "express-validator";
+import { body, param, query } from "express-validator";
 import mongoose from "mongoose";
 import validatorMiddleware from "../../middlewares/validatorMiddleware.js";
 import PlayerMedia from "../../models/playerMediaModel.js";
 import { resolveVideoUploadGate } from "../../services/mediaMatchGate.js";
+import { ROLES } from "../../constants/roles.js";
 
 const MAX_LINKED_IMAGES_PER_VIDEO = 2;
+
+// admin-assign-players-reports-media — نفس فكرة lockFieldExceptAdmin في
+// playerValidation.js/scoutingValidation.js. مقفول لكل رول ما عدا الأدمن —
+// القيمة (لازم تبقى أوبزيرفر معيَّن فعلاً على اللاعب) بتتحقق في
+// resolveEffectiveAuthor (playerMediaController.js)، هنا الشكل بس.
+const lockFieldExceptAdmin = (field) =>
+    body(field)
+        .if((v, { req }) => req.user?.role !== ROLES.ADMIN)
+        .not()
+        .exists()
+        .withMessage(`${field} cannot be set manually`);
 
 
 // ============================
@@ -48,9 +60,16 @@ export const uploadMediaValidator = [
             if (!video || video.type !== "video") {
                 throw new Error(`No video for this linkedVideo id: ${val}`);
             }
+            // admin-assign-players-reports-media — الـuploader اللي بيتقارن بيه هنا
+            // بقى req.effectiveAuthor (اللي resolveEffectiveAuthor حطه في الراوتر قبل
+            // الفاليديشن دي)، مش req.user._id مباشرة — عشان الصورة المرفقة تتطابق مع
+            // نفس المؤلف الفعلي بتاع الفيديو، سواء رفع الأدمن لنفسه أو بالنيابة عن
+            // أوبزيرفر معيَّن. لغير الأدمن effectiveAuthor === req.user._id دايماً،
+            // فالسلوك زي ما هو بالظبط.
+            const effectiveAuthor = req.effectiveAuthor ?? req.user._id;
             if (
                 video.player.toString() !== req.params.playerId ||
-                video.uploadedBy.toString() !== req.user._id.toString()
+                video.uploadedBy.toString() !== effectiveAuthor.toString()
             ) {
                 throw new Error("linkedVideo must belong to the same player and uploader");
             }
@@ -83,7 +102,8 @@ export const uploadMediaValidator = [
 
     }),
 
-
+    lockFieldExceptAdmin("assignedObserver"),
+    body("assignedObserver").optional().isMongoId().withMessage("Invalid assignedObserver id"),
 
     validatorMiddleware
 
@@ -121,7 +141,10 @@ export const createVideoValidator = [
     // مفيش seasonMatch من العميل بقى — بيتحدد تلقائي حسب فريق اللاعب وتاريخ النهاردة (mediaMatchGate).
     // النتيجة بتتخزن على req.mediaGate عشان الـcontroller يستخدمها من غير ما يعيد الاستعلام.
     body().custom(async (_, { req }) => {
-        const gate = await resolveVideoUploadGate(req.params.playerId, req.user.role, req.user._id);
+        // admin-assign-players-reports-media — req.effectiveAuthor محطوط من
+        // resolveEffectiveAuthor في الراوتر، قبل الفاليديشن دي.
+        const effectiveAuthor = req.effectiveAuthor ?? req.user._id;
+        const gate = await resolveVideoUploadGate(req.params.playerId, req.user.role, effectiveAuthor);
         req.mediaGate = gate;
 
         if (gate.mode === "freeform") {
@@ -137,13 +160,14 @@ export const createVideoValidator = [
     // كشف تكرار رفع نفس الفيديو لنفس اللاعب — بيتجاهل فيديو processing لنفس الرافع
     // (ده بيسيب مسار إعادة الرفع لنفس اليوزر شغال زي ما هو عن طريق منطق in-flight في createVideo)
     body().custom(async (_, { req }) => {
+        const effectiveAuthor = req.effectiveAuthor ?? req.user._id;
         const duplicate = await PlayerMedia.findOne({
             player: req.params.playerId,
             type: "video",
             fileHash: req.body.fileHash,
             $or: [
                 { status: "ready" },
-                { status: "processing", uploadedBy: { $ne: req.user._id } },
+                { status: "processing", uploadedBy: { $ne: effectiveAuthor } },
             ],
         });
         if (duplicate) {
@@ -151,6 +175,9 @@ export const createVideoValidator = [
         }
         return true;
     }),
+
+    lockFieldExceptAdmin("assignedObserver"),
+    body("assignedObserver").optional().isMongoId().withMessage("Invalid assignedObserver id"),
 
     validatorMiddleware,
 ];
@@ -165,6 +192,15 @@ export const getUploadEligibilityValidator = [
         .withMessage("Player ID is required")
         .custom((value) => mongoose.Types.ObjectId.isValid(value))
         .withMessage("Invalid Player ID"),
+
+    // admin-assign-players-reports-media — نفس lockFieldExceptAdmin بس على query
+    // مش body (GET). القيمة بتتحقق في resolveEffectiveAuthor("query").
+    query("assignedObserver")
+        .if((v, { req }) => req.user?.role !== ROLES.ADMIN)
+        .not()
+        .exists()
+        .withMessage("assignedObserver cannot be set manually"),
+    query("assignedObserver").optional().isMongoId().withMessage("Invalid assignedObserver id"),
 
     validatorMiddleware,
 ];

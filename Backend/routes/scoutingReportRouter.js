@@ -52,7 +52,7 @@
  *         $ref: '#/components/responses/NotFound'
  *
  *   post:
- *     summary: Create a scouting report for a player (coach, observer, or proScout — each within its own data scope)
+ *     summary: Create a scouting report for a player (coach, observer, proScout, or admin — each within its own data scope; admin may attribute authorship to an observer assigned to this player)
  *     tags: [Reports]
  *     parameters:
  *       - in: path
@@ -82,6 +82,12 @@
  *                 $ref: '#/components/schemas/MentalSkills'
  *               notes:
  *                 type: string
+ *               assignedObserver:
+ *                 type: string
+ *                 description: >
+ *                   Admin only. Id of an observer already assigned to this player
+ *                   (in its `observers` array) — the report is authored as that
+ *                   observer instead of the admin.
  *     responses:
  *       201:
  *         description: Report created — overallRating auto-calculated as average of 12 metrics
@@ -174,7 +180,7 @@
  *         $ref: '#/components/responses/NotFound'
  *
  *   patch:
- *     summary: Update a scouting report (coach, observer, or proScout — own reports only)
+ *     summary: Update a scouting report (coach, observer, proScout, or admin — own reports only; admin editing another author's report is rejected even though it can read any report)
  *     tags: [Reports]
  *     parameters:
  *       - in: path
@@ -256,7 +262,7 @@ import express from "express";
 
 import { create, deleting, getAll, getSpecific, setPlayerToBody, resolveSeasonMatchToBody, resolveMatchTypeFields, update, getPlayerStatistics } from "../controllers/scoutingReportController.js";
 import { protect, allowedTo } from "../controllers/authController.js";
-import { checkPlayerOwnership, checkReportOwnership } from "../middlewares/ownership.js";
+import { checkPlayerOwnership, checkReportOwnership, denyAdminEditingOthersReport } from "../middlewares/ownership.js";
 import { createValidate, deleteValidate, getAllValidate, getSpecificValidate, updateValidate, statisticsValidate } from "../utils/validation/scoutingValidation.js";
 import { ROLES } from "../constants/roles.js";
 
@@ -270,10 +276,16 @@ const scoutingRouter = express.Router({ mergeParams: true });
 //
 // getAll بيضيّق غير الأدمن على تقاريره هو (baseFilter.coach = req.user._id في
 // scoutingReportController)، فالـproScout ورث السلوك الضيق الصح من غير منطق جديد.
+//
+// admin-assign-players-reports-media — POST اتفتح للأدمن كمان. checkPlayerOwnership
+// بيعمل short-circuit للأدمن (بلا فحوصات)، فالحد بيسمح للأدمن يوصل لأي لاعب —
+// المؤلف الفعلي (coach) بيتحدد جوه create() نفسها: صاحب التوكن، أو أوبزيرفر
+// معيَّن على اللاعب لو الأدمن بعت assignedObserver (lockFieldExceptAdmin في
+// scoutingValidation.js بيمنع أي رول تاني من إرساله).
 scoutingRouter
     .route("/")
     .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, getAllValidate, getAll)
-    .post(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, resolveMatchTypeFields, createValidate, setPlayerToBody, resolveSeasonMatchToBody, create);
+    .post(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, resolveMatchTypeFields, createValidate, setPlayerToBody, resolveSeasonMatchToBody, create);
 
 
 scoutingRouter
@@ -281,10 +293,14 @@ scoutingRouter
     .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkPlayerOwnership, statisticsValidate, getPlayerStatistics);
 
 
+// admin-assign-players-reports-media — PATCH اتفتح للأدمن كمان، بس محدود على
+// تقاريره هو. checkReportOwnership بيعمل short-circuit كامل للأدمن (زي ما هو —
+// القراءة والإشراف محتاجينه)، فـdenyAdminEditingOthersReport هو اللي بيضيّق: أي
+// تقرير مؤلفه مش الأدمن نفسه بيترفض بـ403 هنا، بعد الحارس العام مباشرة.
 scoutingRouter
     .route("/:id")
     .get(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT),checkReportOwnership, getSpecificValidate,getSpecific)
-    .patch(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkReportOwnership,updateValidate, resolveSeasonMatchToBody, update)
+    .patch(protect, allowedTo(ROLES.COACH, ROLES.ADMIN, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkReportOwnership, denyAdminEditingOthersReport, updateValidate, resolveSeasonMatchToBody, update)
     // ⚠️ DELETE بيفضل أدمن-أونلي — **متضفش proScout هنا** (research R2).
     // خطة المرحلة كانت بتقول "حالياً coach + observer" وده غلط: الكوتش نفسه
     // مايقدرش يمسح تقرير. إضافة proScout كانت هتدي رول جديد صلاحية هدّامة
