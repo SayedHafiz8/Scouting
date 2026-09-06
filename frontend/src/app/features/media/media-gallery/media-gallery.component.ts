@@ -21,7 +21,11 @@ import type { MediaRejectionReason } from '../../../core/models/player-media.mod
       <!-- Header -->
       <div class="flex items-center justify-between">
         <p class="px-1 text-xs font-medium" style="color:var(--text-secondary)">{{ 'MEDIA.ALL' | translate }}</p>
-        @if (auth.isCoach() || auth.isObserver()) {
+        <!-- رفع الميديا مفتوح للـproScout على السيرفر (playerMediaRouter:
+             ROLES.PRO_SCOUT على كل مسارات الرفع)، والزرار كان مستثنيه بس.
+             admin-assign-players-reports-media — الأدمن اتضاف كمان (playerMediaRouter
+             بيقبله على كل مسارات الرفع دلوقتي، مع resolveEffectiveAuthor). -->
+        @if (auth.isCoach() || auth.isObserver() || auth.isProScout() || auth.isAdmin()) {
           <button class="btn btn-primary btn-sm" (click)="showUpload.set(true)">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
@@ -52,7 +56,7 @@ import type { MediaRejectionReason } from '../../../core/models/player-media.mod
         <app-empty-state
           [title]="'MEDIA.EMPTY' | translate"
           [message]="'MEDIA.EMPTY_ALL' | translate"
-          [actionLabel]="(auth.isCoach() || auth.isObserver()) ? ('MEDIA.UPLOAD_MEDIA' | translate) : null"
+          [actionLabel]="(auth.isCoach() || auth.isObserver() || auth.isProScout() || auth.isAdmin()) ? ('MEDIA.UPLOAD_MEDIA' | translate) : null"
           (actionClicked)="showUpload.set(true)"
           icon="media"
         />

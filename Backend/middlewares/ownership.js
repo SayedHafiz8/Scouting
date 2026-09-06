@@ -89,7 +89,10 @@ export const checkReportOwnership = asyncHandler(async (req, res, next) => {
     }
 
     if (req.user.role === ROLES.COACH || req.user.role === ROLES.OBSERVER) {
-        if (report.coach.toString() !== req.user._id.toString()) {
+        // §12 — report.coach ممكن يبقى null (المؤلف اتمسح نهائياً). من غير الفحص
+        // ده، .toString() على null كان بيرمي 500 بدل 403. الفرع proScout تحت
+        // كان محروس من الأول (isAuthor مبني على &&)؛ الفرع ده كان الوحيد الناقص.
+        if (!report.coach || report.coach.toString() !== req.user._id.toString()) {
             return next(new AppError("You are not allowed to access this report", 403));
         }
         if (report.player.toString() !== req.params.playerId) {
@@ -142,6 +145,24 @@ export const checkReportOwnership = asyncHandler(async (req, res, next) => {
     return next(new AppError("You are not allowed to access this report", 403));
 });
 
+// admin-assign-players-reports-media — checkReportOwnership فوق بيعمل short-circuit
+// للأدمن بلا أي فحص (مطلوب عشان الأدمن يقدر يقرا/يعدّل تقريره هو أو يقرا أي تقرير
+// كإشراف). ضيف ADMIN لـallowedTo على PATCH لوحدها كان هيدّي الأدمن تعديل أي تقرير
+// لأي كوتش/أوبزيرفر بالمصادفة. الميدلوير ده بينفّذ **بعد** checkReportOwnership
+// وعلى راوت الـPATCH بس — بيضيّق الأدمن على تقاريره هو، بلا ما يلمس مسار القراءة.
+export const denyAdminEditingOthersReport = asyncHandler(async (req, res, next) => {
+    if (req.user.role !== ROLES.ADMIN) return next();
+
+    const report = await ScoutingReport.findById(req.params.id).select("coach");
+    if (!report) {
+        return next(new AppError("Scouting report not found", 404));
+    }
+    if (!report.coach || report.coach.toString() !== req.user._id.toString()) {
+        return next(new AppError("You are not allowed to access this report", 403));
+    }
+    return next();
+});
+
 export const checkMediaOwnership = asyncHandler(async (req, res, next) => {
     const media = await PlayerMedia.findById(req.params.id).select("uploadedBy player").lean();
 
@@ -154,8 +175,10 @@ export const checkMediaOwnership = asyncHandler(async (req, res, next) => {
     }
 
     if (req.user.role === ROLES.COACH || req.user.role === ROLES.OBSERVER) {
-        // الوسائط بتخص من رفعها بس (كوتش أو أوبزيرفر) + الأدمن — غيرهم متشافش
-        if (media.uploadedBy.toString() !== req.user._id.toString()) {
+        // §12 — media.uploadedBy ممكن يبقى null (الرافع اتمسح نهائياً). نفس تصليح
+        // checkReportOwnership فوق بالظبط: من غيره .toString() على null كان
+        // بيرمي 500 بدل 403. الفرع proScout تحت كان محروس من الأول.
+        if (!media.uploadedBy || media.uploadedBy.toString() !== req.user._id.toString()) {
             return next(new AppError("You are not allowed to access this media", 403));
         }
         if (media.player.toString() !== req.params.playerId) {

@@ -78,6 +78,52 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
     // official
     if (!player?.team) return next();
 
+    // الـproScout مش مقيّد بيوم المباراة: بيكتب تقاريره وقت ما يقدر، مش لازم
+    // في نفس يوم اللعب. القيد ده كان محسوس بشكل خاص عليه لأن مباريات دوري
+    // المحترفين قليلة ومتباعدة، فكان معناه عملياً إن التقرير الرسمي شبه مقفول.
+    //
+    // اللي **ما اتغيّرش** هو الضمانة اللي القيد أصلاً موجود عشانها: التقرير
+    // لازم يترتبط بمباراة **حقيقية من الجدول**، وmatchDate بيتاخد من المباراة
+    // نفسها (في resolveSeasonMatchToBody تحت) مش من تاريخ الإنشاء. يعني تقرير
+    // على مباراة الأسبوع اللي فات بيتسجّل بتاريخ المباراة الصح، مش النهاردة.
+    // ده بالظبط اللي كان بيتكسر قبل ما القاعدة دي تتكتب.
+    //
+    // والمباراة لازم تكون بتاعت فريق اللاعب نفسه — مينفعش يربط تقريره بأي
+    // مباراة في الجدول.
+    // admin-assign-players-reports-media — الأدمن كمان مش مقيّد بيوم المباراة، لنفس
+    // سبب الـproScout بالظبط: بيكتب تقارير وقت ما يقدر (على نفسه أو بالنيابة عن
+    // أوبزيرفر معيَّن)، مش لازم في يوم اللعب. "مايتغيرش" هنا نفسها بالظبط.
+    if ((req.user.role === ROLES.PRO_SCOUT || req.user.role === ROLES.ADMIN) && req.body.seasonMatch) {
+        const chosen = await SeasonMatch.findById(req.body.seasonMatch).setOptions({ skipPopulate: true });
+
+        if (!chosen) {
+            return next(new AppError("Season match not found", 404));
+        }
+
+        const playerTeamId = player.team.toString();
+        const involvesPlayerTeam =
+            chosen.homeTeam?.toString() === playerTeamId ||
+            chosen.awayTeam?.toString() === playerTeamId;
+
+        if (!involvesPlayerTeam) {
+            return next(new AppError("That match does not involve this player's team", 400));
+        }
+
+        // القيد الوحيد اللي فضل على التوقيت: مباراة لسه ماتلعبتش. تقرير على
+        // مباراة في المستقبل مالوش معنى — مفيش حاجة اتشافت عشان تتقيّم. المقارنة
+        // بنهاية يوم المباراة بالـUTC عشان ماتش النهاردة (متخزّن منتصف ليل UTC)
+        // يفضل مسموح طول اليوم.
+        if (chosen.matchDate >= utcDayRange(new Date()).end) {
+            return next(new AppError("You cannot report on a match that has not been played yet", 400));
+        }
+
+        delete req.body.homeTeam;
+        delete req.body.homeTeamName;
+        delete req.body.awayTeam;
+        delete req.body.awayTeamName;
+        return next();
+    }
+
     // audit-backend C3 — "النهاردة" بيوم UTC كامل، مش يوم بتوقيت السيرفر.
     // matchDate متخزّن منتصف ليل UTC، فيوم محلي كان بيزح النافذة بفرق التوقيت
     // ويخلي ماتش النهاردة يقع برّه النافذة في آخر/أول ساعات اليوم.
@@ -116,19 +162,65 @@ export const resolveSeasonMatchToBody = asyncHandler(async (req, res, next) => {
     next();
 });
 
-// @desc    Create scouting report (author = the logged-in coach OR observer)
+// @desc    Create scouting report (author = the logged-in coach/observer/proScout,
+//          or — admin only — an observer assigned to this player on the admin's behalf)
 // @route   POST /api/v1/scouting
-// @access  Private - coach & observer
+// @access  Private - coach, observer, proScout & admin
 export const create = asyncHandler(async (req, res, next) => {
-    req.body.coach = req.user._id;
+    // admin-assign-players-reports-media — effectiveAuthor هو مين هيتسجل كـcoach
+    // (اسم الحقل تاريخي، هو حقل "المؤلف" الفعلي). افتراضياً صاحب التوكن نفسه —
+    // بيتغير بس لو الأدمن بعت assignedObserver (lockFieldExceptAdmin في
+    // scoutingValidation.js بيمنع أي رول تاني من إرساله أصلاً).
+    let effectiveAuthor = req.user._id;
+    let authorIsObserver = req.user.role === ROLES.OBSERVER;
+
+    if (req.user.role === ROLES.ADMIN && req.body.assignedObserver) {
+        // لازم يبقى أوبزيرفر معيَّن فعلاً على اللاعب ده — من غير الفحص ده التقرير
+        // بيتسجل بمؤلف هيترفض بعد كده بـ403 من checkPlayerOwnership/checkReportOwnership
+        // على نفس اللاعب (بيانات ميتة، مالهاش صاحب يقدر يوصلها).
+        const player = await Player.findById(req.params.playerId).select("observers");
+        const isAssigned = (player?.observers ?? []).some(
+            (o) => o.toString() === req.body.assignedObserver.toString()
+        );
+        if (!isAssigned) {
+            return next(new AppError("The selected observer is not assigned to this player", 400));
+        }
+
+        const observerUser = await User.findOne({ _id: req.body.assignedObserver, role: ROLES.OBSERVER }).select("_id");
+        if (!observerUser) {
+            return next(new AppError("The selected observer is not a valid active observer", 400));
+        }
+
+        effectiveAuthor = observerUser._id;
+        authorIsObserver = true;
+    }
+    delete req.body.assignedObserver;
+
+    // منع تكرار (player, coach, seasonMatch) — المؤشر الفريد في الموديل بيرفضه
+    // برسالة واضحة بس في production (errorMiddleware.dublicateKeyHandler)؛ في
+    // development كان هيطلع 500. الفحص الصريح ده بيقفل الفجوة دي في كل بيئة.
+    if (req.body.seasonMatch) {
+        const duplicate = await ScoutingReport.exists({
+            player: req.params.playerId,
+            coach: effectiveAuthor,
+            seasonMatch: req.body.seasonMatch,
+        });
+        if (duplicate) {
+            return next(new AppError("A report for this match by this author already exists", 400));
+        }
+    }
+
+    req.body.coach = effectiveAuthor;
     const created = await ScoutingReport.create(req.body);
     const document = await ScoutingReport.findById(created._id).populate(reportPopulate);
 
-    // عدد التقارير فى الداشبورد بتاع الكاتب (كوتش أو أوبزيرفر) بيتحدث لايف
-    if (req.user.role === ROLES.OBSERVER) {
-        emitObserverDashboardUpdate(req.user._id);
-    } else {
-        emitCoachDashboardUpdate(req.user._id);
+    // عدد التقارير فى الداشبورد بتاع الكاتب (كوتش أو أوبزيرفر) بيتحدث لايف.
+    // admin-assign-players-reports-media — الأدمن اللي بيؤلف لنفسه (من غير
+    // assignedObserver) مالوش داشبورد كوتش/أوبزيرفر يتحدث، فمفيش emit في الحالة دي.
+    if (authorIsObserver) {
+        emitObserverDashboardUpdate(effectiveAuthor);
+    } else if (req.user.role !== ROLES.ADMIN) {
+        emitCoachDashboardUpdate(effectiveAuthor);
     }
 
     res.status(201).json({
@@ -156,10 +248,15 @@ export const getAll = asyncHandler(async (req, res, next) => {
     // داخل سكوب اللاعب. لو احتجناه بعدين، $text على notes هو الشكل الصح.
     const features = new ApiFeature(ScoutingReport.find(baseFilter), req.query, req.params, req.user);
 
-    const documentCount = await ScoutingReport.countDocuments(features.query.getFilter());
-    features.sort(REPORT_SORT_FIELDS).limitFields().paginate(documentCount);
+    // perf audit — العدّ والجلب مستقلين، فبيتنفذوا مع بعض. نفس الفلتر للاتنين.
+    const countFilter = features.query.getFilter();
+    features.sort(REPORT_SORT_FIELDS).limitFields().applyPagination();
 
-    const documents = await features.query.populate(reportPopulate);
+    const [documentCount, documents] = await Promise.all([
+        ScoutingReport.countDocuments(countFilter),
+        features.query.populate(reportPopulate),
+    ]);
+    features.buildPagination(documentCount);
 
     // للأدمن بس: عدد ريبورتات الكوتشات مقابل الأوبزيرفرز على اللاعب ده (مستقل عن فلتر authorRole الحالي، عشان يبان في شكل الأيقونتين مع بعض)
     let authorCounts;

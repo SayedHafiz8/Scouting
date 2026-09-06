@@ -6,10 +6,11 @@ import { RouterLink } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { AuthService } from '../../../core/auth/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
-import { SeasonMatch, SeasonMatchReport, SeasonMatchMedia, SeasonMatchStatus, SeasonMatchLeague, SEASON_MATCH_LEAGUES } from '../../../core/models/season-match.model';
+import { SeasonMatch, SeasonMatchReport, SeasonMatchMedia, SeasonMatchStatus, SeasonMatchLeague, SeasonMatchFilters } from '../../../core/models/season-match.model';
 import { Team } from '../../../core/models/team.model';
 import { AgeGroup } from '../../../core/models/age-group.model';
 import { Player } from '../../../core/models/player.model';
+import { Pagination } from '../../../core/models/api-response.model';
 import { SeasonMatchService } from '../services/season-match.service';
 import { PlayerService } from '../../players/services/player.service';
 import { TeamService } from '../../teams/services/team.service';
@@ -73,7 +74,7 @@ interface MediaRow {
           <p class="page-subtitle">{{ 'SEASON_MATCHES.SCHEDULE_SUBTITLE' | translate }}</p>
         </div>
         @if (seasonOptions().length > 0) {
-          <select [(ngModel)]="seasonFilter" (ngModelChange)="load()" class="form-input text-sm !w-auto">
+          <select [(ngModel)]="seasonFilter" (ngModelChange)="onSeasonFilterChange()" class="form-input text-sm !w-auto">
             <option value="">{{ 'SEASON_MATCHES.ALL_SEASONS' | translate }}</option>
             @for (s of seasonOptions(); track s) {
               <option [value]="s">{{ s }}</option>
@@ -82,23 +83,32 @@ interface MediaRow {
         }
       </div>
 
-      <!-- League toggle — a separate schedule per league. Hidden for proScout: the role
-           only ever has one league in scope, so there is nothing to toggle (research.md R6). -->
+      <!-- League/age-group toggle. Hidden for proScout: the role only ever has one
+           league in scope, so there is nothing to toggle (research.md R6).
+           "الدوري الممتار" used to be one flat tab covering every age group; it's now
+           one tab per age group that actually has a premier match registered — an
+           age group with zero matches ever recorded gets no tab at all, so the list
+           never lands on a silently-empty "premier, unfiltered" view. -->
       <div class="flex flex-wrap items-center justify-between gap-3">
         @if (!auth.isProScout()) {
-          <div class="inline-flex gap-1 p-1 rounded-xl" style="background:var(--bg-secondary)">
-            @for (lg of leagues; track lg.value) {
-              <button type="button" (click)="selectLeague(lg.value)"
+          <div class="inline-flex flex-wrap gap-1 p-1 rounded-xl" style="background:var(--bg-secondary)">
+            @for (ag of premierAgeGroupTabs(); track ag._id) {
+              <button type="button" (click)="selectAgeGroupTab(ag)"
                       class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                      [class]="selectedLeague() === lg.value ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
-                {{ lg.labelKey | translate }}
+                      [class]="isAgeGroupTabActive(ag) ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
+                {{ ag.birthYear }}
               </button>
             }
+            <button type="button" (click)="selectLeague('professional')"
+                    class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                    [class]="selectedLeague() === 'professional' ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
+              {{ 'SEASON_MATCHES.LEAGUE_PROFESSIONAL' | translate }}
+            </button>
           </div>
         }
         @if (!auth.isAdmin()) {
           <label class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--text-secondary)">
-            <input type="checkbox" [ngModel]="attendingOnly()" (ngModelChange)="attendingOnly.set($event)" class="rounded" />
+            <input type="checkbox" [ngModel]="attendingOnly()" (ngModelChange)="onAttendingOnlyChange($event)" class="rounded" />
             {{ 'SEASON_MATCHES.ATTENDING_ONLY' | translate }}
           </label>
         }
@@ -282,12 +292,35 @@ interface MediaRow {
             </table>
           </div>
         </div>
+        @if (pagination() && pagination()!.numberOfPages > 1) {
+          <div class="flex items-center justify-between pt-2">
+            <p class="text-sm" style="color:var(--text-muted)">
+              {{ 'SEASON_MATCHES.PAGE_OF' | translate:{ current: pagination()!.currentPage, total: pagination()!.numberOfPages } }}
+            </p>
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn btn-secondary btn-sm" [disabled]="page() === 1"
+                      (click)="changePage(page() - 1)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+                {{ 'SEASON_MATCHES.PREV' | translate }}
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" [disabled]="page() === pagination()!.numberOfPages"
+                      (click)="changePage(page() + 1)">
+                {{ 'SEASON_MATCHES.NEXT' | translate }}
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        }
       }
 
       <!-- Observer secondary view — the next scheduled match for each observed player's team -->
       @if (auth.isObserver()) {
         <div class="card overflow-hidden">
-          <button type="button" class="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold" style="color:var(--text-primary)" (click)="observedOpen.set(!observedOpen())">
+          <button type="button" class="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold" style="color:var(--text-primary)" (click)="toggleObservedPanel()">
             <span>{{ 'SEASON_MATCHES.OBSERVED_PLAYERS' | translate }}</span>
             <svg class="w-4 h-4 transition-transform" [class.rotate-180]="observedOpen()" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
@@ -340,14 +373,22 @@ export class MyMatchesComponent implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
 
-  readonly leagues = SEASON_MATCH_LEAGUES;
   // proScout has exactly one league in scope — default straight to it instead of 'premier',
   // which the scope layer's $and wrap would silently return zero rows for (research.md R6).
   readonly selectedLeague = signal<SeasonMatchLeague>(this.auth.isProScout() ? 'professional' : 'premier');
+  // The premier tab set is now per-age-group, not a single flat tab — see
+  // loadAllSeasons(), which derives this from the same unfiltered fetch it already
+  // makes for the season dropdown (no extra request). null until that resolves.
+  readonly premierAgeGroupTabs = signal<AgeGroup[]>([]);
+  readonly selectedAgeGroupId = signal<string | null>(null);
   readonly attendingOnly = signal(false);
+
+  private static readonly PAGE_SIZE = 20;
 
   readonly loading = signal(true);
   readonly matches = signal<SeasonMatch[]>([]);
+  readonly pagination = signal<Pagination | null>(null);
+  readonly page = signal(1);
   readonly allSeasons = signal<string[]>([]);
   readonly expandedMatchId = signal<string | null>(null);
   readonly matchReports = signal<SeasonMatchReport[]>([]);
@@ -361,6 +402,7 @@ export class MyMatchesComponent implements OnInit {
   readonly observedOpen = signal(false);
   readonly observedLoading = signal(true);
   readonly observedRows = signal<ObservedPlayerRow[]>([]);
+  private observedLoaded = false;
 
   // Result entry — any attendee (coach or observer) can report the result of a match they attended, once it's happened
   readonly resultMatchId = signal<string | null>(null);
@@ -380,13 +422,14 @@ export class MyMatchesComponent implements OnInit {
   // القيد القديم اللي كان بيقصره على ماتشات حضرها + ماتش قادم واحد لكل لاعب متابَع اتلغى، لأنه كان
   // انعكاس فرونت إند لقيد سيرفر اتلغى هو نفسه في seasonMatchController (Stage 1). لوحة
   // "اللاعبين اللي بتابعهم" (observedRows) فضلت زي ما هي — مش جزء من الفلترة هنا.
-  readonly visibleMatches = computed(() => {
-    let list = this.matches();
-    if (this.attendingOnly()) {
-      list = list.filter(m => this.isAttending(m));
-    }
-    return list;
-  });
+  //
+  // Pagination stage — "attending only" used to filter matches() client-side, over
+  // whichever page had already loaded; now that matches() is one server page at a
+  // time (page/limit below), a client-only filter would silently hide attended
+  // matches sitting on a page the user never fetched. It's now the server-side
+  // ?attendees=<id> filter instead (load()), so matches() is already exactly what
+  // should render — this stays a pass-through, not a second filtering layer.
+  readonly visibleMatches = computed(() => this.matches());
 
   // Precomputed row view-models — see the MatchRow comment above. The template's
   // @for iterates this, not visibleMatches() directly.
@@ -415,11 +458,22 @@ export class MyMatchesComponent implements OnInit {
   );
 
   ngOnInit(): void {
-    this.loadAllSeasons();
-    this.load();
-    if (this.auth.isObserver()) {
-      this.loadObservedRows();
+    // The default view for a non-proScout is a premier age-group tab, but which
+    // tab is only known once loadAllSeasons() below resolves premierAgeGroupTabs()
+    // — it calls load() itself the moment it picks the first tab. Loading now and
+    // firing an immediate, ageGroup-less load() here would flash "every premier
+    // match" before snapping to the real default; skip the redundant first call.
+    if (this.selectedLeague() === 'premier' && !this.auth.isProScout()) {
+      this.loading.set(true);
+    } else {
+      this.load();
     }
+    this.loadAllSeasons();
+    // perf audit 2026-09-04 — loadObservedRows() كانت بتتنادى هنا من غير أي شرط،
+    // رغم إن اللوحة نفسها مقفولة افتراضياً (observedOpen = false). وهي مش طلب
+    // واحد: GET /players ← بعدها GET /teams/:id لكل فريق ← بعدها GET /seasonMatches
+    // لكل فئة — تلات موجات متتالية، ~11 طلب في حالة نموذجية، وكل واحد فيهم بنفسه
+    // 3-6 رحلات قاعدة بيانات. دلوقتي بتتحمّل عند أول فتح للوحة بس (مرة واحدة).
   }
 
   private get currentUserId(): string {
@@ -427,29 +481,111 @@ export class MyMatchesComponent implements OnInit {
   }
 
   selectLeague(league: SeasonMatchLeague): void {
-    if (this.selectedLeague() === league) return;
+    if (this.selectedLeague() === league && (league !== 'premier' || !this.selectedAgeGroupId())) return;
     this.selectedLeague.set(league);
+    if (league === 'professional') this.selectedAgeGroupId.set(null);
     this.expandedMatchId.set(null);
     this.resultMatchId.set(null);
+    this.page.set(1);
+    this.load();
+  }
+
+  selectAgeGroupTab(ag: AgeGroup): void {
+    if (this.selectedLeague() === 'premier' && this.selectedAgeGroupId() === ag._id) return;
+    this.selectedLeague.set('premier');
+    this.selectedAgeGroupId.set(ag._id);
+    this.expandedMatchId.set(null);
+    this.resultMatchId.set(null);
+    this.page.set(1);
+    this.load();
+  }
+
+  isAgeGroupTabActive(ag: AgeGroup): boolean {
+    return this.selectedLeague() === 'premier' && this.selectedAgeGroupId() === ag._id;
+  }
+
+  // فلتر الموسم اتغيّر → نرجع لأول صفحة، وإلا ممكن نقف على صفحة متبقاش موجودة
+  // لو النتايج بقت أقل من عدد صفحات الفلتر السابق (نفس قاعدة age-group-detail.component.ts)
+  onSeasonFilterChange(): void {
+    this.page.set(1);
+    this.load();
+  }
+
+  changePage(page: number): void {
+    this.page.set(page);
+    this.load();
+  }
+
+  // اللوحة بتتحمّل عند أول فتح بس؛ الفتحات اللي بعد كده بتعرض نفس البيانات من
+  // غير أي طلبات جديدة (نفس سلوك الكاش اللي كان ضمنياً لما كانت بتتحمّل في ngOnInit).
+  toggleObservedPanel(): void {
+    const opening = !this.observedOpen();
+    this.observedOpen.set(opening);
+    if (opening && !this.observedLoaded) {
+      this.observedLoaded = true;
+      this.loadObservedRows();
+    }
+  }
+
+  onAttendingOnlyChange(value: boolean): void {
+    this.attendingOnly.set(value);
+    this.page.set(1);
     this.load();
   }
 
   load(): void {
     this.loading.set(true);
-    this.seasonMatchService.getAll({ league: this.selectedLeague(), season: this.seasonFilter || undefined, sort: 'matchDate' }).subscribe({
+    const filters: SeasonMatchFilters = {
+      league: this.selectedLeague(),
+      season: this.seasonFilter || undefined,
+      sort: 'matchDate',
+      page: this.page(),
+      limit: MyMatchesComponent.PAGE_SIZE,
+    };
+    if (this.selectedLeague() === 'premier' && this.selectedAgeGroupId()) {
+      filters.ageGroup = this.selectedAgeGroupId()!;
+    }
+    if (this.attendingOnly() && !this.auth.isAdmin()) {
+      filters.attendees = this.currentUserId;
+    }
+    this.seasonMatchService.getAll(filters).subscribe({
       next: (res) => {
         this.matches.set(res.data?.documents ?? []);
+        this.pagination.set(res.pagination ?? null);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
     });
   }
 
-  // unfiltered, so the season dropdown always lists every season on the schedule
+  // Unfiltered (capped at the API's own MAX_LIMIT=200), so the season dropdown
+  // always lists every season on the schedule. Reused for a second purpose now:
+  // deriving which age groups actually have a premier match registered at all,
+  // from the same round trip — a fixture's populated `ageGroup` (see
+  // seasonMatchModel.js's pre-find populate) is enough, no extra request per group.
   private loadAllSeasons(): void {
-    this.seasonMatchService.getAll({}).subscribe(res => {
-      const set = new Set((res.data?.documents ?? []).map(m => m.season));
-      this.allSeasons.set(Array.from(set));
+    this.seasonMatchService.getAll({ limit: 200 }).subscribe(res => {
+      const docs = res.data?.documents ?? [];
+      this.allSeasons.set(Array.from(new Set(docs.map(m => m.season))));
+
+      if (this.auth.isProScout()) return;
+
+      const byId = new Map<string, AgeGroup>();
+      docs.forEach(m => {
+        if (m.league !== 'premier' || !m.ageGroup || typeof m.ageGroup === 'string') return;
+        byId.set(m.ageGroup._id, m.ageGroup);
+      });
+      const tabs = Array.from(byId.values()).sort((a, b) => a.birthYear - b.birthYear);
+      this.premierAgeGroupTabs.set(tabs);
+
+      // First resolution of the default view: land on the earliest tab with data
+      // instead of the ageGroup-less "every premier match" the server would
+      // otherwise return for a bare league=premier query.
+      if (this.selectedLeague() === 'premier' && !this.selectedAgeGroupId()) {
+        const first = tabs[0];
+        if (first) this.selectedAgeGroupId.set(first._id);
+        this.load();
+      }
     });
   }
 

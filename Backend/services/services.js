@@ -61,16 +61,30 @@ export const gettingAll = (model, filterOptions = {}, populateOptions = null, ba
         const features = new ApiFeature(model.find(baseFilter), req.query, req.params, req.user)
             .filter(apiFilterOptions)
 
-        const documentCount = await model.countDocuments(
-            features.query.getFilter()
-        );
+        // perf audit 2026-09-04 — العدّ والجلب كانوا بيتنفذوا بالتتابع (await على
+        // countDocuments، وبعد ما يخلص بس يبدأ الـfind)، رغم إنهم **مستقلين
+        // تماماً**: العدد بيدخل على البيانات الوصفية بس، مش على skip/limit
+        // (شوف applyPagination في apiFeatures.js). يعني رحلة شبكة كاملة كانت
+        // بتتهدر في كل طلب قائمة في التطبيق كله — قياس رحلة الشبكة الواحدة
+        // لـ Atlas في هذا الإعداد ≈ 100ms.
+        //
+        // أمنياً: الفلتر المستخدم في العدّ هو نفس الكائن اللي الكويري نفسه شايله
+        // (getFilter من نفس الكويري، بعد .filter() بالظبط زي قبل كده) — نطاق
+        // الملكية بيتحدد قبل النقطة دي ومابيتلمسش هنا. sort/limitFields/
+        // applyPagination مابيغيروش الفلتر، بيضيفوا sort/projection/skip/limit بس.
+        const countFilter = features.query.getFilter();
 
-        features.sort(sortable).limitFields().paginate(documentCount);
+        features.sort(sortable).limitFields().applyPagination();
 
-        const { query, pagination } = features;
+        const finalQuery = applyPopulate(features.query, populateOptions);
 
-        const finalQuery = applyPopulate(query, populateOptions);
-        const documents = await finalQuery;
+        const [documentCount, documents] = await Promise.all([
+            model.countDocuments(countFilter),
+            finalQuery,
+        ]);
+
+        features.buildPagination(documentCount);
+        const { pagination } = features;
 
         if (!documents) {
             return next(new AppError(`No documents yet`, 404));

@@ -45,6 +45,7 @@ let fixture: ComponentFixture<PlayerDetailComponent>;
 let compiled: HTMLElement;
 let isAdmin: ReturnType<typeof signal<boolean>>;
 let assignCoachSpy: jasmine.Spy;
+let assignProScoutSpy: jasmine.Spy;
 let userGetAllSpy: jasmine.Spy;
 
 async function setup(player: Player, admin = true) {
@@ -53,12 +54,16 @@ async function setup(player: Player, admin = true) {
     assignCoachSpy = jasmine
       .createSpy('assignCoach')
       .and.returnValue(of({ status: 'success', data: { document: { ...player, coach: { _id: 'c1', name: 'New Coach' } } } }));
+    assignProScoutSpy = jasmine
+      .createSpy('assignProScout')
+      .and.returnValue(of({ status: 'success', data: { document: { ...player, createdBy: 's1' } } }));
 
     const playerServiceStub = {
       getOne: () => of({ status: 'success', data: { document: player } }),
       updateStatus: jasmine.createSpy('updateStatus'),
       updateObservers: jasmine.createSpy('updateObservers'),
       assignCoach: assignCoachSpy,
+      assignProScout: assignProScoutSpy,
       delete: jasmine.createSpy('delete'),
     };
     userGetAllSpy = jasmine
@@ -74,6 +79,7 @@ async function setup(player: Player, admin = true) {
       isAdmin,
       isCoach: signal(!admin),
       isObserver: signal(false),
+      isProScout: signal(false),
       currentUser: signal({ _id: 'u1', role: admin ? 'admin' : 'coach' }),
     };
 
@@ -173,9 +179,12 @@ describe('PlayerDetailComponent — assigning a coach', () => {
     expect(compiled.textContent).not.toContain('PLAYERS.DETAIL.ASSIGN_COACH');
   });
 
-  it('hides the control when the player already has a coach', async () => {
+  // admin-assign-players-reports-media — deliberate behavior change: the admin
+  // can now reassign a player who already has a coach (the server has always
+  // allowed PATCH /:id/coach unconditionally; only the UI gated it on isOrphaned()).
+  it('still offers the control (reassignment) when the player already has a coach', async () => {
     await setup(basePlayer({ coach: { _id: 'c9', name: 'Existing' } as any }), true);
-    expect(compiled.textContent).not.toContain('PLAYERS.DETAIL.ASSIGN_COACH');
+    expect(compiled.textContent).toContain('PLAYERS.DETAIL.ASSIGN_COACH');
   });
 
   it('loads the coach list only once the panel is opened', async () => {
@@ -226,5 +235,66 @@ describe('PlayerDetailComponent — assigning a coach', () => {
     comp.saveCoach();
 
     expect(assignCoachSpy).not.toHaveBeenCalled();
+  });
+});
+
+// admin-assign-players-reports-media — same shape as the coach panel above, on
+// the proScout ownership axis (createdBy). No "orphaned" gate: any player can be
+// assigned to any proScout at any time (matches the server exactly).
+describe('PlayerDetailComponent — assigning a proScout', () => {
+  it('offers the control to an admin regardless of whether the player already has an owner', async () => {
+    await setup(basePlayer({ coach: { _id: 'c9', name: 'Existing' } as any }), true);
+    expect(compiled.textContent).toContain('PLAYERS.DETAIL.ASSIGN_PROSCOUT');
+  });
+
+  it('hides the control from a coach', async () => {
+    await setup(basePlayer({ coach: undefined }), false);
+    expect(compiled.textContent).not.toContain('PLAYERS.DETAIL.ASSIGN_PROSCOUT');
+  });
+
+  it('loads the proScout list only once the panel is opened', async () => {
+    const comp = await setup(basePlayer({ coach: undefined }), true);
+    const scoutCalls = () =>
+      userGetAllSpy.calls.allArgs().filter(([f]: any[]) => f?.role === 'proScout').length;
+
+    expect(scoutCalls()).toBe(0);
+
+    comp.toggleProScoutPanel();
+    expect(scoutCalls()).toBe(1);
+
+    comp.toggleProScoutPanel();
+    comp.toggleProScoutPanel();
+    expect(scoutCalls()).toBe(1);
+  });
+
+  it('calls the service with the player id and the picked proScout', async () => {
+    const comp = await setup(basePlayer({ coach: undefined }), true);
+    comp.toggleProScoutPanel();
+    comp.selectedProScout.set('s2');
+
+    comp.saveProScout();
+
+    expect(assignProScoutSpy).toHaveBeenCalledWith('p1', 's2');
+  });
+
+  it('refreshes the player and closes the panel after a successful assign', async () => {
+    const comp = await setup(basePlayer({ coach: undefined }), true);
+    comp.toggleProScoutPanel();
+    comp.selectedProScout.set('s1');
+
+    comp.saveProScout();
+
+    expect((comp.player()! as any).createdBy).toBe('s1');
+    expect(comp.proScoutPanelOpen()).toBeFalse();
+    expect(comp.savingProScout()).toBeFalse();
+  });
+
+  it('does nothing when no proScout has been picked', async () => {
+    const comp = await setup(basePlayer({ coach: undefined }), true);
+    comp.toggleProScoutPanel();
+
+    comp.saveProScout();
+
+    expect(assignProScoutSpy).not.toHaveBeenCalled();
   });
 });

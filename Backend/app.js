@@ -3,6 +3,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import helmet from "helmet";
 import cors from "cors";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import morgan from "morgan";
 
@@ -41,6 +42,26 @@ app.use(cors({
     origin: process.env.CLIENT_URL,
     credentials: true,          // مطلوب لإرسال refreshToken cookie من Angular
     optionsSuccessStatus: 200,  // لـ legacy browsers
+}));
+
+// perf audit 2026-09-04 — الردود كانت بتتبعت خام تماماً (مفيش هيدر
+// Content-Encoding على أي رد، والحزمة نفسها مكنتش متسطبة). مقيس على ردود حقيقية:
+//   GET /seasonMatches?limit=20  13.7KB → 1.7KB  (−88%)
+//   GET /teams?limit=50          10.0KB → 1.1KB  (−88%)
+//
+// ⚠️ الاستثناء الأمني مقصود — مسارات /auth مستثناة من الضغط بالكامل:
+// هجمات فئة BREACH/CRIME بتستنتج سر موجود في جسم الرد عن طريق **قياس حجم**
+// الرد المضغوط لما يكون فيه مُدخل يتحكّم فيه المهاجم جنب السر. ردود /auth هي
+// الوحيدة اللي بتحمل access token في الجسم، فبتتشال من المعادلة من أصلها بدل
+// الاعتماد على تحليل "هل فيه انعكاس مدخلات هنا ولا لأ" لكل مسار على حدة —
+// وده تحليل بيبطل صحته أول ما حد يضيف حقل جديد في رد مستقبلي.
+// التكلفة صفر عملياً: ردود /auth أصغر من عتبة الضغط (1KB) أساساً، يعني
+// مكنتش هتتضغط حتى لو دخلت.
+app.use(compression({
+    filter: (req, res) => {
+        if (req.path.startsWith("/api/v1/auth")) return false;
+        return compression.filter(req, res);
+    },
 }));
 
 const isTest = process.env.NODE_ENV === 'test';

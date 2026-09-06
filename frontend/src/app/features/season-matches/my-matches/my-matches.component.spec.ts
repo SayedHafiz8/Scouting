@@ -26,6 +26,7 @@ let getAllSpy: jasmine.Spy;
 let attendSpy: jasmine.Spy;
 let unattendSpy: jasmine.Spy;
 let updateStatusSpy: jasmine.Spy;
+let playersGetAllSpy: jasmine.Spy;
 
 function makeUser(role: UserRole): User {
   return {
@@ -67,8 +68,11 @@ async function setup(role: UserRole, matches: SeasonMatch[] = [makeMatch()]) {
   };
 
   getAllSpy = jasmine.createSpy('getAll').and.returnValue(
-    of({ status: 'success', count: matches.length, data: { documents: matches } } as unknown as
-      ApiResponse<PaginatedResponse<{ documents: SeasonMatch[] }>>)
+    of({
+      status: 'success', count: matches.length,
+      data: { documents: matches },
+      pagination: { currentPage: 1, limit: 20, numberOfPages: 1 },
+    } as unknown as ApiResponse<PaginatedResponse<{ documents: SeasonMatch[] }>>)
   );
 
   const updatedMatch = (id: string, overrides: Partial<SeasonMatch>) =>
@@ -80,6 +84,8 @@ async function setup(role: UserRole, matches: SeasonMatch[] = [makeMatch()]) {
     of(updatedMatch(id, { attendees: [] }) as unknown as ApiResponse<{ document: SeasonMatch }>));
   updateStatusSpy = jasmine.createSpy('updateStatus').and.callFake((id: string, payload: any) =>
     of(updatedMatch(id, payload) as unknown as ApiResponse<{ document: SeasonMatch }>));
+
+  playersGetAllSpy = jasmine.createSpy('players.getAll').and.returnValue(of({ data: { documents: [] } }));
 
   const seasonMatchServiceStub = {
     getAll: getAllSpy,
@@ -96,7 +102,7 @@ async function setup(role: UserRole, matches: SeasonMatch[] = [makeMatch()]) {
       provideTranslateService({ lang: 'en', fallbackLang: 'en' }),
       { provide: AuthService, useValue: authStub },
       { provide: SeasonMatchService, useValue: seasonMatchServiceStub },
-      { provide: PlayerService, useValue: { getAll: jasmine.createSpy('getAll').and.returnValue(of({ data: { documents: [] } })) } },
+      { provide: PlayerService, useValue: { getAll: playersGetAllSpy } },
       { provide: TeamService, useValue: { getOne: jasmine.createSpy('getOne').and.returnValue(of({ data: { document: null } })) } },
       { provide: ToastService, useValue: { success: jasmine.createSpy('success'), error: jasmine.createSpy('error') } },
     ],
@@ -222,6 +228,185 @@ describe('MyMatchesComponent — observer schedule is unrestricted (observer-mat
   it('an observer sees a past match they did not attend', async () => {
     await setup('observer', [makeMatch({ matchDate: '2020-01-01T00:00:00.000Z', attendees: [], league: 'premier' })]);
     expect((fixture.componentInstance as any).visibleMatches().length).toBe(1);
+  });
+});
+
+// "الدوري الممتار" used to be one flat tab; it's now one tab per age group that
+// actually has a premier match recorded, derived from the same unfiltered
+// season-list fetch (no extra request per age group).
+describe('MyMatchesComponent — premier tabs are per-age-group (observer-matches-and-players)', () => {
+  it('renders one tab per distinct age group that has a premier match, sorted by birth year', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+      makeMatch({ _id: 'm2', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+      makeMatch({ _id: 'm3', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+    ]);
+    const tabs = (fixture.componentInstance as any).premierAgeGroupTabs();
+    expect(tabs.map((t: any) => t._id)).toEqual(['ag2010', 'ag2012']);
+  });
+
+  it('an age group with zero premier matches gets no tab (nothing to derive it from)', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    expect((fixture.componentInstance as any).premierAgeGroupTabs()).toEqual([]);
+  });
+
+  it('defaults to the earliest tab and requests that ageGroup on the initial load', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+      makeMatch({ _id: 'm2', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+    ]);
+    const component = fixture.componentInstance as any;
+    expect(component.selectedAgeGroupId()).toBe('ag2010');
+    const loadCall = getAllSpy.calls.allArgs().find((args: unknown[]) => (args[0] as any)?.ageGroup);
+    expect(loadCall?.[0]).toEqual(jasmine.objectContaining({ league: 'premier', ageGroup: 'ag2010' }));
+  });
+
+  it('selecting a different age-group tab re-requests with that ageGroup', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+      makeMatch({ _id: 'm2', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+    ]);
+    const component = fixture.componentInstance as any;
+    getAllSpy.calls.reset();
+
+    component.selectAgeGroupTab({ _id: 'ag2012', name: '2012', birthYear: 2012 });
+
+    expect(component.selectedAgeGroupId()).toBe('ag2012');
+    expect(getAllSpy).toHaveBeenCalledWith(jasmine.objectContaining({ league: 'premier', ageGroup: 'ag2012' }));
+  });
+
+  it('selecting the professional tab clears the age-group filter', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+    ]);
+    const component = fixture.componentInstance as any;
+
+    component.selectLeague('professional');
+
+    expect(component.selectedAgeGroupId()).toBeNull();
+    expect(getAllSpy).toHaveBeenCalledWith(jasmine.objectContaining({ league: 'professional' }));
+  });
+
+  it('proScout never computes premier tabs (no toggle to feed)', async () => {
+    await setup('proScout', [makeMatch({ league: 'professional' })]);
+    expect((fixture.componentInstance as any).premierAgeGroupTabs()).toEqual([]);
+  });
+});
+
+// Pagination — the schedule used to fetch every match matching the current
+// filters in one request (limit defaulted server-side to 50); it now pages at
+// 20, and "attending only" moved from a client-side filter to a server-side
+// ?attendees=<id> filter so it isn't blind to matches sitting on a page that
+// was never fetched.
+describe('MyMatchesComponent — pagination (observer-matches-and-players)', () => {
+  it('load() requests page 1 at the fixed page size', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    (fixture.componentInstance as any).selectLeague('professional');
+    const loadCall = getAllSpy.calls.mostRecent();
+    expect(loadCall.args[0]).toEqual(jasmine.objectContaining({ page: 1, limit: 20 }));
+  });
+
+  it('changePage() requests the new page and updates page()', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    component.selectLeague('professional');
+    getAllSpy.calls.reset();
+
+    component.changePage(3);
+
+    expect(component.page()).toBe(3);
+    expect(getAllSpy).toHaveBeenCalledWith(jasmine.objectContaining({ page: 3, limit: 20 }));
+  });
+
+  it('changing the season resets to page 1', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    component.selectLeague('professional');
+    component.changePage(2);
+    expect(component.page()).toBe(2);
+
+    component.onSeasonFilterChange();
+    expect(component.page()).toBe(1);
+  });
+
+  it('switching age-group tabs resets to page 1', async () => {
+    await setup('coach', [
+      makeMatch({ _id: 'm1', league: 'premier', ageGroup: { _id: 'ag2012', name: '2012', birthYear: 2012 } as any }),
+      makeMatch({ _id: 'm2', league: 'premier', ageGroup: { _id: 'ag2010', name: '2010', birthYear: 2010 } as any }),
+    ]);
+    const component = fixture.componentInstance as any;
+    component.changePage(2);
+    expect(component.page()).toBe(2);
+
+    component.selectAgeGroupTab({ _id: 'ag2012', name: '2012', birthYear: 2012 });
+    expect(component.page()).toBe(1);
+  });
+
+  it('"attending only" filters server-side via ?attendees=<me>, not client-side', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    component.selectLeague('professional');
+    getAllSpy.calls.reset();
+
+    component.onAttendingOnlyChange(true);
+
+    expect(component.page()).toBe(1);
+    expect(getAllSpy).toHaveBeenCalledWith(jasmine.objectContaining({ attendees: 'scout-1' }));
+  });
+
+  it('admin never sends ?attendees=, even if attendingOnly() were somehow set', async () => {
+    await setup('admin', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    component.attendingOnly.set(true);
+    getAllSpy.calls.reset();
+
+    component.load();
+
+    const call = getAllSpy.calls.mostRecent().args[0];
+    expect(call.attendees).toBeUndefined();
+  });
+
+  it('visibleMatches() is a pass-through of matches() — no second client-side filter', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+    expect(component.visibleMatches()).toBe(component.matches());
+  });
+});
+
+// Perf audit — the "my observed players" panel is collapsed by default, but its
+// data load (GET /players, then GET /teams/:id per team, then GET /seasonMatches
+// per age group — ~11 requests in 3 sequential waves) used to fire unconditionally
+// in ngOnInit. It now loads on first expand, once.
+describe('MyMatchesComponent — observed-players panel loads lazily', () => {
+  it('does not request observed players on init, while the panel is collapsed', async () => {
+    await setup('observer', [makeMatch({ league: 'professional' })]);
+    expect((fixture.componentInstance as any).observedOpen()).toBeFalse();
+    expect(playersGetAllSpy).not.toHaveBeenCalled();
+  });
+
+  it('requests them on the first expand', async () => {
+    await setup('observer', [makeMatch({ league: 'professional' })]);
+    (fixture.componentInstance as any).toggleObservedPanel();
+
+    expect((fixture.componentInstance as any).observedOpen()).toBeTrue();
+    expect(playersGetAllSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-request on collapse and re-expand', async () => {
+    await setup('observer', [makeMatch({ league: 'professional' })]);
+    const component = fixture.componentInstance as any;
+
+    component.toggleObservedPanel();   // open  → loads
+    component.toggleObservedPanel();   // close
+    component.toggleObservedPanel();   // open again → no new request
+
+    expect(component.observedOpen()).toBeTrue();
+    expect(playersGetAllSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a coach never touches that panel at all', async () => {
+    await setup('coach', [makeMatch({ league: 'professional' })]);
+    expect(playersGetAllSpy).not.toHaveBeenCalled();
   });
 });
 

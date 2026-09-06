@@ -52,7 +52,7 @@ const teamExistsInScope = (val, { req }) =>
 
 
 // observer-matches-and-players — isProfessional بيتشتق من دوري الفريق وقت
-// الإنشاء بس (playerController.resolveIsProfessionalForObserver)، وlockField
+// الإنشاء بس (playerController.resolveIsProfessionalFromTeam)، وlockField
 // تحت بيمنع تعديله مباشرة زي كل الرولات. لكن lockField لوحدها ماكانتش كافية:
 // عيد إسناد team لفريق دوري مختلف عن تصنيف اللاعب الحالي كان هيغيّر نفس الأثر
 // بالتفاف — يرفع "محترف" عن لاعب أو يحطه على واحد ناشئ من غير ما يلمس
@@ -80,6 +80,17 @@ const teamMatchesExistingClassification = async (teamId, { req }) => {
 // في scoutingValidation/coachEvaluationValidation/observerEvaluationValidation
 const lockField = (field) =>
     body(field)
+        .not()
+        .exists()
+        .withMessage(`${field} cannot be set manually`);
+
+// admin-assign-players-reports-media — نفس lockField لكل رول ما عدا الأدمن. القيمة
+// نفسها بتتحقق في الكنترولر (لازم يوزر فعلي بنفس الرول المطلوب) — هنا الشكل بس
+// (mongoId مفرد أو مصفوفة). الاسم متعمد يبان مختلف عن lockField العادي عشان أي
+// حقل جديد حساس (زي createdBy) يفضل على القفل الصارم بالافتراض، مش ده.
+const lockFieldExceptAdmin = (field) =>
+    body(field)
+        .if((v, { req }) => req.user?.role !== ROLES.ADMIN)
         .not()
         .exists()
         .withMessage(`${field} cannot be set manually`);
@@ -162,14 +173,27 @@ export const createValidate = [
     // dateOfBirth في الـpre-save hook، observers وstatus بيتحطوا بس من الأدمن
     // عن طريق /players/:id/status و/players/:id/observers.
     lockField("status"),
-    lockField("coach"),
-    lockField("observers"),
+    // admin-assign-players-reports-media — الأدمن وحده يقدر يبعت coach/observers/
+    // proScout وقت الإنشاء (الشكل هنا، الدور الفعلي بيتحقق في playerController.create).
+    // لكل رول تاني القفل زي ما كان بالظبط. القفل والفحص الشكلي فرعين منفصلين —
+    // express-validator بيخلي .if() "لاصقة" على باقي نفس السلسلة، فدمجهم في سلسلة
+    // واحدة كان هيخلي فحص isMongoId نفسه مشروط بنفس شرط القفل بالغلط.
+    lockFieldExceptAdmin("coach"),
+    check('coach').optional().isMongoId().withMessage('Invalid coach id'),
+    lockFieldExceptAdmin("observers"),
+    check('observers').optional().isArray().withMessage('observers must be an array'),
+    check('observers.*').optional().isMongoId().withMessage('Invalid observer id'),
+    lockFieldExceptAdmin("proScout"),
+    check('proScout').optional().isMongoId().withMessage('Invalid proScout id'),
     lockField("profileImg"),
     lockField("ageGroup"),
     // Stage 2 — createdBy بيتحط من التوكن في playerController.create زي coach.
+    // فاضل مقفول لكل الرولات بما فيها الأدمن — الإسناد لـproScout بيحصل عن طريق
+    // حقل proScout فوق، مش createdBy مباشرة (راجع C-4 وملاحظة "الكلفة" في الخطة).
     lockField("createdBy"),
-    // Stage 4b — isProfessional بيتحدد من رول المنشئ في الكنترولر. من غير القفل
-    // ده أي كوتش يبعتها true ويرفع قيد الفئة العمرية (2007→2019) عن لاعبه.
+    // Stage 4b — isProfessional بيتحدد من رول المنشئ (أو فريق اللاعب المختار)
+    // في الكنترولر. من غير القفل ده أي رول يبعتها true ويرفع قيد الفئة العمرية
+    // (2007→2019) عن لاعبه.
     lockField("isProfessional"),
     validatorMiddleware
 
@@ -276,6 +300,24 @@ export const assignPlayerCoachValidator = [
         .bail()
         .isMongoId()
         .withMessage("Invalid coach id"),
+
+    validatorMiddleware
+];
+
+// admin-assign-players-reports-media — نفس شكل assignPlayerCoachValidator بالظبط،
+// لمحور proScout (createdBy). صلاحية الـid نفسها (لازم يوزر فعلي بدور proScout)
+// بتتفحص في الكنترولر.
+export const assignPlayerProScoutValidator = [
+    param("id")
+        .isMongoId()
+        .withMessage("Invalid player id"),
+
+    body("proScout")
+        .notEmpty()
+        .withMessage("proScout is required")
+        .bail()
+        .isMongoId()
+        .withMessage("Invalid proScout id"),
 
     validatorMiddleware
 ];

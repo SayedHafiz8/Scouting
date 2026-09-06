@@ -53,12 +53,16 @@ export class MediaService {
   // ── IMAGE upload (multipart, still through the server for sharp compression) ──
   // Standalone image upload is no longer supported — linkedVideo is required by the backend
   // (every image must accompany a video), so it's a required param here too.
-  upload(playerId: string, file: File, linkedVideo: string, meta: { title?: string; description?: string } = {}): import('rxjs').Observable<HttpEvent<unknown>> {
+  // admin-assign-players-reports-media — assignedObserver is admin-only server-side
+  // (attributes the upload to that observer instead of the admin); undefined for
+  // every other role, matching the server's lockFieldExceptAdmin.
+  upload(playerId: string, file: File, linkedVideo: string, meta: { title?: string; description?: string; assignedObserver?: string } = {}): import('rxjs').Observable<HttpEvent<unknown>> {
     const fd = new FormData();
     fd.append('file', file, file.name);
     if (meta.title) fd.append('title', meta.title);
     if (meta.description) fd.append('description', meta.description);
     fd.append('linkedVideo', linkedVideo);
+    if (meta.assignedObserver) fd.append('assignedObserver', meta.assignedObserver);
 
     const req = new HttpRequest('POST', this.base(playerId), fd, {
       reportProgress: true,
@@ -69,18 +73,23 @@ export class MediaService {
   // ── VIDEO: step 1 — mint a Bunny video + get a presigned TUS envelope ──
   // seasonMatch is no longer sent — the backend auto-resolves it from the player's team
   // fixtures (mediaMatchGate); title/description are only required server-side in freeform mode.
-  createVideo(playerId: string, meta: { title?: string; description?: string; fileHash: string }) {
+  createVideo(playerId: string, meta: { title?: string; description?: string; fileHash: string; assignedObserver?: string }) {
     return this.http.post<ApiResponse<VideoCreateResponse>>(`${this.base(playerId)}/video`, {
       title: meta.title,
       description: meta.description,
       fileHash: meta.fileHash,
+      assignedObserver: meta.assignedObserver,
     });
   }
 
   // Preview the video-upload gate before picking a file — lets the form show whether
   // upload is blocked, freeform (title/description required), or will auto-link to a match.
-  getUploadEligibility(playerId: string) {
-    return this.http.get<ApiResponse<UploadEligibility>>(`${this.base(playerId)}/upload-eligibility`);
+  // admin-assign-players-reports-media — assignedObserver previews the gate as it
+  // would resolve for that observer instead of the admin itself.
+  getUploadEligibility(playerId: string, assignedObserver?: string) {
+    const params: Record<string, string> = {};
+    if (assignedObserver) params['assignedObserver'] = assignedObserver;
+    return this.http.get<ApiResponse<UploadEligibility>>(`${this.base(playerId)}/upload-eligibility`, { params });
   }
 
   // re-issue a fresh envelope for a still-processing video (resume)

@@ -253,7 +253,10 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
 
             <!-- Actions -->
             <div class="px-5 pb-5 pt-3 space-y-2" style="border-top:1px solid var(--border-subtle)">
-              @if (auth.isCoach()) {
+              <!-- PATCH /players/:id بيقبل الكوتش والأوبزيرفر والـproScout،
+                   وcheckPlayerOwnership بيقصر كل واحد على لاعبيه. الزرار كان
+                   على الكوتش وحده، فالتانيين مكانش قدامهم مدخل للتعديل من هنا. -->
+              @if (auth.isCoach() || auth.isObserver() || auth.isProScout()) {
                 <a [routerLink]="['/players', player()!._id, 'edit']" class="btn btn-secondary btn-sm w-full">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -263,75 +266,143 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                 </a>
               }
               @if (auth.isAdmin()) {
-                <!-- Coach picker — أدمن-فقط، وبيظهر للاعب اليتيم بس (كوتشه اتمسح
-                     نهائياً). نفس نمط الـobserver picker تحت، بس اختيار واحد. -->
-                @if (isOrphaned()) {
-                  <div class="rounded-xl overflow-hidden"
-                       style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.22)">
-                    <button type="button"
-                            class="observer-toggle w-full flex items-center justify-between gap-2 px-3 transition-colors"
-                            [attr.aria-expanded]="coachPanelOpen()"
-                            (click)="toggleCoachPanel()">
-                      <span class="text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5" style="color:#f59e0b">
-                        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                        </svg>
-                        {{ 'PLAYERS.DETAIL.ASSIGN_COACH' | translate }}
-                      </span>
-                      <svg class="w-3.5 h-3.5 transition-transform duration-150" style="color:#f59e0b"
-                           [style.transform]="coachPanelOpen() ? 'rotate(180deg)' : 'rotate(0deg)'"
-                           fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <polyline points="6 9 12 15 18 9"/>
+                <!-- Coach picker — أدمن-فقط. admin-assign-players-reports-media —
+                     isOrphaned() اتشالت من هنا؛ الأدمن بقى يقدر يعيد تعيين كوتش
+                     للاعب عنده كوتش فعلاً بالفعل (السيرفر كان بيسمح بيها من الأول،
+                     الواجهة بس كانت بتقفلها على اللاعب اليتيم). نفس نمط الـobserver
+                     picker تحت، بس اختيار واحد. -->
+                <div class="rounded-xl overflow-hidden"
+                     style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.22)">
+                  <button type="button"
+                          class="observer-toggle w-full flex items-center justify-between gap-2 px-3 transition-colors"
+                          [attr.aria-expanded]="coachPanelOpen()"
+                          (click)="toggleCoachPanel()">
+                    <span class="text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5" style="color:#f59e0b">
+                      <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                       </svg>
-                    </button>
+                      {{ 'PLAYERS.DETAIL.ASSIGN_COACH' | translate }}
+                    </span>
+                    <svg class="w-3.5 h-3.5 transition-transform duration-150" style="color:#f59e0b"
+                         [style.transform]="coachPanelOpen() ? 'rotate(180deg)' : 'rotate(0deg)'"
+                         fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
 
-                    @if (coachPanelOpen()) {
-                      @if (loadingCoaches()) {
-                        <p class="text-xs px-3 pb-3" style="color:var(--text-muted)">{{ 'COMMON.LOADING' | translate }}</p>
-                      } @else if (coaches().length === 0) {
-                        <p class="text-xs px-3 pb-3" style="color:var(--text-muted)">{{ 'PLAYERS.DETAIL.NO_COACHES' | translate }}</p>
-                      } @else {
-                        <ul class="max-h-52 overflow-y-auto" role="listbox"
-                            style="border-top:1px solid rgba(245,158,11,0.15)">
-                          @for (c of coaches(); track c._id; let last = $last) {
-                            <li role="option" [attr.aria-selected]="selectedCoach() === c._id">
-                              <button type="button"
-                                      class="observer-row w-full flex items-center gap-2.5 px-3 text-left transition-colors"
-                                      [class.observer-row-selected]="selectedCoach() === c._id"
-                                      [style.border-bottom]="last ? 'none' : '1px solid rgba(245,158,11,0.10)'"
-                                      (click)="selectedCoach.set(c._id)">
-                                <span class="flex items-center justify-center rounded-full font-bold flex-shrink-0"
-                                      style="width:26px;height:26px;font-size:11px"
-                                      [style.background]="selectedCoach() === c._id ? '#f59e0b' : 'rgba(245,158,11,0.16)'"
-                                      [style.color]="selectedCoach() === c._id ? '#fff' : '#f59e0b'">
-                                  {{ initials(c.name) }}
-                                </span>
-                                <span class="flex-1 min-w-0 truncate text-sm font-medium" style="color:var(--text-primary)">
-                                  {{ c.name }}
-                                </span>
-                                <span class="observer-check flex-shrink-0" [class.observer-check-on]="selectedCoach() === c._id">
-                                  @if (selectedCoach() === c._id) {
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                                      <polyline points="20 6 9 17 4 12"/>
-                                    </svg>
-                                  }
-                                </span>
-                              </button>
-                            </li>
-                          }
-                        </ul>
-                        <div class="p-2">
-                          <button class="btn btn-primary btn-sm w-full"
-                                  data-testid="assign-coach-save"
-                                  [disabled]="!selectedCoach() || savingCoach()"
-                                  (click)="saveCoach()">
-                            {{ 'PLAYERS.DETAIL.ASSIGN_COACH_BTN' | translate }}
-                          </button>
-                        </div>
-                      }
+                  @if (coachPanelOpen()) {
+                    @if (loadingCoaches()) {
+                      <p class="text-xs px-3 pb-3" style="color:var(--text-muted)">{{ 'COMMON.LOADING' | translate }}</p>
+                    } @else if (coaches().length === 0) {
+                      <p class="text-xs px-3 pb-3" style="color:var(--text-muted)">{{ 'PLAYERS.DETAIL.NO_COACHES' | translate }}</p>
+                    } @else {
+                      <ul class="max-h-52 overflow-y-auto" role="listbox"
+                          style="border-top:1px solid rgba(245,158,11,0.15)">
+                        @for (c of coaches(); track c._id; let last = $last) {
+                          <li role="option" [attr.aria-selected]="selectedCoach() === c._id">
+                            <button type="button"
+                                    class="observer-row w-full flex items-center gap-2.5 px-3 text-left transition-colors"
+                                    [class.observer-row-selected]="selectedCoach() === c._id"
+                                    [style.border-bottom]="last ? 'none' : '1px solid rgba(245,158,11,0.10)'"
+                                    (click)="selectedCoach.set(c._id)">
+                              <span class="flex items-center justify-center rounded-full font-bold flex-shrink-0"
+                                    style="width:26px;height:26px;font-size:11px"
+                                    [style.background]="selectedCoach() === c._id ? '#f59e0b' : 'rgba(245,158,11,0.16)'"
+                                    [style.color]="selectedCoach() === c._id ? '#fff' : '#f59e0b'">
+                                {{ initials(c.name) }}
+                              </span>
+                              <span class="flex-1 min-w-0 truncate text-sm font-medium" style="color:var(--text-primary)">
+                                {{ c.name }}
+                              </span>
+                              <span class="observer-check flex-shrink-0" [class.observer-check-on]="selectedCoach() === c._id">
+                                @if (selectedCoach() === c._id) {
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                  </svg>
+                                }
+                              </span>
+                            </button>
+                          </li>
+                        }
+                      </ul>
+                      <div class="p-2">
+                        <button class="btn btn-primary btn-sm w-full"
+                                data-testid="assign-coach-save"
+                                [disabled]="!selectedCoach() || savingCoach()"
+                                (click)="saveCoach()">
+                          {{ 'PLAYERS.DETAIL.ASSIGN_COACH_BTN' | translate }}
+                        </button>
+                      </div>
                     }
-                  </div>
-                }
+                  }
+                </div>
+
+                <!-- proScout picker — نفس نمط الـcoach picker فوق بالظبط، بلون مختلف.
+                     بيسنّد createdBy (محور سكوب الـproScout)، مش موجود مسبقًا. -->
+                <div class="rounded-xl overflow-hidden"
+                     style="background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.22)">
+                  <button type="button"
+                          class="observer-toggle w-full flex items-center justify-between gap-2 px-3 transition-colors"
+                          [attr.aria-expanded]="proScoutPanelOpen()"
+                          (click)="toggleProScoutPanel()">
+                    <span class="text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5" style="color:#38bdf8">
+                      <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      {{ 'PLAYERS.DETAIL.ASSIGN_PROSCOUT' | translate }}
+                    </span>
+                    <svg class="w-3.5 h-3.5 transition-transform duration-150" style="color:#38bdf8"
+                         [style.transform]="proScoutPanelOpen() ? 'rotate(180deg)' : 'rotate(0deg)'"
+                         fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+
+                  @if (proScoutPanelOpen()) {
+                    @if (loadingProScouts()) {
+                      <p class="text-xs px-3 pb-3" style="color:var(--text-muted)">{{ 'COMMON.LOADING' | translate }}</p>
+                    } @else if (proScouts().length === 0) {
+                      <p class="text-xs px-3 pb-3" style="color:var(--text-muted)">{{ 'PLAYERS.DETAIL.NO_PROSCOUTS' | translate }}</p>
+                    } @else {
+                      <ul class="max-h-52 overflow-y-auto" role="listbox"
+                          style="border-top:1px solid rgba(56,189,248,0.15)">
+                        @for (s of proScouts(); track s._id; let last = $last) {
+                          <li role="option" [attr.aria-selected]="selectedProScout() === s._id">
+                            <button type="button"
+                                    class="observer-row w-full flex items-center gap-2.5 px-3 text-left transition-colors"
+                                    [class.observer-row-selected]="selectedProScout() === s._id"
+                                    [style.border-bottom]="last ? 'none' : '1px solid rgba(56,189,248,0.10)'"
+                                    (click)="selectedProScout.set(s._id)">
+                              <span class="flex items-center justify-center rounded-full font-bold flex-shrink-0"
+                                    style="width:26px;height:26px;font-size:11px"
+                                    [style.background]="selectedProScout() === s._id ? '#38bdf8' : 'rgba(56,189,248,0.16)'"
+                                    [style.color]="selectedProScout() === s._id ? '#fff' : '#38bdf8'">
+                                {{ initials(s.name) }}
+                              </span>
+                              <span class="flex-1 min-w-0 truncate text-sm font-medium" style="color:var(--text-primary)">
+                                {{ s.name }}
+                              </span>
+                              <span class="observer-check flex-shrink-0" [class.observer-check-on]="selectedProScout() === s._id">
+                                @if (selectedProScout() === s._id) {
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                  </svg>
+                                }
+                              </span>
+                            </button>
+                          </li>
+                        }
+                      </ul>
+                      <div class="p-2">
+                        <button class="btn btn-primary btn-sm w-full"
+                                [disabled]="!selectedProScout() || savingProScout()"
+                                (click)="saveProScout()">
+                          {{ 'PLAYERS.DETAIL.ASSIGN_PROSCOUT_BTN' | translate }}
+                        </button>
+                      </div>
+                    }
+                  }
+                </div>
 
                 <div class="space-y-1.5">
                   <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">
@@ -630,6 +701,15 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
   readonly selectedCoach = signal<string | null>(null);
   readonly coachPanelOpen = signal(false);
   readonly savingCoach = signal(false);
+
+  // admin-assign-players-reports-media — نفس نمط الـcoach picker فوق بالظبط،
+  // لمحور proScout (createdBy). مفيش "لاعب يتيم" هنا يقفل الفتح عليه — أي لاعب
+  // يقدر يتسنّد لأي proScout في أي وقت (نفس سلوك السيرفر بالظبط).
+  readonly proScouts = signal<User[]>([]);
+  readonly loadingProScouts = signal(false);
+  readonly selectedProScout = signal<string | null>(null);
+  readonly proScoutPanelOpen = signal(false);
+  readonly savingProScout = signal(false);
   draftStatus: PlayerStatus = 'pending';
 
   // team is populated as an object by the API, but guard against a plain id string too.
@@ -763,6 +843,43 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
       },
       // رسالة الخطأ نفسها بيعرضها errorInterceptor — هنا بنفك القفل بس
       error: () => this.savingCoach.set(false),
+    });
+  }
+
+  toggleProScoutPanel(): void {
+    const opening = !this.proScoutPanelOpen();
+    this.proScoutPanelOpen.set(opening);
+    if (opening) this.loadProScouts();
+  }
+
+  private loadProScouts(): void {
+    if (this.proScouts().length || this.loadingProScouts()) return;
+    this.loadingProScouts.set(true);
+    this.userService.getAll({ role: 'proScout', sort: 'name' }).subscribe({
+      next: res => {
+        this.proScouts.set((res.data as any)?.documents ?? []);
+        this.loadingProScouts.set(false);
+      },
+      error: () => this.loadingProScouts.set(false),
+    });
+  }
+
+  saveProScout(): void {
+    const id = this.player()?._id;
+    const proScout = this.selectedProScout();
+    if (!id || !proScout) return;
+
+    this.savingProScout.set(true);
+    this.playerService.assignProScout(id, proScout).subscribe({
+      next: res => {
+        const updated = res.data?.document;
+        if (updated) this.player.set(updated);
+        this.savingProScout.set(false);
+        this.proScoutPanelOpen.set(false);
+        this.selectedProScout.set(null);
+        this.toastService.success(this.translate.instant('PLAYERS.DETAIL.PROSCOUT_UPDATED'));
+      },
+      error: () => this.savingProScout.set(false),
     });
   }
 

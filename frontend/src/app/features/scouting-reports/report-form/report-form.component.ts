@@ -5,6 +5,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ScoutingReportService } from '../services/scouting-report.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { AuthService } from '../../../core/auth/auth.service';
 import { RadarChartComponent } from '../../../shared/components/radar-chart/radar-chart.component';
 import { PlayerService } from '../../players/services/player.service';
 import { SeasonMatchService } from '../../season-matches/services/season-match.service';
@@ -132,8 +133,28 @@ const MENTAL_FIELDS: RatingField[] = [
                 </div>
               </div>
 
-              @if (hasTeam() && seasonMatchOptionsLoaded() && seasonMatchOptions().length > 0) {
-                <!-- اللاعب متسجل في فريق وله مباراة رسمية النهارده — لازم يختارها، مفيش إدخال يدوي -->
+              <!-- admin-assign-players-reports-media — admin-only, create-only. Populated
+                   from the player's own observers[] (already loaded with the player, no
+                   extra request) — matches the server's requirement that assignedObserver
+                   must already be assigned to this player. -->
+              @if (auth.isAdmin() && !isEdit() && playerObservers().length > 0) {
+                <div class="space-y-1.5 mb-2">
+                  <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                    {{ 'REPORTS.FORM.FILE_ON_BEHALF_OF' | translate }}
+                  </label>
+                  <select [ngModel]="assignedObserver()" (ngModelChange)="assignedObserver.set($event)"
+                          [ngModelOptions]="{standalone: true}" class="form-input">
+                    <option value="">{{ 'REPORTS.FORM.FILE_ON_BEHALF_OF_SELF' | translate }}</option>
+                    @for (o of playerObservers(); track o._id) {
+                      <option [value]="o._id">{{ o.name }}</option>
+                    }
+                  </select>
+                </div>
+              }
+
+              @if (showFixturePicker()) {
+                <!-- اللاعب متسجل في فريق وله مباريات يقدر يربط بيها التقرير.
+                     للناشئ: مباراة النهارده بس. للمحترف: أي مباراة اتلعبت. -->
                 <div class="space-y-1.5 mb-2">
                   <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
                     {{ 'REPORTS.FORM.SEASON_MATCH' | translate }}
@@ -147,8 +168,10 @@ const MENTAL_FIELDS: RatingField[] = [
                   </select>
                   <p class="text-[11px]" style="color:var(--text-muted)">{{ 'REPORTS.FORM.SEASON_MATCH_HINT' | translate }}</p>
                 </div>
-              } @else if (hasTeam()) {
-                <!-- فريق اللاعب متسجل لكن مفيش مباراة رسمية النهارده — يختار تدريب ولا مباراة ودية -->
+              }
+
+              @if (showTypeButtons()) {
+                <!-- مفيش مباراة مختارة — يختار تدريب ولا مباراة ودية -->
                 <div class="space-y-2.5">
                   <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
                     {{ 'REPORTS.FORM.REPORT_TYPE' | translate }}
@@ -190,7 +213,9 @@ const MENTAL_FIELDS: RatingField[] = [
                     <p class="field-error">{{ 'REPORTS.FORM.REPORT_TYPE_ERR' | translate }}</p>
                   }
                 </div>
-              } @else {
+              }
+
+              @if (!hasTeam()) {
                 <!-- اللاعب مش متسجل في أي فريق — مفيش جدول مباريات نربطه بيه، فالإدخال يدوي (اختيار أو كتابة اسم) -->
                 <div class="flex items-end gap-3">
                   <div class="flex-1 space-y-1.5">
@@ -479,10 +504,17 @@ export class ReportFormComponent implements OnInit {
   private readonly teamService = inject(TeamService);
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
+  readonly auth = inject(AuthService);
 
   readonly loading = signal(false);
   readonly isEdit = signal(false);
   private reportId = '';
+
+  // admin-assign-players-reports-media — admin-only, create-only. The player's
+  // own observers[] (populated {_id,name}, already fetched by loadScopedOptions)
+  // — this is exactly the set the server accepts for assignedObserver.
+  readonly playerObservers = signal<{ _id: string; name: string }[]>([]);
+  readonly assignedObserver = signal('');
 
   // Teams scoped to the player's age group — homeTeam/awayTeam are Team ObjectIds
   readonly teamOptions = signal<Team[]>([]);
@@ -495,6 +527,22 @@ export class ReportFormComponent implements OnInit {
 
   // اللاعب متسجل في فريق فعلي؟ لو أيوه، لازم يختار مباراة النهارده بس (مفيش إدخال يدوي للفرق)
   readonly hasTeam = signal(false);
+
+  // اللاعب محترف؟ بيحدد نطاق التحميل (الدوري بدل الفئة العمرية) وكمان بيفتح
+  // اختيار أي مباراة اتلعبت مش مباراة النهارده بس — الرخصة دي للـproScout وحده،
+  // ومطبَّقة على السيرفر في resolveMatchTypeFields بنفس الشرط.
+  readonly isProfessional = signal(false);
+
+  // قايمة مباريات معروضة + لسه مختارش منها حاجة → لسه ممكن يكتب تدريب/ودية.
+  // للناشئ ده مستحيل يحصل (القايمة إما فيها ماتش النهارده وإما فاضية)، فمساره متغيرش.
+  readonly showFixturePicker = computed(() =>
+    this.hasTeam() && this.seasonMatchOptionsLoaded() && this.seasonMatchOptions().length > 0
+  );
+
+  readonly showTypeButtons = computed(() =>
+    this.hasTeam() &&
+    (this.seasonMatchOptions().length === 0 || (this.isProfessional() && !this.selectedSeasonMatch()))
+  );
 
   // القيمة الخاصة اللي بتظهر في السيلكت لما يختار "الفريق مش موجود في القايمة"
   readonly OTHER_TEAM = '__other__';
@@ -617,7 +665,7 @@ export class ReportFormComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.loadAgeGroupScopedOptions();
+    this.loadScopedOptions();
 
     this.reportId = this.route.snapshot.paramMap.get('reportId') ?? '';
     if (this.reportId) {
@@ -652,15 +700,39 @@ export class ReportFormComponent implements OnInit {
     }
   }
 
-  private loadAgeGroupScopedOptions(): void {
+  // اللاعب المحترف مالوش فئة عمرية أصلاً (playedModel: اشتقاق ageGroup بيتخطى
+  // للمحترفين) — والدالة دي كانت مبنية على الفئة العمرية وحدها، فكانت بتعمل
+  // return بدري لأي لاعب محترف قبل ما تحمّل أي حاجة. النتيجة للـproScout:
+  //   • قايمة الفرق بتفضل فاضية — سواء كخصم في ودية أو في الاختيار اليدوي
+  //   • مباريات النهارده مابتتحملش خالص، فالتقرير الرسمي (official) مستحيل
+  //     يترتبط بمباراة محترفين حقيقية حتى لو فيه واحدة مجدولة النهارده فعلاً
+  // الباك إند مكانش فيه مشكلة: resolveMatchTypeFields بيدوّر بالفريق والتاريخ
+  // من غير أي قيد على الدوري، وبيقبل المباراة المحترفين عادي.
+  //
+  // الحل: نطاق المحترفين بالدوري (league: professional) بدل الفئة العمرية —
+  // نفس اللي player-form.component.ts بيعمله بالظبط في سياق المحترفين، ونفس
+  // النطاق اللي السيرفر مطبّقه للـproScout أصلاً في teamScopeFor/seasonMatchScopeFor.
+  private loadScopedOptions(): void {
     this.playerService.getOne(this.playerId).subscribe({
       next: res => {
         const player = (res.data as any)?.document;
+        const isProfessional = !!player?.isProfessional;
         const ageGroupId = player?.ageGroup ? (typeof player.ageGroup === 'string' ? player.ageGroup : player.ageGroup._id) : null;
         const teamId = this.teamId(player?.team ?? undefined);
         this.hasTeam.set(!!teamId);
+        this.isProfessional.set(isProfessional);
 
-        if (!ageGroupId) {
+        // admin-assign-players-reports-media — observers[] only reaches an admin
+        // (maskCoachForObserver/maskObservedForCoach never touch it for admin);
+        // reuses the same getOne() call rather than a second request.
+        if (this.auth.isAdmin() && Array.isArray(player?.observers)) {
+          this.playerObservers.set(
+            player.observers.filter((o: any) => o && typeof o === 'object' && o._id)
+          );
+        }
+
+        // لاعب ناشئ من غير فئة عمرية = حالة مالهاش نطاق نحمّل بيه، زي ما كانت
+        if (!ageGroupId && !isProfessional) {
           this.teamOptionsLoaded.set(true);
           this.seasonMatchOptionsLoaded.set(true);
           return;
@@ -668,27 +740,40 @@ export class ReportFormComponent implements OnInit {
 
         // قايمة الفرق المسجلة دايمًا محملة — للاختيار اليدوي (لاعب من غير فريق) أو كخصم في
         // مباراة ودية (لاعب متسجل). فريق اللاعب نفسه بيتشال من الاختيارات (مينفعش يلعب ضد نفسه)
-        this.teamService.getAll(ageGroupId).subscribe({
-          next: teamRes => {
-            const teams = teamRes.data?.documents ?? [];
-            this.teamOptions.set(teamId ? teams.filter(t => t._id !== teamId) : teams);
-            this.teamOptionsLoaded.set(true);
-          },
-          error: () => this.teamOptionsLoaded.set(true),
-        });
+        this.teamService
+          .getAll(isProfessional ? undefined : ageGroupId, isProfessional ? 'professional' : undefined)
+          .subscribe({
+            next: teamRes => {
+              const teams = teamRes.data?.documents ?? [];
+              this.teamOptions.set(teamId ? teams.filter(t => t._id !== teamId) : teams);
+              this.teamOptionsLoaded.set(true);
+            },
+            error: () => this.teamOptionsLoaded.set(true),
+          });
 
         if (teamId) {
-          // اللاعب متسجل في فريق — نبص هل له مباراة رسمية النهارده بس (مش أي فريق ولا أي يوم)
-          const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
           const dayEnd = new Date(); dayEnd.setHours(23, 59, 59, 999);
-          this.seasonMatchService.getAll({
-            ageGroup: ageGroupId, sort: 'matchDate',
-            'matchDate[gte]': dayStart.toISOString(), 'matchDate[lte]': dayEnd.toISOString(),
-          }).subscribe({
+
+          // الـproScout مش مقيّد بيوم المباراة (نفس الرخصة في
+          // resolveMatchTypeFields على السيرفر): بيشوف كل مباريات ناديه اللي
+          // اتلعبت، من الأحدث للأقدم، ويكتب تقريره عليها وقت ما يقدر. الناشئ
+          // زي ما هو بالظبط — مباريات النهارده بس.
+          //
+          // admin-assign-players-reports-media — نفس الرخصة اتوسّعت للأدمن على
+          // السيرفر (resolveMatchTypeFields)، وبتنطبق على أي لاعب مش المحترفين
+          // بس — فبنستخدم isProfessional() || auth.isAdmin() هنا، مش isProfessional
+          // وحدها، عشان الأدمن يشوف كل مباريات الفريق مش النهارده بس حتى للاعب ناشئ.
+          const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+          const anyPastMatch = isProfessional || this.auth.isAdmin();
+          const windowFilters = anyPastMatch
+            ? { league: isProfessional ? ('professional' as const) : undefined, ageGroup: isProfessional ? undefined : ageGroupId, sort: '-matchDate' as const, 'matchDate[lte]': dayEnd.toISOString() }
+            : { ageGroup: ageGroupId, sort: 'matchDate' as const, 'matchDate[gte]': dayStart.toISOString(), 'matchDate[lte]': dayEnd.toISOString() };
+
+          this.seasonMatchService.getAll(windowFilters).subscribe({
             next: matchRes => {
-              const todaysMatches = (matchRes.data?.documents ?? [])
+              const own = (matchRes.data?.documents ?? [])
                 .filter(m => this.teamId(m.homeTeam) === teamId || this.teamId(m.awayTeam) === teamId);
-              this.seasonMatchOptions.set(todaysMatches);
+              this.seasonMatchOptions.set(own);
               this.seasonMatchOptionsLoaded.set(true);
             },
             error: () => this.seasonMatchOptionsLoaded.set(true),
@@ -755,7 +840,11 @@ export class ReportFormComponent implements OnInit {
   submit(): void {
     this.submitted.set(true);
 
-    if (this.hasTeam() && this.seasonMatchOptions().length === 0) {
+    // نفس التفريع الثلاثي بتاع القالب بالظبط: مباراة مختارة، ولا تدريب/ودية،
+    // ولا إدخال يدوي للاعب من غير فريق.
+    if (this.selectedSeasonMatch()) {
+      // مفيش مطلوب زيادة — المباراة بتملأ الفرق والتاريخ من السيرفر
+    } else if (this.showTypeButtons()) {
       if (!this.matchType()) return;
       if (this.matchType() === 'friendly' && !this.awayTeam() && !this.form.get('awayTeamName')?.value) return;
     } else if (!this.hasTeam()) {
@@ -776,18 +865,28 @@ export class ReportFormComponent implements OnInit {
       mental: v.mental,
     };
 
-    if (this.hasTeam() && this.seasonMatchOptions().length === 0) {
-      // مفيش مباراة رسمية النهارده — تدريب أو ودية
+    if (this.selectedSeasonMatch()) {
+      // مباراة من الجدول — السيرفر بياخد منها الفرق وmatchDate الحقيقي.
+      // matchType بيتبعت official صراحةً عشان المحترف اللي بيختار مباراة قديمة
+      // يعدّي من فرع الـproScout في resolveMatchTypeFields مش من فرع النهارده.
+      payload['seasonMatch'] = this.selectedSeasonMatch();
+      payload['matchType'] = 'official';
+    } else if (this.showTypeButtons()) {
+      // مفيش مباراة مختارة — تدريب أو ودية
       payload['matchType'] = this.matchType();
       if (this.matchType() === 'friendly') {
         if (this.awayIsOther()) payload['awayTeamName'] = v.awayTeamName;
         else payload['awayTeam'] = v.awayTeam;
       }
-    } else if (this.selectedSeasonMatch()) {
-      payload['seasonMatch'] = this.selectedSeasonMatch();
     } else {
       if (this.homeIsOther()) payload['homeTeamName'] = v.homeTeamName; else payload['homeTeam'] = v.homeTeam;
       if (this.awayIsOther()) payload['awayTeamName'] = v.awayTeamName; else payload['awayTeam'] = v.awayTeam;
+    }
+
+    // admin-assign-players-reports-media — only ever attached for an admin on
+    // create, and only when a specific observer was chosen (empty = self).
+    if (this.auth.isAdmin() && !this.isEdit() && this.assignedObserver()) {
+      payload['assignedObserver'] = this.assignedObserver();
     }
 
     const req$ = this.isEdit()

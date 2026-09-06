@@ -246,7 +246,15 @@ class ApiFeature {
         });
         return this;
     }
-    paginate(countDocoments) {
+    // perf audit 2026-09-04 — paginate() اتقسمت لنصين عشان العدّ والجلب يقدروا
+    // يشتغلوا بالتوازي. النصّ ده (skip/limit على الكويري) **مش محتاج العدد
+    // أصلاً**: page وlimit بييجوا من queryParams بس، والعدد كان داخل قديماً
+    // للبيانات الوصفية لا غير. فالترتيب الجديد: applyPagination() → نبعت
+    // countDocuments والـfind مع بعض → buildPagination(count) لما العدد يوصل.
+    //
+    // الفلتر اللي بيروح للعدّ هو نفسه بالظبط بتاع الكويري (getFilter من نفس
+    // الكويري) — التقسيمة دي مابتلمسش الفلترة ولا النطاق، بس التوقيت.
+    applyPagination() {
         const page = Math.max(1, +this.queryParams.page || 1);
         // §10 — سقف على الـlimit اللي جاي من العميل. قبل كده ?limit=1000000 كان
         // بيتقبل كما هو: صفحة واحدة بتسحب الكولكشن كله. أخطرها /seasonMatches
@@ -256,7 +264,22 @@ class ApiFeature {
         // مايقصّش أي قايمة حقيقية النهاردة.
         const requested = +this.queryParams.limit || ApiFeature.DEFAULT_LIMIT;
         const limit = Math.min(Math.max(1, requested), ApiFeature.MAX_LIMIT);
-        const skip = (page -1) * limit;
+        const skip = (page - 1) * limit;
+
+        this._page = page;
+        this._limit = limit;
+        this._skip = skip;
+
+        this.query = this.query.skip(skip).limit(limit);
+
+        return this;
+    }
+
+    // لازم تتنادى بعد applyPagination() — بتبني البيانات الوصفية بس، مابتلمسش الكويري.
+    buildPagination(countDocoments) {
+        const page = this._page;
+        const limit = this._limit;
+        const skip = this._skip;
         const endIndex = page * limit;
 
         const pagination = {};
@@ -266,15 +289,20 @@ class ApiFeature {
 
         if(endIndex < countDocoments){
             pagination.next = page + 1;
-        } 
+        }
         if(skip > 0) {
             pagination.prev = page - 1;
         }
 
-        this.query = this.query.skip(skip).limit(limit);
         this.pagination = pagination;
 
         return this
+    }
+
+    // الشكل القديم (عدّ ثم جلب بالتتابع) — متسايب زي ما هو عشان أي مستدعي
+    // مايتغيرش سلوكه، ومستخدم في التستات اللي بتختبر الترقيم لوحده.
+    paginate(countDocoments) {
+        return this.applyPagination().buildPagination(countDocoments);
     }
 }
 

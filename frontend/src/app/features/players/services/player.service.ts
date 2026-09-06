@@ -62,6 +62,12 @@ export class PlayerService {
     return this.http.patch<ApiResponse<{ document: Player }>>(`${this.base}/${id}/coach`, { coach });
   }
 
+  // Same idea as assignCoach, on the proScout ownership axis (createdBy). Admin-only
+  // server-side.
+  assignProScout(id: string, proScout: string) {
+    return this.http.patch<ApiResponse<{ document: Player }>>(`${this.base}/${id}/proScout`, { proScout });
+  }
+
   uploadProfileImg(id: string, file: File) {
     const form = new FormData();
     form.append('profileImg', file);

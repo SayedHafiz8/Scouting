@@ -34,6 +34,16 @@ const lockField = (field) =>
         .exists()
         .withMessage(`${field} cannot be set manually`);
 
+// admin-assign-players-reports-media — نفس فكرة lockFieldExceptAdmin في
+// playerValidation.js: مقفول لكل رول ما عدا الأدمن. القيمة (لازم تكون أوبزيرفر
+// معيَّن فعلاً على اللاعب) بتتحقق في الكنترولر، هنا الشكل بس.
+const lockFieldExceptAdmin = (field) =>
+    body(field)
+        .if((v, { req }) => req.user?.role !== ROLES.ADMIN)
+        .not()
+        .exists()
+        .withMessage(`${field} cannot be set manually`);
+
 // لو التقرير مربوط بمباراة موسم، لازم المباراة دي تتبع نفس الفئة العمرية بتاعة اللاعب
 const seasonMatchBelongsToPlayerAgeGroup = body("seasonMatch")
     .optional()
@@ -160,6 +170,11 @@ export const createValidate = [
     // الـ coach والـ overallRating بيتحددوا من السيرفر (middleware) مش من العميل
     lockField("coach"),
     lockField("overallRating"),
+
+    // admin-assign-players-reports-media — الأدمن وحده يقدر يبعت assignedObserver
+    // (المؤلف الفعلي بيبقى هو، مش الأدمن — راجع scoutingReportController.create).
+    lockFieldExceptAdmin("assignedObserver"),
+    body("assignedObserver").optional().isMongoId().withMessage("Invalid assignedObserver id"),
 
     validatorMiddleware,
 ];

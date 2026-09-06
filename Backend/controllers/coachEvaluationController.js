@@ -157,12 +157,19 @@ export const getAll = asyncHandler(async (req, res, next) => {
         req.user
     );
 
-    const documentCount = await CoachEvaluation.countDocuments(
-        features.query.getFilter()
-    );
-    features.sort(EVALUATION_SORT_FIELDS).limitFields().paginate(documentCount);
+    // perf audit — العدّ والجلب مستقلين، فبيتنفذوا مع بعض. نفس الفلتر للاتنين.
+    // ملاحظة: قفل المراجعة العمياء (filterBlindReviewList) لسه بيتطبّق بعد الجلب
+    // بالظبط زي ما كان — التوازي هنا بين استعلامين للقراءة بس، مش تخطّي أي فلترة.
+    const countFilter = features.query.getFilter();
+    features.sort(EVALUATION_SORT_FIELDS).limitFields().applyPagination();
 
-    let documents = await features.query.populate(populate);
+    const [documentCount, fetched] = await Promise.all([
+        CoachEvaluation.countDocuments(countFilter),
+        features.query.populate(populate),
+    ]);
+    features.buildPagination(documentCount);
+
+    let documents = fetched;
 
     if (req.user.role === ROLES.ADMIN) {
         documents = await filterBlindReviewList(documents, req.user._id);

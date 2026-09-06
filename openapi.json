@@ -2481,7 +2481,7 @@
         }
       },
       "post": {
-        "summary": "Create a scouting report for a player (coach, observer, or proScout — each within its own data scope)",
+        "summary": "Create a scouting report for a player (coach, observer, proScout, or admin — each within its own data scope; admin may attribute authorship to an observer assigned to this player)",
         "tags": [
           "Reports"
         ],
@@ -2528,6 +2528,10 @@
                   },
                   "notes": {
                     "type": "string"
+                  },
+                  "assignedObserver": {
+                    "type": "string",
+                    "description": "Admin only. Id of an observer already assigned to this player (in its `observers` array) — the report is authored as that observer instead of the admin.\n"
                   }
                 }
               }
@@ -2679,7 +2683,7 @@
         }
       },
       "patch": {
-        "summary": "Update a scouting report (coach, observer, or proScout — own reports only)",
+        "summary": "Update a scouting report (coach, observer, proScout, or admin — own reports only; admin editing another author's report is rejected even though it can read any report)",
         "tags": [
           "Reports"
         ],
@@ -2939,7 +2943,7 @@
         }
       },
       "post": {
-        "summary": "Create a player (coach or proScout; proScout is confined to professional-league teams and is not recorded as the player's coach)",
+        "summary": "Create a player (coach, observer, proScout, or admin — admin may assign the player to a coach/observers/proScout in the same request)",
         "tags": [
           "Players"
         ],
@@ -3011,6 +3015,21 @@
                   },
                   "notes": {
                     "type": "string"
+                  },
+                  "coach": {
+                    "type": "string",
+                    "description": "Admin only. Id of an existing active user whose role is `coach`."
+                  },
+                  "observers": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Admin only. Ids of existing active users whose role is `observer`."
+                  },
+                  "proScout": {
+                    "type": "string",
+                    "description": "Admin only. Id of an existing active user whose role is `proScout` — sets `createdBy` to this id, the axis proScout scope is keyed on.\n"
                   }
                 }
               }
@@ -3104,7 +3123,7 @@
         }
       },
       "patch": {
-        "summary": "Update a player's details (coach or proScout, each within its own data scope)",
+        "summary": "Update a player's details (coach, observer, proScout, or admin — each within its own data scope; ownership fields stay locked here for every role, admin included, see /players/{id}/coach, /observers and /proScout)",
         "tags": [
           "Players"
         ],
@@ -3338,6 +3357,82 @@
         "responses": {
           "200": {
             "description": "Coach assigned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "document": {
+                          "$ref": "#/components/schemas/Player"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/players/{id}/proScout": {
+      "patch": {
+        "summary": "Assign (or re-assign) the proScout a player is scoped to (admin only)",
+        "description": "Sets `createdBy` to the given proScout's id — the axis proScout read/write scope is keyed on (services/scope.js playerScopeFor). Mirrors PATCH /players/{id}/coach for the proScout ownership axis.\n",
+        "tags": [
+          "Players"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "proScout"
+                ],
+                "properties": {
+                  "proScout": {
+                    "type": "string",
+                    "description": "Id of an existing active user whose role is `proScout`"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "proScout assigned",
             "content": {
               "application/json": {
                 "schema": {
@@ -3716,7 +3811,7 @@
         }
       },
       "post": {
-        "summary": "Upload a companion IMAGE for a video (coach/observer, multipart). Standalone image upload is not supported — every image must accompany a video via linkedVideo. Video uploads go directly to Bunny via POST /media/video.",
+        "summary": "Upload a companion IMAGE for a video (coach/observer/proScout/admin, multipart). Standalone image upload is not supported — every image must accompany a video via linkedVideo. Video uploads go directly to Bunny via POST /media/video.",
         "tags": [
           "Media"
         ],
@@ -3753,7 +3848,11 @@
                   },
                   "linkedVideo": {
                     "type": "string",
-                    "description": "Required PlayerMedia id of the video (same player, same uploader) this photo accompanies — max 2 images per video"
+                    "description": "Required PlayerMedia id of the video (same player, same effective author) this photo accompanies — max 2 images per video"
+                  },
+                  "assignedObserver": {
+                    "type": "string",
+                    "description": "Admin only. Id of an observer already assigned to this player — the upload is attributed to that observer instead of the admin.\n"
                   }
                 }
               }
@@ -3799,7 +3898,7 @@
     },
     "/players/{playerId}/media/video": {
       "post": {
-        "summary": "Start a video upload — mints a Bunny Stream video and returns a presigned TUS envelope. seasonMatch is no longer accepted from the client — it is auto-resolved from the player's team fixtures (a 3-day window around the match) and the caller's role.",
+        "summary": "Start a video upload — mints a Bunny Stream video and returns a presigned TUS envelope. seasonMatch is no longer accepted from the client — it is auto-resolved from the effective author's team fixtures (a 3-day window around the match).",
         "tags": [
           "Media"
         ],
@@ -3831,6 +3930,10 @@
                   "fileHash": {
                     "type": "string",
                     "description": "SHA-256 hex digest of the video file, computed client-side before upload — used to block duplicate uploads of the same video for this player"
+                  },
+                  "assignedObserver": {
+                    "type": "string",
+                    "description": "Admin only. Id of an observer already assigned to this player — the upload is attributed (`uploadedBy`) to that observer instead of the admin.\n"
                   }
                 }
               }
@@ -3910,6 +4013,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "assignedObserver",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Admin only. Preview the gate as it would resolve for this assigned observer instead of the admin itself.\n"
           }
         ],
         "responses": {

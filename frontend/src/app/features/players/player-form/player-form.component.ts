@@ -6,6 +6,7 @@ import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { environment } from '../../../../environments/environment';
 import { PlayerService } from '../services/player.service';
 import { TeamService } from '../../teams/services/team.service';
+import { UserService } from '../../users/services/user.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { LanguageService } from '../../../core/services/language.service';
@@ -255,6 +256,73 @@ const MAX_PLAYER_IMAGE_MB = 4;
             </div>
           </div>
 
+          <!-- admin-assign-players-reports-media — admin-only, create-only. Re-assigning an
+               already-created player has its own panels on player-detail; this is only the
+               initial hand-off. -->
+          @if (auth.isAdmin() && !isEdit()) {
+            <div class="mt-6 pt-5 border-t" style="border-color:var(--border-color)">
+              <label class="block text-sm font-medium mb-2" style="color:var(--text-primary)">
+                {{ 'PLAYERS.FORM.ASSIGN_TO' | translate }}
+              </label>
+              <div class="flex flex-wrap gap-2 mb-3">
+                <button type="button" class="btn btn-sm" [class.btn-primary]="assignRole() === ''"
+                        [class.btn-secondary]="assignRole() !== ''" (click)="selectAssignRole('')">
+                  {{ 'PLAYERS.FORM.ASSIGN_NONE' | translate }}
+                </button>
+                <button type="button" class="btn btn-sm" [class.btn-primary]="assignRole() === 'coach'"
+                        [class.btn-secondary]="assignRole() !== 'coach'" (click)="selectAssignRole('coach')">
+                  {{ 'PLAYERS.FORM.ASSIGN_COACH_TAB' | translate }}
+                </button>
+                <button type="button" class="btn btn-sm" [class.btn-primary]="assignRole() === 'observer'"
+                        [class.btn-secondary]="assignRole() !== 'observer'" (click)="selectAssignRole('observer')">
+                  {{ 'PLAYERS.FORM.ASSIGN_OBSERVER_TAB' | translate }}
+                </button>
+                <button type="button" class="btn btn-sm" [class.btn-primary]="assignRole() === 'proScout'"
+                        [class.btn-secondary]="assignRole() !== 'proScout'" (click)="selectAssignRole('proScout')">
+                  {{ 'PLAYERS.FORM.ASSIGN_PROSCOUT_TAB' | translate }}
+                </button>
+              </div>
+
+              @if (assignRole() === 'coach') {
+                <select class="form-input" [value]="assignCoachId()" (change)="onAssignCoachChange($event)">
+                  <option value="">{{ 'PLAYERS.FORM.ASSIGN_COACH_PH' | translate }}</option>
+                  @for (c of assignCoachOptions(); track c._id) {
+                    <option [value]="c._id">{{ c.name }}</option>
+                  }
+                </select>
+                @if (assignCoachOptions().length === 0) {
+                  <p class="text-xs mt-1.5" style="color:var(--text-muted)">{{ 'PLAYERS.FORM.ASSIGN_NO_COACHES' | translate }}</p>
+                }
+              }
+
+              @if (assignRole() === 'observer') {
+                <div class="space-y-1 max-h-48 overflow-y-auto">
+                  @for (o of assignObserverRows(); track o.id) {
+                    <label class="flex items-center gap-2 text-sm py-1 cursor-pointer" style="color:var(--text-primary)">
+                      <input type="checkbox" [checked]="o.checked" (change)="toggleAssignObserver(o.id)" />
+                      {{ o.name }}
+                    </label>
+                  }
+                </div>
+                @if (assignObserverOptions().length === 0) {
+                  <p class="text-xs mt-1.5" style="color:var(--text-muted)">{{ 'PLAYERS.FORM.ASSIGN_NO_OBSERVERS' | translate }}</p>
+                }
+              }
+
+              @if (assignRole() === 'proScout') {
+                <select class="form-input" [value]="assignProScoutId()" (change)="onAssignProScoutChange($event)">
+                  <option value="">{{ 'PLAYERS.FORM.ASSIGN_PROSCOUT_PH' | translate }}</option>
+                  @for (s of assignProScoutOptions(); track s._id) {
+                    <option [value]="s._id">{{ s.name }}</option>
+                  }
+                </select>
+                @if (assignProScoutOptions().length === 0) {
+                  <p class="text-xs mt-1.5" style="color:var(--text-muted)">{{ 'PLAYERS.FORM.ASSIGN_NO_PROSCOUTS' | translate }}</p>
+                }
+              }
+            </div>
+          }
+
           <!-- Actions -->
           <div class="flex items-center gap-3 mt-8 pt-5 border-t" style="border-color:var(--border-color)">
             <button type="submit" class="btn btn-primary" [disabled]="loading()">
@@ -281,6 +349,7 @@ export class PlayerFormComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly playerService = inject(PlayerService);
   private readonly teamService = inject(TeamService);
+  private readonly userService = inject(UserService);
   // Stage 4 — public because the template reads it for the Team-dropdown hints (FR-002).
   readonly auth = inject(AuthService);
   private readonly http = inject(HttpClient);
@@ -467,6 +536,55 @@ export class PlayerFormComponent implements OnInit {
   readonly dobDay = signal('');
   readonly dobMonth = signal('');
   readonly dobYear = signal('');
+
+  // admin-assign-players-reports-media — the admin-only "assign to" block on
+  // create. Each option list is loaded lazily on first selecting that tab
+  // (same pattern as player-detail's loadCoaches()), not eagerly on init —
+  // an admin who never opens a tab costs zero extra requests.
+  readonly assignRole = signal<'' | 'coach' | 'observer' | 'proScout'>('');
+  readonly assignCoachId = signal('');
+  readonly assignProScoutId = signal('');
+  private readonly assignObserverIds = signal<Set<string>>(new Set());
+  readonly assignCoachOptions = signal<{ _id: string; name: string }[]>([]);
+  readonly assignObserverOptions = signal<{ _id: string; name: string }[]>([]);
+  readonly assignProScoutOptions = signal<{ _id: string; name: string }[]>([]);
+
+  // Precomputed row view-models — no function calls inside the @for (CLAUDE.md).
+  readonly assignObserverRows = computed(() => {
+    const selected = this.assignObserverIds();
+    return this.assignObserverOptions().map(o => ({ id: o._id, name: o.name, checked: selected.has(o._id) }));
+  });
+
+  selectAssignRole(role: '' | 'coach' | 'observer' | 'proScout'): void {
+    this.assignRole.set(role);
+    if (role === 'coach' && this.assignCoachOptions().length === 0) {
+      this.userService.getAll({ role: 'coach', sort: 'name' }).subscribe(res => {
+        this.assignCoachOptions.set((res.data as any)?.documents ?? []);
+      });
+    } else if (role === 'observer' && this.assignObserverOptions().length === 0) {
+      this.userService.getAll({ role: 'observer', sort: 'name' }).subscribe(res => {
+        this.assignObserverOptions.set((res.data as any)?.documents ?? []);
+      });
+    } else if (role === 'proScout' && this.assignProScoutOptions().length === 0) {
+      this.userService.getAll({ role: 'proScout', sort: 'name' }).subscribe(res => {
+        this.assignProScoutOptions.set((res.data as any)?.documents ?? []);
+      });
+    }
+  }
+
+  onAssignCoachChange(event: Event): void {
+    this.assignCoachId.set((event.target as HTMLSelectElement).value);
+  }
+
+  onAssignProScoutChange(event: Event): void {
+    this.assignProScoutId.set((event.target as HTMLSelectElement).value);
+  }
+
+  toggleAssignObserver(id: string): void {
+    const next = new Set(this.assignObserverIds());
+    if (next.has(id)) next.delete(id); else next.add(id);
+    this.assignObserverIds.set(next);
+  }
 
   // Days in the selected month/year (falls back to 31 until both are picked, so the
   // list doesn't collapse to nothing while the user is still choosing).
@@ -682,6 +800,19 @@ export class PlayerFormComponent implements OnInit {
     }
     delete payload.nationalityOther;
     delete payload.cityOther;
+
+    // admin-assign-players-reports-media — only ever attached for an admin on
+    // create; lockFieldExceptAdmin on the server rejects these fields from
+    // every other role regardless, but there is no reason to send them.
+    if (this.auth.isAdmin() && !this.isEdit()) {
+      if (this.assignRole() === 'coach' && this.assignCoachId()) {
+        payload.coach = this.assignCoachId();
+      } else if (this.assignRole() === 'observer' && this.assignObserverIds().size) {
+        payload.observers = [...this.assignObserverIds()];
+      } else if (this.assignRole() === 'proScout' && this.assignProScoutId()) {
+        payload.proScout = this.assignProScoutId();
+      }
+    }
 
     const req$ = this.isEdit()
       ? this.playerService.update(this.playerId, payload)

@@ -47,15 +47,27 @@ describe('POST /api/v1/players', () => {
     expect(res.body.data.document.status).toBe('pending');
   });
 
-  it('admin cannot create a player (coach-only route)', async () => {
-    const { token } = await createAdmin();
+  // admin-assign-players-reports-media — deliberate behavior change: the admin can
+  // now create a player directly (and assign it to a coach/observers/proScout in
+  // the same request). Full positive/negative coverage lives in
+  // tests/roles/adminPlayerAuthoring.test.js; this just pins the basic case here
+  // since this file is where the coach-only version of this test used to live.
+  it('admin can create a player, unassigned — visible to admin only, not to any coach', async () => {
+    const { token: adminToken } = await createAdmin();
+    const { token: coachToken } = await createCoach();
 
     const res = await request(app)
       .post('/api/v1/players')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .send(playerPayload());
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
+    expect(res.body.data.document.coach).toBeFalsy();
+
+    const asCoach = await request(app)
+      .get('/api/v1/players')
+      .set('Authorization', `Bearer ${coachToken}`);
+    expect(asCoach.body.data.documents.map((p) => p._id)).not.toContain(res.body.data.document._id);
   });
 
   it('returns 4xx for player younger than 8', async () => {

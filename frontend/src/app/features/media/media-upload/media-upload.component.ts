@@ -4,6 +4,8 @@ import { HttpEventType } from '@angular/common/http';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { MediaService } from '../services/media.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { AuthService } from '../../../core/auth/auth.service';
+import { PlayerService } from '../../players/services/player.service';
 import { UploadEligibility } from '../../../core/models/player-media.model';
 
 // Fallbacks only, used until the server-driven limits load (see ngOnInit).
@@ -97,6 +99,22 @@ const MAX_COMPANION_IMAGES = 2;
           </div>
 
           <input #fileInput type="file" class="hidden" accept="video/mp4" (change)="onFileChange($event)" />
+
+          <!-- admin-assign-players-reports-media — admin-only. Populated from the
+               player's own observers[] (fetched once in ngOnInit — see loadPlayerObservers). -->
+          @if (auth.isAdmin() && playerObservers().length > 0) {
+            <div>
+              <label class="block text-xs font-medium mb-1" style="color:var(--text-secondary)">
+                {{ 'MEDIA.FORM.FILE_ON_BEHALF_OF' | translate }}
+              </label>
+              <select [ngModel]="assignedObserver()" (ngModelChange)="onAssignedObserverChange($event)" class="form-input text-sm">
+                <option value="">{{ 'MEDIA.FORM.FILE_ON_BEHALF_OF_SELF' | translate }}</option>
+                @for (o of playerObservers(); track o._id) {
+                  <option [value]="o._id">{{ o.name }}</option>
+                }
+              </select>
+            </div>
+          }
 
           <!-- Meta fields — required in freeform mode (no match to auto-link); can be filled in any
                order relative to picking the video/companion images, submit is only gated at the end -->
@@ -258,8 +276,22 @@ export class MediaUploadComponent implements OnInit {
     readonly cancelled = output<void>();
 
     private readonly mediaService = inject(MediaService);
+    private readonly playerService = inject(PlayerService);
     private readonly toast = inject(ToastService);
     private readonly translate = inject(TranslateService);
+    readonly auth = inject(AuthService);
+
+    // admin-assign-players-reports-media — admin-only. The player's own
+    // observers[] (populated {_id,name}) — the exact set the server accepts.
+    readonly playerObservers = signal<{ _id: string; name: string }[]>([]);
+    readonly assignedObserver = signal('');
+
+    onAssignedObserverChange(id: string): void {
+        this.assignedObserver.set(id);
+        // the eligibility gate depends on who the effective uploader is — reload
+        // it for the newly chosen observer (or back to the admin itself for '').
+        this.loadUploadGate();
+    }
 
     readonly isDragOver     = signal(false);
     readonly selectedFile   = signal<File | null>(null);
@@ -309,12 +341,26 @@ export class MediaUploadComponent implements OnInit {
         });
 
         this.loadUploadGate();
+
+        // admin-assign-players-reports-media — only ever needed for an admin;
+        // reuses the player fetch other roles have no reason to make here.
+        if (this.auth.isAdmin()) {
+            this.playerService.getOne(this.playerId()).subscribe({
+                next: res => {
+                    const observers = (res.data as any)?.document?.observers;
+                    if (Array.isArray(observers)) {
+                        this.playerObservers.set(observers.filter((o: any) => o && typeof o === 'object' && o._id));
+                    }
+                },
+                error: () => {},
+            });
+        }
     }
 
     loadUploadGate(): void {
         this.gateError.set(false);
         this.uploadGate.set(null);
-        this.mediaService.getUploadEligibility(this.playerId()).subscribe({
+        this.mediaService.getUploadEligibility(this.playerId(), this.assignedObserver() || undefined).subscribe({
             next: res => this.uploadGate.set(res.data ?? { mode: 'freeform' }),
             error: () => this.gateError.set(true),
         });
@@ -406,7 +452,9 @@ export class MediaUploadComponent implements OnInit {
         for (const image of images) {
             try {
                 await new Promise<void>((resolve, reject) => {
-                    this.mediaService.upload(playerId, image, videoId).subscribe({
+                    this.mediaService.upload(playerId, image, videoId, {
+                        assignedObserver: this.auth.isAdmin() ? (this.assignedObserver() || undefined) : undefined,
+                    }).subscribe({
                         next: event => { if (event.type === HttpEventType.Response) resolve(); },
                         error: reject,
                     });
@@ -446,6 +494,7 @@ export class MediaUploadComponent implements OnInit {
                 title: this.title() || undefined,
                 description: this.description() || undefined,
                 fileHash,
+                assignedObserver: this.auth.isAdmin() ? (this.assignedObserver() || undefined) : undefined,
             }).subscribe({
             next: res => {
                 const envelope = res.data!.upload;
