@@ -462,16 +462,17 @@ export class ReportListComponent implements OnInit {
     const s = this.statistics();
     if (!s) return {};
     return {
-      passing: s.passing ?? 0, dribbling: s.dribbling ?? 0, shooting: s.shooting ?? 0, ballControl: s.ballControl ?? 0,
-      speed: s.speed ?? 0, stamina: s.stamina ?? 0, strength: s.strength ?? 0, agility: s.agility ?? 0,
-      positioning: s.positioning ?? 0, decisionMaking: s.decisionMaking ?? 0, teamwork: s.teamwork ?? 0, attitude: s.attitude ?? 0,
+      turning: s.turning ?? 0, dribbling: s.dribbling ?? 0, tackling: s.tackling ?? 0, twoFooted: s.twoFooted ?? 0,
+      longPassing: s.longPassing ?? 0, shortPassing: s.shortPassing ?? 0, heading: s.heading ?? 0,
+      shortSprints: s.shortSprints ?? 0, longSprints: s.longSprints ?? 0, agility: s.agility ?? 0, duels: s.duels ?? 0,
+      vision: s.vision ?? 0, personality: s.personality ?? 0, movement: s.movement ?? 0,
     };
   }
 
   private categoryFields(category: 'technical' | 'physical' | 'mental'): (keyof ReportStatistics)[] {
-    if (category === 'technical') return ['passing', 'dribbling', 'shooting', 'ballControl'];
-    if (category === 'physical') return ['speed', 'stamina', 'strength', 'agility'];
-    return ['positioning', 'decisionMaking', 'teamwork', 'attitude'];
+    if (category === 'technical') return ['turning', 'dribbling', 'tackling', 'twoFooted', 'longPassing', 'shortPassing', 'heading'];
+    if (category === 'physical') return ['shortSprints', 'longSprints', 'agility', 'duels'];
+    return ['vision', 'personality', 'movement'];
   }
 
   categoryAverageNum(category: 'technical' | 'physical' | 'mental'): number {
@@ -486,23 +487,25 @@ export class ReportListComponent implements OnInit {
     return this.statistics() ? this.categoryAverageNum(category).toFixed(1) : '—';
   }
 
-  // متوسط كل مهارة من الـ 12 لوحدها (مش بس متوسط الفئة) — بتتحط تحت الـ radar chart
+  // متوسط كل مهارة من الـ 14 لوحدها (مش بس متوسط الفئة) — بتتحط تحت الـ radar chart
   skillAverages(): { key: string; label: string; value: number; color: string }[] {
     const s = this.statistics();
     if (!s) return [];
     const skills: { key: keyof ReportStatistics; labelKey: string; color: string }[] = [
-      { key: 'passing', labelKey: 'REPORTS.FORM.PASSING', color: '#22c55e' },
+      { key: 'turning', labelKey: 'REPORTS.FORM.TURNING', color: '#22c55e' },
       { key: 'dribbling', labelKey: 'REPORTS.FORM.DRIBBLING', color: '#22c55e' },
-      { key: 'shooting', labelKey: 'REPORTS.FORM.SHOOTING', color: '#22c55e' },
-      { key: 'ballControl', labelKey: 'REPORTS.FORM.BALL_CONTROL', color: '#22c55e' },
-      { key: 'speed', labelKey: 'REPORTS.FORM.SPEED', color: '#38bdf8' },
-      { key: 'stamina', labelKey: 'REPORTS.FORM.STAMINA', color: '#38bdf8' },
-      { key: 'strength', labelKey: 'REPORTS.FORM.STRENGTH', color: '#38bdf8' },
+      { key: 'tackling', labelKey: 'REPORTS.FORM.TACKLING', color: '#22c55e' },
+      { key: 'twoFooted', labelKey: 'REPORTS.FORM.TWO_FOOTED', color: '#22c55e' },
+      { key: 'longPassing', labelKey: 'REPORTS.FORM.LONG_PASSING', color: '#22c55e' },
+      { key: 'shortPassing', labelKey: 'REPORTS.FORM.SHORT_PASSING', color: '#22c55e' },
+      { key: 'heading', labelKey: 'REPORTS.FORM.HEADING', color: '#22c55e' },
+      { key: 'shortSprints', labelKey: 'REPORTS.FORM.SHORT_SPRINTS', color: '#38bdf8' },
+      { key: 'longSprints', labelKey: 'REPORTS.FORM.LONG_SPRINTS', color: '#38bdf8' },
       { key: 'agility', labelKey: 'REPORTS.FORM.AGILITY', color: '#38bdf8' },
-      { key: 'positioning', labelKey: 'REPORTS.FORM.POSITIONING', color: '#8b5cf6' },
-      { key: 'decisionMaking', labelKey: 'REPORTS.FORM.DECISION_MAKING', color: '#8b5cf6' },
-      { key: 'teamwork', labelKey: 'REPORTS.FORM.TEAMWORK', color: '#8b5cf6' },
-      { key: 'attitude', labelKey: 'REPORTS.FORM.ATTITUDE', color: '#8b5cf6' },
+      { key: 'duels', labelKey: 'REPORTS.FORM.DUELS', color: '#38bdf8' },
+      { key: 'vision', labelKey: 'REPORTS.FORM.VISION', color: '#8b5cf6' },
+      { key: 'personality', labelKey: 'REPORTS.FORM.PERSONALITY', color: '#8b5cf6' },
+      { key: 'movement', labelKey: 'REPORTS.FORM.MOVEMENT', color: '#8b5cf6' },
     ];
     return skills.map(sk => ({
       key: sk.key,

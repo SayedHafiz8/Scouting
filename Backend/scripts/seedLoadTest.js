@@ -426,9 +426,9 @@ async function seed() {
             const author = r === REPORTS_PER_PLAYER - 1 && p.observers.length
                 ? p.observers[0]
                 : (p.coach ?? p.createdBy);
-            const technical = { passing: rating(), dribbling: rating(), shooting: rating(), ballControl: rating() };
-            const physical = { speed: rating(), stamina: rating(), strength: rating(), agility: rating() };
-            const mental = { positioning: rating(), decisionMaking: rating(), teamwork: rating(), attitude: rating() };
+            const technical = { turning: rating(), dribbling: rating(), tackling: rating(), twoFooted: rating(), longPassing: rating(), shortPassing: rating(), heading: rating() };
+            const physical = { shortSprints: rating(), longSprints: rating(), agility: rating(), duels: rating() };
+            const mental = { vision: rating(), personality: rating(), movement: rating() };
             reports.push({
                 _id: oid(),
                 player: p._id,

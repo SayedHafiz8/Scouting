@@ -110,9 +110,9 @@ describe("§12 — deleting a coach", () => {
             homeTeam: teams.homeTeam,
             awayTeam: teams.awayTeam,
             notes: "Good game",
-            technical: { passing: 8, dribbling: 7, shooting: 6, ballControl: 8 },
-            physical: { speed: 9, stamina: 7, strength: 6, agility: 8 },
-            mental: { positioning: 7, decisionMaking: 6, teamwork: 8, attitude: 9 },
+            technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
+            physical: { shortSprints: 9, longSprints: 7, agility: 8, duels: 6 },
+            mental: { vision: 7, personality: 8, movement: 9 },
         });
 
         await forceDelete(adminToken, coach._id);
@@ -213,9 +213,9 @@ describe("§12 — deleting an observer", () => {
             homeTeam: teams.homeTeam,
             awayTeam: teams.awayTeam,
             notes: "Observer's view",
-            technical: { passing: 8, dribbling: 7, shooting: 6, ballControl: 8 },
-            physical: { speed: 9, stamina: 7, strength: 6, agility: 8 },
-            mental: { positioning: 7, decisionMaking: 6, teamwork: 8, attitude: 9 },
+            technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
+            physical: { shortSprints: 9, longSprints: 7, agility: 8, duels: 6 },
+            mental: { vision: 7, personality: 8, movement: 9 },
         });
 
         await forceDelete(adminToken, observer._id);
@@ -294,9 +294,9 @@ describe("§12 — clearing refs cannot collide on the unique indexes", () => {
             homeTeam: teams.homeTeam,
             awayTeam: teams.awayTeam,
             notes: "Same match, two scouts",
-            technical: { passing: 8, dribbling: 7, shooting: 6, ballControl: 8 },
-            physical: { speed: 9, stamina: 7, strength: 6, agility: 8 },
-            mental: { positioning: 7, decisionMaking: 6, teamwork: 8, attitude: 9 },
+            technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
+            physical: { shortSprints: 9, longSprints: 7, agility: 8, duels: 6 },
+            mental: { vision: 7, personality: 8, movement: 9 },
         };
         await ScoutingReport.create({ ...base, coach: coachA._id });
         await ScoutingReport.create({ ...base, coach: coachB._id });
@@ -332,9 +332,9 @@ describe("§12 — clearing refs cannot collide on the unique indexes", () => {
             homeTeam: teams.homeTeam,
             awayTeam: teams.awayTeam,
             notes: "First",
-            technical: { passing: 8, dribbling: 7, shooting: 6, ballControl: 8 },
-            physical: { speed: 9, stamina: 7, strength: 6, agility: 8 },
-            mental: { positioning: 7, decisionMaking: 6, teamwork: 8, attitude: 9 },
+            technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
+            physical: { shortSprints: 9, longSprints: 7, agility: 8, duels: 6 },
+            mental: { vision: 7, personality: 8, movement: 9 },
         };
         await ScoutingReport.create(doc);
 

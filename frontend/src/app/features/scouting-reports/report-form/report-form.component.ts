@@ -15,25 +15,29 @@ import { Team } from '../../../core/models/team.model';
 
 interface RatingField { key: string; label: string; }
 
+// طلب مالك 2026-09 — استبدال كامل لمجموعة الفيلدز (راجع Backend/models/scoutingReportModel.js
+// لتفاصيل القرار والتسميات المقابلة بالعربي).
 const TECHNICAL_FIELDS: RatingField[] = [
-  { key: 'passing', label: 'REPORTS.FORM.PASSING' },
+  { key: 'turning', label: 'REPORTS.FORM.TURNING' },
   { key: 'dribbling', label: 'REPORTS.FORM.DRIBBLING' },
-  { key: 'shooting', label: 'REPORTS.FORM.SHOOTING' },
-  { key: 'ballControl', label: 'REPORTS.FORM.BALL_CONTROL' },
+  { key: 'tackling', label: 'REPORTS.FORM.TACKLING' },
+  { key: 'twoFooted', label: 'REPORTS.FORM.TWO_FOOTED' },
+  { key: 'longPassing', label: 'REPORTS.FORM.LONG_PASSING' },
+  { key: 'shortPassing', label: 'REPORTS.FORM.SHORT_PASSING' },
+  { key: 'heading', label: 'REPORTS.FORM.HEADING' },
 ];
 
 const PHYSICAL_FIELDS: RatingField[] = [
-  { key: 'speed', label: 'REPORTS.FORM.SPEED' },
-  { key: 'stamina', label: 'REPORTS.FORM.STAMINA' },
-  { key: 'strength', label: 'REPORTS.FORM.STRENGTH' },
+  { key: 'shortSprints', label: 'REPORTS.FORM.SHORT_SPRINTS' },
+  { key: 'longSprints', label: 'REPORTS.FORM.LONG_SPRINTS' },
   { key: 'agility', label: 'REPORTS.FORM.AGILITY' },
+  { key: 'duels', label: 'REPORTS.FORM.DUELS' },
 ];
 
 const MENTAL_FIELDS: RatingField[] = [
-  { key: 'positioning', label: 'REPORTS.FORM.POSITIONING' },
-  { key: 'decisionMaking', label: 'REPORTS.FORM.DECISION_MAKING' },
-  { key: 'teamwork', label: 'REPORTS.FORM.TEAMWORK' },
-  { key: 'attitude', label: 'REPORTS.FORM.ATTITUDE' },
+  { key: 'vision', label: 'REPORTS.FORM.VISION' },
+  { key: 'personality', label: 'REPORTS.FORM.PERSONALITY' },
+  { key: 'movement', label: 'REPORTS.FORM.MOVEMENT' },
 ];
 
 @Component({
@@ -567,22 +571,24 @@ export class ReportFormComponent implements OnInit {
     awayTeamName: [''],
     notes: [''],
     technical: this.fb.group({
-      passing: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      turning: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
       dribbling: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      shooting: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      ballControl: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      tackling: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      twoFooted: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      longPassing: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      shortPassing: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      heading: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
     }),
     physical: this.fb.group({
-      speed: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      stamina: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      strength: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      shortSprints: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      longSprints: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
       agility: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      duels: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
     }),
     mental: this.fb.group({
-      positioning: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      decisionMaking: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      teamwork: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      attitude: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      vision: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      personality: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      movement: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
     }),
   });
 
@@ -593,11 +599,12 @@ export class ReportFormComponent implements OnInit {
   readonly liveOverall = computed(() => {
     const v = this.formValues();
     const scores = [
-      v.technical?.passing, v.technical?.dribbling, v.technical?.shooting, v.technical?.ballControl,
-      v.physical?.speed, v.physical?.stamina, v.physical?.strength, v.physical?.agility,
-      v.mental?.positioning, v.mental?.decisionMaking, v.mental?.teamwork, v.mental?.attitude,
+      v.technical?.turning, v.technical?.dribbling, v.technical?.tackling, v.technical?.twoFooted,
+      v.technical?.longPassing, v.technical?.shortPassing, v.technical?.heading,
+      v.physical?.shortSprints, v.physical?.longSprints, v.physical?.agility, v.physical?.duels,
+      v.mental?.vision, v.mental?.personality, v.mental?.movement,
     ].filter((s): s is number => s != null && s > 0);
-    return scores.length === 12 ? +(scores.reduce((a, b) => a + b, 0) / 12).toFixed(1) : null;
+    return scores.length === 14 ? +(scores.reduce((a, b) => a + b, 0) / 14).toFixed(1) : null;
   });
 
   readonly categoryAverages = computed(() => {
@@ -607,27 +614,29 @@ export class ReportFormComponent implements OnInit {
       return valid.length ? +(valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1) : 0;
     };
     return {
-      technical: avg([v.technical?.passing, v.technical?.dribbling, v.technical?.shooting, v.technical?.ballControl]),
-      physical:  avg([v.physical?.speed, v.physical?.stamina, v.physical?.strength, v.physical?.agility]),
-      mental:    avg([v.mental?.positioning, v.mental?.decisionMaking, v.mental?.teamwork, v.mental?.attitude]),
+      technical: avg([v.technical?.turning, v.technical?.dribbling, v.technical?.tackling, v.technical?.twoFooted, v.technical?.longPassing, v.technical?.shortPassing, v.technical?.heading]),
+      physical:  avg([v.physical?.shortSprints, v.physical?.longSprints, v.physical?.agility, v.physical?.duels]),
+      mental:    avg([v.mental?.vision, v.mental?.personality, v.mental?.movement]),
     };
   });
 
   readonly radarData = computed(() => {
     const v = this.formValues();
     return {
-      passing: v.technical?.passing ?? 5,
+      turning: v.technical?.turning ?? 5,
       dribbling: v.technical?.dribbling ?? 5,
-      shooting: v.technical?.shooting ?? 5,
-      ballControl: v.technical?.ballControl ?? 5,
-      speed: v.physical?.speed ?? 5,
-      stamina: v.physical?.stamina ?? 5,
-      strength: v.physical?.strength ?? 5,
+      tackling: v.technical?.tackling ?? 5,
+      twoFooted: v.technical?.twoFooted ?? 5,
+      longPassing: v.technical?.longPassing ?? 5,
+      shortPassing: v.technical?.shortPassing ?? 5,
+      heading: v.technical?.heading ?? 5,
+      shortSprints: v.physical?.shortSprints ?? 5,
+      longSprints: v.physical?.longSprints ?? 5,
       agility: v.physical?.agility ?? 5,
-      positioning: v.mental?.positioning ?? 5,
-      decisionMaking: v.mental?.decisionMaking ?? 5,
-      teamwork: v.mental?.teamwork ?? 5,
-      attitude: v.mental?.attitude ?? 5,
+      duels: v.physical?.duels ?? 5,
+      vision: v.mental?.vision ?? 5,
+      personality: v.mental?.personality ?? 5,
+      movement: v.mental?.movement ?? 5,
     };
   });
 

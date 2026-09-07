@@ -4026,22 +4026,38 @@ export interface components {
             updatedAt?: string;
         };
         TechnicalSkills: {
-            passing: number;
+            /** @description الارتداد */
+            turning: number;
+            /** @description المراوغة */
             dribbling: number;
-            shooting: number;
-            ballControl: number;
+            /** @description استخلاص الكرة */
+            tackling: number;
+            /** @description اللعب بالقدمين */
+            twoFooted: number;
+            /** @description التمريرات الطويلة الصحيحة */
+            longPassing: number;
+            /** @description التمريرات القصيرة الصحيحة */
+            shortPassing: number;
+            /** @description اللعب بالرأس */
+            heading: number;
         };
         PhysicalSkills: {
-            speed: number;
-            stamina: number;
-            strength: number;
+            /** @description اسبرنتات قصيرة */
+            shortSprints: number;
+            /** @description اسبرنتات طويلة */
+            longSprints: number;
+            /** @description الرشاقة والمرونة */
             agility: number;
+            /** @description التحامات هوائية وأرضية */
+            duels: number;
         };
         MentalSkills: {
-            positioning: number;
-            decisionMaking: number;
-            teamwork: number;
-            attitude: number;
+            /** @description الرؤية داخل الملعب */
+            vision: number;
+            /** @description الشخصية في الملعب */
+            personality: number;
+            /** @description التحركات */
+            movement: number;
         };
         ScoutingReport: {
             _id?: string;
@@ -4181,18 +4197,20 @@ export interface components {
             /** Format: date-time */
             lastReport?: string;
             overallRating?: number;
-            passing?: number;
+            turning?: number;
             dribbling?: number;
-            shooting?: number;
-            ballControl?: number;
-            speed?: number;
-            stamina?: number;
-            strength?: number;
+            tackling?: number;
+            twoFooted?: number;
+            longPassing?: number;
+            shortPassing?: number;
+            heading?: number;
+            shortSprints?: number;
+            longSprints?: number;
             agility?: number;
-            positioning?: number;
-            decisionMaking?: number;
-            teamwork?: number;
-            attitude?: number;
+            duels?: number;
+            vision?: number;
+            personality?: number;
+            movement?: number;
         };
         Pagination: {
             currentPage?: number;

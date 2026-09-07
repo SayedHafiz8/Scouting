@@ -122,9 +122,10 @@ export class RadarChartComponent {
 
   private shortLabel(label: string): string {
     const map: Record<string, string> = {
-      passing: 'Pass', dribbling: 'Drib', shooting: 'Shot', ballControl: 'Ctrl',
-      speed: 'Speed', stamina: 'Stam', strength: 'Str', agility: 'Agil',
-      positioning: 'Pos', decisionMaking: 'Dec', teamwork: 'Team', attitude: 'Att',
+      turning: 'Turn', dribbling: 'Drib', tackling: 'Tack', twoFooted: '2Ftd',
+      longPassing: 'LPass', shortPassing: 'SPass', heading: 'Head',
+      shortSprints: 'SSpr', longSprints: 'LSpr', agility: 'Agil', duels: 'Duel',
+      vision: 'Vis', personality: 'Pers', movement: 'Move',
     };
     return map[label] ?? label.slice(0, 4);
   }

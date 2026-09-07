@@ -103,14 +103,14 @@ describe('POST /api/v1/players/:playerId/reports', () => {
     expect(res.body.data.document.overallRating).toBeDefined();
   });
 
-  it('auto-calculates overallRating as average of all 12 metrics', async () => {
+  it('auto-calculates overallRating as average of all 14 metrics', async () => {
     const { token } = await createCoach();
     const player = await createPlayer(token);
 
     const payload = await payloadFor(player, {
-      technical: { passing: 8, dribbling: 6, shooting: 7, ballControl: 9 },
-      physical:  { speed: 8, stamina: 7, strength: 6, agility: 9 },
-      mental:    { positioning: 7, decisionMaking: 8, teamwork: 6, attitude: 9 },
+      technical: { turning: 8, dribbling: 6, tackling: 7, twoFooted: 9, longPassing: 8, shortPassing: 7, heading: 6 },
+      physical:  { shortSprints: 8, longSprints: 7, agility: 6, duels: 9 },
+      mental:    { vision: 7, personality: 8, movement: 6 },
     });
 
     const res = await request(app)
@@ -119,8 +119,8 @@ describe('POST /api/v1/players/:playerId/reports', () => {
       .send(payload);
 
     expect(res.status).toBe(201);
-    const allScores = [8,6,7,9, 8,7,6,9, 7,8,6,9];
-    const expected = parseFloat((allScores.reduce((a,b)=>a+b,0) / 12).toFixed(2));
+    const allScores = [8,6,7,9,8,7,6, 8,7,6,9, 7,8,6];
+    const expected = parseFloat((allScores.reduce((a,b)=>a+b,0) / 14).toFixed(2));
     expect(res.body.data.document.overallRating).toBe(expected);
   });
 
@@ -174,7 +174,7 @@ describe('POST /api/v1/players/:playerId/reports', () => {
       .post(`/api/v1/players/${player._id}/reports`)
       .set('Authorization', `Bearer ${token}`)
       .send(await payloadFor(player, {
-        technical: { passing: 0, dribbling: 7, shooting: 6, ballControl: 8 },
+        technical: { turning: 0, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 6, heading: 8 },
       }));
 
     expect(res.status).toBe(400);
@@ -188,7 +188,7 @@ describe('POST /api/v1/players/:playerId/reports', () => {
       .post(`/api/v1/players/${player._id}/reports`)
       .set('Authorization', `Bearer ${token}`)
       .send(await payloadFor(player, {
-        technical: { passing: 11, dribbling: 7, shooting: 6, ballControl: 8 },
+        technical: { turning: 11, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 6, heading: 8 },
       }));
 
     expect(res.status).toBe(400);
@@ -326,7 +326,7 @@ describe('PATCH /api/v1/players/:playerId/reports/:id', () => {
     const res = await request(app)
       .patch(`/api/v1/players/${player._id}/reports/${report._id}`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ technical: { passing: 10, dribbling: 10, shooting: 10, ballControl: 10 } });
+      .send({ technical: { turning: 10, dribbling: 10, tackling: 10, twoFooted: 10, longPassing: 10, shortPassing: 10, heading: 10 } });
 
     expect(res.status).toBe(200);
     expect(res.body.data.document.overallRating).not.toBe(originalRating);
@@ -656,8 +656,8 @@ describe('GET /api/v1/players/reports/average-ratings', () => {
     const playerA = await createPlayer(token);
     const playerB = await createPlayer(token);
 
-    await createReport(token, playerA._id, { technical: { passing: 10, dribbling: 10, shooting: 10, ballControl: 10 } });
-    await createReport(token, playerA._id, { technical: { passing: 6, dribbling: 6, shooting: 6, ballControl: 6 } });
+    await createReport(token, playerA._id, { technical: { turning: 10, dribbling: 10, tackling: 10, twoFooted: 10, longPassing: 10, shortPassing: 10, heading: 10 } });
+    await createReport(token, playerA._id, { technical: { turning: 6, dribbling: 6, tackling: 6, twoFooted: 6, longPassing: 6, shortPassing: 6, heading: 6 } });
     await createReport(token, playerB._id);
 
     const res = await request(app)

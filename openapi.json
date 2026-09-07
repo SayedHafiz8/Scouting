@@ -311,93 +311,119 @@
       "TechnicalSkills": {
         "type": "object",
         "required": [
-          "passing",
+          "turning",
           "dribbling",
-          "shooting",
-          "ballControl"
+          "tackling",
+          "twoFooted",
+          "longPassing",
+          "shortPassing",
+          "heading"
         ],
         "properties": {
-          "passing": {
+          "turning": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "الارتداد"
           },
           "dribbling": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "المراوغة"
           },
-          "shooting": {
+          "tackling": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "استخلاص الكرة"
           },
-          "ballControl": {
+          "twoFooted": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "اللعب بالقدمين"
+          },
+          "longPassing": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "التمريرات الطويلة الصحيحة"
+          },
+          "shortPassing": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "التمريرات القصيرة الصحيحة"
+          },
+          "heading": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "اللعب بالرأس"
           }
         }
       },
       "PhysicalSkills": {
         "type": "object",
         "required": [
-          "speed",
-          "stamina",
-          "strength",
-          "agility"
+          "shortSprints",
+          "longSprints",
+          "agility",
+          "duels"
         ],
         "properties": {
-          "speed": {
+          "shortSprints": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "اسبرنتات قصيرة"
           },
-          "stamina": {
+          "longSprints": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
-          },
-          "strength": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "اسبرنتات طويلة"
           },
           "agility": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "الرشاقة والمرونة"
+          },
+          "duels": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "التحامات هوائية وأرضية"
           }
         }
       },
       "MentalSkills": {
         "type": "object",
         "required": [
-          "positioning",
-          "decisionMaking",
-          "teamwork",
-          "attitude"
+          "vision",
+          "personality",
+          "movement"
         ],
         "properties": {
-          "positioning": {
+          "vision": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "الرؤية داخل الملعب"
           },
-          "decisionMaking": {
+          "personality": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "الشخصية في الملعب"
           },
-          "teamwork": {
+          "movement": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
-          },
-          "attitude": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "التحركات"
           }
         }
       },
@@ -789,40 +815,46 @@
           "overallRating": {
             "type": "number"
           },
-          "passing": {
+          "turning": {
             "type": "number"
           },
           "dribbling": {
             "type": "number"
           },
-          "shooting": {
+          "tackling": {
             "type": "number"
           },
-          "ballControl": {
+          "twoFooted": {
             "type": "number"
           },
-          "speed": {
+          "longPassing": {
             "type": "number"
           },
-          "stamina": {
+          "shortPassing": {
             "type": "number"
           },
-          "strength": {
+          "heading": {
+            "type": "number"
+          },
+          "shortSprints": {
+            "type": "number"
+          },
+          "longSprints": {
             "type": "number"
           },
           "agility": {
             "type": "number"
           },
-          "positioning": {
+          "duels": {
             "type": "number"
           },
-          "decisionMaking": {
+          "vision": {
             "type": "number"
           },
-          "teamwork": {
+          "personality": {
             "type": "number"
           },
-          "attitude": {
+          "movement": {
             "type": "number"
           }
         }

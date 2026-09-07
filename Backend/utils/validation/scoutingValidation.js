@@ -7,9 +7,11 @@ import Team from "../../models/teamModel.js";
 import SeasonMatch from "../../models/seasonMatchModel.js";
 import { ROLES } from "../../constants/roles.js";
 
-const technicalFields = ["passing", "dribbling", "shooting", "ballControl"];
-const physicalFields = ["speed", "stamina", "strength", "agility"];
-const mentalFields = ["positioning", "decisionMaking", "teamwork", "attitude"];
+// طلب مالك 2026-09 — استبدال كامل لمجموعة الفيلدز (راجع scoutingReportModel.js
+// لتفاصيل القرار). القوائم دي مصدر الحقيقة اللي createValidate/updateValidate تحتها بترجع منه.
+const technicalFields = ["turning", "dribbling", "tackling", "twoFooted", "longPassing", "shortPassing", "heading"];
+const physicalFields = ["shortSprints", "longSprints", "agility", "duels"];
+const mentalFields = ["vision", "personality", "movement"];
 
 // rating field (1 -> 10) - مطلوبة (للـ create)
 const requiredRating = (path) =>
