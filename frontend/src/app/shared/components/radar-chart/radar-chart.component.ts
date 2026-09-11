@@ -124,7 +124,7 @@ export class RadarChartComponent {
     const map: Record<string, string> = {
       turning: 'Turn', dribbling: 'Drib', tackling: 'Tack', twoFooted: '2Ftd',
       longPassing: 'LPass', shortPassing: 'SPass', heading: 'Head',
-      shortSprints: 'SSpr', longSprints: 'LSpr', agility: 'Agil', duels: 'Duel',
+      shortSprints: 'SSpr', longSprints: 'LSpr', agility: 'Agil', aerialDuels: 'AirD', groundDuels: 'GrdD',
       vision: 'Vis', personality: 'Pers', movement: 'Move',
     };
     return map[label] ?? label.slice(0, 4);

@@ -103,13 +103,13 @@ describe('POST /api/v1/players/:playerId/reports', () => {
     expect(res.body.data.document.overallRating).toBeDefined();
   });
 
-  it('auto-calculates overallRating as average of all 14 metrics', async () => {
+  it('auto-calculates overallRating as average of all 15 metrics', async () => {
     const { token } = await createCoach();
     const player = await createPlayer(token);
 
     const payload = await payloadFor(player, {
       technical: { turning: 8, dribbling: 6, tackling: 7, twoFooted: 9, longPassing: 8, shortPassing: 7, heading: 6 },
-      physical:  { shortSprints: 8, longSprints: 7, agility: 6, duels: 9 },
+      physical:  { shortSprints: 8, longSprints: 7, agility: 6, aerialDuels: 9, groundDuels: 9 },
       mental:    { vision: 7, personality: 8, movement: 6 },
     });
 
@@ -119,8 +119,8 @@ describe('POST /api/v1/players/:playerId/reports', () => {
       .send(payload);
 
     expect(res.status).toBe(201);
-    const allScores = [8,6,7,9,8,7,6, 8,7,6,9, 7,8,6];
-    const expected = parseFloat((allScores.reduce((a,b)=>a+b,0) / 14).toFixed(2));
+    const allScores = [8,6,7,9,8,7,6, 8,7,6,9,9, 7,8,6];
+    const expected = parseFloat((allScores.reduce((a,b)=>a+b,0) / 15).toFixed(2));
     expect(res.body.data.document.overallRating).toBe(expected);
   });
 

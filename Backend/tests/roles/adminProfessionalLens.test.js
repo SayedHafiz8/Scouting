@@ -477,12 +477,26 @@ describe('specs/010 — createdBy stays an unpopulated raw id for every non-admi
   });
 });
 
-// T009 — US1 boundary: GET /players/:id untouched for every role, FR-005
-describe('specs/010 — GET /players/:id is unaffected for every role, including admin — FR-005', () => {
-  it('admin GET /players/:id still returns the bare id string, never resolved to a name', async () => {
+// T009 — GET /players/:id: createdBy is resolved for admin too now.
+//
+// ⚠️ Updated: the owner asked for the responsible proScout's *name* to show on
+// the player-detail page (professional players have no coach). getSpecific now
+// mirrors the list — createdBy is populated to { _id, name } for admin, and
+// stays a bare id (or absent) for every other role.
+describe('specs/010 — GET /players/:id resolves createdBy for admin, bare id for others — FR-005', () => {
+  it('admin GET /players/:id resolves createdBy to { _id, name }', async () => {
     const player = await professionalPlayer({ name: 'Detail Player', createdBy: scout.user._id });
 
     const res = await request(app).get(`/api/v1/players/${player._id}`).set(...auth(admin.token));
+    expect(res.status).toBe(200);
+    expect(res.body.data.document.createdBy._id).toBe(scout.user._id.toString());
+    expect(res.body.data.document.createdBy.name).toBe(scout.user.name);
+  });
+
+  it('non-admin GET /players/:id still returns the bare id string', async () => {
+    const player = await professionalPlayer({ name: 'Detail Player 2', createdBy: scout.user._id, team: proTeam._id });
+
+    const res = await request(app).get(`/api/v1/players/${player._id}`).set(...auth(scout.token));
     expect(res.status).toBe(200);
     expect(res.body.data.document.createdBy).toBe(scout.user._id.toString());
   });

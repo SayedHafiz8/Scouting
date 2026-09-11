@@ -254,6 +254,34 @@ const MAX_PLAYER_IMAGE_MB = 4;
               <label class="block text-sm font-medium mb-1.5" style="color:var(--text-primary)">{{ 'PLAYERS.FORM.NOTES' | translate }}</label>
               <textarea formControlName="notes" class="form-input resize-none" rows="3" [placeholder]="'PLAYERS.FORM.NOTES_PH' | translate"></textarea>
             </div>
+
+            <!-- Club contract — an end month/year, or "free agent". Both optional. -->
+            <div class="sm:col-span-2">
+              <label class="block text-sm font-medium mb-1.5" style="color:var(--text-primary)">{{ 'PLAYERS.FORM.CONTRACT' | translate }}</label>
+              <label class="flex items-center gap-2 text-sm mb-2 cursor-pointer" style="color:var(--text-primary)">
+                <input type="checkbox" formControlName="isFreeAgent" />
+                {{ 'PLAYERS.CONTRACT.FREE_AGENT' | translate }}
+              </label>
+              @if (!form.get('isFreeAgent')?.value) {
+                <div class="grid grid-cols-2 gap-2">
+                  <select formControlName="contractEndMonth" class="form-input"
+                          [attr.aria-label]="'PLAYERS.FORM.CONTRACT_MONTH' | translate">
+                    <option [ngValue]="null">{{ 'PLAYERS.FORM.CONTRACT_MONTH' | translate }}</option>
+                    @for (m of dobMonths; track m.value) {
+                      <option [ngValue]="m.value">{{ label(m.en, m.ar) }}</option>
+                    }
+                  </select>
+                  <select formControlName="contractEndYear" class="form-input"
+                          [attr.aria-label]="'PLAYERS.FORM.CONTRACT_YEAR' | translate">
+                    <option [ngValue]="null">{{ 'PLAYERS.FORM.CONTRACT_YEAR' | translate }}</option>
+                    @for (y of contractYears; track y) {
+                      <option [ngValue]="y">{{ y }}</option>
+                    }
+                  </select>
+                </div>
+                <p class="text-xs mt-1.5" style="color:var(--text-muted)">{{ 'PLAYERS.FORM.CONTRACT_HINT' | translate }}</p>
+              }
+            </div>
           </div>
 
           <!-- admin-assign-players-reports-media — admin-only, create-only. Re-assigning an
@@ -382,7 +410,8 @@ export class PlayerFormComponent implements OnInit {
   // professional by role; an observer is professional only in the professional
   // entry context; coach and admin never are.
   readonly professionalContext = computed(() =>
-    this.auth.isProScout() || (this.auth.isObserver() && this.entryContext() === 'professional')
+    this.auth.isProScout() ||
+    ((this.auth.isObserver() || this.auth.isAdmin()) && this.entryContext() === 'professional')
   );
 
   // The age group matching the currently entered birth date — null until a valid date is chosen.
@@ -504,12 +533,22 @@ export class PlayerFormComponent implements OnInit {
   // Keep this bound in step with PRO_MIN_BIRTH_YEAR in Backend/models/playedModel.js
   // — the server is the enforcer; this list only decides what the picker offers.
   private readonly YOUTH_MIN_BIRTH_YEAR = 2007;
-  private readonly PRO_MIN_BIRTH_YEAR = 1996;
+  private readonly PRO_MIN_BIRTH_YEAR = 1995;
   private readonly MAX_BIRTH_YEAR = 2019;
 
   get dobYears(): number[] {
     const min = this.professionalContext() ? this.PRO_MIN_BIRTH_YEAR : this.YOUTH_MIN_BIRTH_YEAR;
     return Array.from({ length: this.MAX_BIRTH_YEAR - min + 1 }, (_, i) => min + i);
+  }
+
+  // Contract end year — this year through +12. Also includes any already-saved
+  // year that has since fallen into the past, so editing an expired contract
+  // doesn't silently blank the select.
+  get contractYears(): number[] {
+    const thisYear = new Date().getUTCFullYear();
+    const saved = this.form.get('contractEndYear')?.value;
+    const min = saved && saved < thisYear ? saved : thisYear;
+    return Array.from({ length: thisYear + 12 - min + 1 }, (_, i) => min + i);
   }
 
   // Stage 4b — the Team dropdown is gated on an age group for youth players, because
@@ -660,6 +699,10 @@ export class PlayerFormComponent implements OnInit {
     height: [null as number | null],
     weight: [null as number | null],
     notes: [''],
+    // Club contract — either a month+year end date, or "free agent". Both optional.
+    isFreeAgent: [false],
+    contractEndMonth: [null as number | null],
+    contractEndYear: [null as number | null],
   });
 
   ngOnInit(): void {
@@ -680,12 +723,15 @@ export class PlayerFormComponent implements OnInit {
     // the team/age-group setup until it loads (initEditMode below). Every other
     // combination (proScout any mode, coach/admin any mode, observer creating)
     // is synchronous and takes the ordinary path.
-    if (this.isEdit() && this.auth.isObserver()) {
+    // observer-matches-and-players / owner-directed — for observer and admin the
+    // professional/youth split isn't fixed by role, so on edit it must come from
+    // the loaded player (initEditMode), and on create from the ?context param.
+    if (this.isEdit() && (this.auth.isObserver() || this.auth.isAdmin())) {
       this.initEditMode();
       return;
     }
 
-    if (!this.isEdit() && this.auth.isObserver()) {
+    if (!this.isEdit() && (this.auth.isObserver() || this.auth.isAdmin())) {
       const ctx = this.route.snapshot.queryParamMap.get('context');
       this.entryContext.set(ctx === 'professional' ? 'professional' : 'youth');
     }
@@ -745,6 +791,8 @@ export class PlayerFormComponent implements OnInit {
     // No team but a free-text teamName → select shows the "other" option with the name filled in.
     const teamId = typeof p.team === 'object' && p.team ? p.team._id : (p.team ?? '');
     const dob = p.dateOfBirth?.split('T')[0] ?? '';
+    // Contract end — stored as a UTC date; split back into month/year selects.
+    const contractEnd = p.contractEndDate ? new Date(p.contractEndDate) : null;
     this.form.patchValue({
       ...p,
       nationality: knownCountry ? p.nationality : (p.nationality ? '__other__' : ''),
@@ -754,6 +802,9 @@ export class PlayerFormComponent implements OnInit {
       team: teamId || (p.teamName ? '__other__' : ''),
       teamName: p.teamName ?? '',
       dateOfBirth: dob,
+      isFreeAgent: !!p.isFreeAgent,
+      contractEndMonth: contractEnd ? contractEnd.getUTCMonth() + 1 : null,
+      contractEndYear: contractEnd ? contractEnd.getUTCFullYear() : null,
     });
     this.syncNationalityMode();
     // One-time — populates the day/month/year selects from the loaded value.
@@ -800,6 +851,19 @@ export class PlayerFormComponent implements OnInit {
     }
     delete payload.nationalityOther;
     delete payload.cityOther;
+
+    // Club contract — the month/year selects are UI-only. A free agent has no
+    // date; otherwise, if both parts are set, send the 1st of that month as a
+    // UTC date string (YYYY-MM-01), matching how the server stores it.
+    const freeAgent = !!payload.isFreeAgent;
+    let contractEndDate: string | null = null;
+    if (!freeAgent && payload.contractEndYear && payload.contractEndMonth) {
+      contractEndDate = `${payload.contractEndYear}-${String(payload.contractEndMonth).padStart(2, '0')}-01`;
+    }
+    delete payload.contractEndMonth;
+    delete payload.contractEndYear;
+    payload.isFreeAgent = freeAgent;
+    payload.contractEndDate = contractEndDate;
 
     // admin-assign-players-reports-media — only ever attached for an admin on
     // create; lockFieldExceptAdmin on the server rejects these fields from

@@ -224,7 +224,7 @@ export function reportPayload(overrides = {}) {
     // matchDate is set server-side to the creation date — not sent by the client
     notes: 'Excellent performance.',
     technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-    physical:  { shortSprints: 9, longSprints: 7, agility: 8, duels: 6 },
+    physical:  { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
     mental:    { vision: 7, personality: 8, movement: 9 },
     ...overrides,
   };

@@ -134,7 +134,17 @@ const scoutingReportSchema = new mongoose.Schema(
                 max: 10,
                 required: true,
             },
-            duels: {
+            // طلب مالك 2026-09 — الالتحامات اتقسمت لهوائية وأرضية، كل واحدة تقييم
+            // مستقل. التقارير القديمة فيها physical.duels لسه في الداتابيز بس مش
+            // بتتعرض (Mongoose strict mode)، بلا migration — نفس قرار استبدال
+            // مجموعة الفيلدز فوق.
+            aerialDuels: {
+                type: Number,
+                min: 1,
+                max: 10,
+                required: true,
+            },
+            groundDuels: {
                 type: Number,
                 min: 1,
                 max: 10,
@@ -191,7 +201,8 @@ function calcOverallRating(doc) {
         doc.physical.shortSprints,
         doc.physical.longSprints,
         doc.physical.agility,
-        doc.physical.duels,
+        doc.physical.aerialDuels,
+        doc.physical.groundDuels,
         doc.mental.vision,
         doc.mental.personality,
         doc.mental.movement,
@@ -243,7 +254,7 @@ scoutingReportSchema.pre("findOneAndUpdate", async function () {
         merged.technical.longPassing, merged.technical.shortPassing,
         merged.technical.heading,
         merged.physical.shortSprints, merged.physical.longSprints,
-        merged.physical.agility, merged.physical.duels,
+        merged.physical.agility, merged.physical.aerialDuels, merged.physical.groundDuels,
         merged.mental.vision, merged.mental.personality, merged.mental.movement,
     ];
 

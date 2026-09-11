@@ -329,7 +329,11 @@
       "DOB_MONTH": "Month",
       "DOB_YEAR": "Year",
       "DOB_ERR": "Player's birth year must be between 2007 and 2019",
-      "DOB_ERR_SCOUT": "Player's birth year must be between 1996 and 2019",
+      "DOB_ERR_SCOUT": "Player's birth year must be between 1995 and 2019",
+      "CONTRACT": "Club contract",
+      "CONTRACT_MONTH": "End month",
+      "CONTRACT_YEAR": "End year",
+      "CONTRACT_HINT": "When the player's contract with their club ends. Leave empty if unknown.",
       "TEAM": "Team",
       "TEAM_PH": "No team",
       "TEAM_ERR": "Team is required",
@@ -394,6 +398,7 @@
       "ADDRESS": "Address",
       "NOTES": "Notes",
       "COACH": "Coach",
+      "PROSCOUT": "Pro Scout",
       "CHANGE_STATUS": "Change Status",
       "EDIT": "Edit Player",
       "DELETE": "Delete Player",
@@ -424,7 +429,21 @@
     "NO_COACH": "No coach assigned",
     "PROFESSIONAL_LEAGUE": "Professional league",
     "ALL_TEAMS": "All teams",
-    "CREATED_BY": "Added by"
+    "CREATED_BY": "Added by",
+    "CONTRACT": {
+      "FREE_AGENT": "Free agent",
+      "EXPIRED": "Contract expired",
+      "REMAINING": "{{time}} left on contract",
+      "AND": " ",
+      "YEAR_1": "1 year",
+      "YEAR_2": "2 years",
+      "YEAR_FEW": "{{n}} years",
+      "YEAR_MANY": "{{n}} years",
+      "MONTH_1": "1 month",
+      "MONTH_2": "2 months",
+      "MONTH_FEW": "{{n}} months",
+      "MONTH_MANY": "{{n}} months"
+    }
   },
   "REPORTS": {
     "COUNT": "{{count}} report(s)",
@@ -507,7 +526,8 @@
       "SHORT_SPRINTS": "Short Sprints",
       "LONG_SPRINTS": "Long Sprints",
       "AGILITY": "Agility & Flexibility",
-      "DUELS": "Aerial & Ground Duels",
+      "AERIAL_DUELS": "Aerial Duels",
+      "GROUND_DUELS": "Ground Duels",
       "VISION": "Vision",
       "PERSONALITY": "On-Pitch Personality",
       "MOVEMENT": "Movement"

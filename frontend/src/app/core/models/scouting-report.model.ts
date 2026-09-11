@@ -47,7 +47,8 @@ export interface ReportFormValue {
   shortSprints: number | null;
   longSprints: number | null;
   agility: number | null;
-  duels: number | null;
+  aerialDuels: number | null;
+  groundDuels: number | null;
   vision: number | null;
   personality: number | null;
   movement: number | null;

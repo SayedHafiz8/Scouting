@@ -333,7 +333,8 @@ export const getPlayerStatistics = asyncHandler(async (req, res, next) => {
                 shortSprints: { $avg: "$physical.shortSprints" },
                 longSprints:  { $avg: "$physical.longSprints" },
                 agility:      { $avg: "$physical.agility" },
-                duels:        { $avg: "$physical.duels" },
+                aerialDuels:  { $avg: "$physical.aerialDuels" },
+                groundDuels:  { $avg: "$physical.groundDuels" },
 
                 // Mental
                 vision:      { $avg: "$mental.vision" },
@@ -363,7 +364,8 @@ export const getPlayerStatistics = asyncHandler(async (req, res, next) => {
                 shortSprints: { $round: ["$shortSprints", 2] },
                 longSprints:  { $round: ["$longSprints", 2] },
                 agility:      { $round: ["$agility", 2] },
-                duels:        { $round: ["$duels", 2] },
+                aerialDuels:  { $round: ["$aerialDuels", 2] },
+                groundDuels:  { $round: ["$groundDuels", 2] },
                 vision:       { $round: ["$vision", 2] },
                 personality:  { $round: ["$personality", 2] },
                 movement:     { $round: ["$movement", 2] },
@@ -379,7 +381,7 @@ export const getPlayerStatistics = asyncHandler(async (req, res, next) => {
         lastReport: null,
         overallRating: 0,
         turning: 0, dribbling: 0, tackling: 0, twoFooted: 0, longPassing: 0, shortPassing: 0, heading: 0,
-        shortSprints: 0, longSprints: 0, agility: 0, duels: 0,
+        shortSprints: 0, longSprints: 0, agility: 0, aerialDuels: 0, groundDuels: 0,
         vision: 0, personality: 0, movement: 0,
     };
 

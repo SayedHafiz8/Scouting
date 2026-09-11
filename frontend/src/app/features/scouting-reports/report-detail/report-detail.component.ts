@@ -78,7 +78,8 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
                 <app-rating-bar [label]="'REPORTS.FORM.SHORT_SPRINTS' | translate" [value]="report()!.physical.shortSprints" />
                 <app-rating-bar [label]="'REPORTS.FORM.LONG_SPRINTS' | translate" [value]="report()!.physical.longSprints" />
                 <app-rating-bar [label]="'REPORTS.FORM.AGILITY' | translate" [value]="report()!.physical.agility" />
-                <app-rating-bar [label]="'REPORTS.FORM.DUELS' | translate" [value]="report()!.physical.duels" />
+                <app-rating-bar [label]="'REPORTS.FORM.AERIAL_DUELS' | translate" [value]="report()!.physical.aerialDuels" />
+                <app-rating-bar [label]="'REPORTS.FORM.GROUND_DUELS' | translate" [value]="report()!.physical.groundDuels" />
               </div>
             </div>
 
@@ -177,7 +178,7 @@ export class ReportDetailComponent implements OnInit, OnDestroy {
       longPassing: r.technical.longPassing, shortPassing: r.technical.shortPassing,
       heading: r.technical.heading,
       shortSprints: r.physical.shortSprints, longSprints: r.physical.longSprints,
-      agility: r.physical.agility, duels: r.physical.duels,
+      agility: r.physical.agility, aerialDuels: r.physical.aerialDuels, groundDuels: r.physical.groundDuels,
       vision: r.mental.vision, personality: r.mental.personality, movement: r.mental.movement,
     };
   }

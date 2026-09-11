@@ -139,7 +139,7 @@ export const create = asyncHandler(async (req, res, next) => {
     }
 
     // Stage 4b (proScout) — لاعبو الـproScout محترفون دايماً: مدى سنة ميلاد أوسع
-    // (1996→2019) وبدون فئة عمرية. observer-matches-and-players — نفس التأثير
+    // (1995→2019) وبدون فئة عمرية. observer-matches-and-players — نفس التأثير
     // للأوبزيرفر، بس مشروط بدوري الفريق المختار (resolveIsProfessionalFromTeam
     // فوق)، مش ثابت بالرول زي proScout. admin-assign-players-reports-media —
     // نفس الاشتقاق بالظبط للأدمن (مبني على الفريق المختار، مش على مين اتسنّد
@@ -386,6 +386,15 @@ export const getAll = asyncHandler(async (req, res, next) => {
     // ببايت لما كانت عليه (Principle III).
     const scope = await playerScopeFor(req);
 
+    // §9 orphan lens — "no coach" also means "not owned by an observer". A player
+    // the admin assigned to an observer at creation belongs to that observer, the
+    // same way a coach's player belongs to the coach (ownerFields.observer =
+    // "observers"). It is not waiting for a coach, so it must not surface in the
+    // lens whose whole purpose is "these players need one assigned".
+    if (queryParams.coach === null) {
+        scope["observers.0"] = { $exists: false };
+    }
+
     const playerQuery = Player.find(scope)
         .populate({ path: "coach", select: "name email" })
         .populate({ path: "team", select: "name clubName" });
@@ -396,6 +405,11 @@ export const getAll = asyncHandler(async (req, res, next) => {
     // الـpopulate ده أصلاً، لا يوصله ولا يتحسب لطلبه.
     if (req.user.role === ROLES.ADMIN) {
         playerQuery.populate({ path: "createdBy", select: "name" });
+        // اللاعب اللي الأدمن أسنده لأوبزيرفر عند الإنشاء مالكه هو الأوبزيرفر
+        // (ownerFields.observer = "observers")، فبنعرض اسمه في سطر الكوتش على
+        // الكارت بدل "بدون كوتش". للأدمن بس — الرولات التانية إما بيتشال منها
+        // الحقل (maskObservedForCoach) أو مش محتاجاه.
+        playerQuery.populate({ path: "observers", select: "name" });
     }
 
     const features = new ApiFeature(
@@ -455,10 +469,19 @@ export const getAll = asyncHandler(async (req, res, next) => {
 // @route   GET api/v1/players/:id
 // @access  private
 export const getSpecific = asyncHandler(async (req, res, next) => {
-    const document = await Player.findById(req.params.id)
+    const query = Player.findById(req.params.id)
         .populate({ path: "coach", select: "name email" })
         .populate({ path: "observers", select: "name" })
         .populate({ path: "team", select: "name clubName" });
+
+    // specs/010-professional-lens-creator — نفس نمط getAll: البروسكاوت المسؤول
+    // عن اللاعب (createdBy) بيتعمله populate للأدمن بس. اللاعب المحترف مالوش
+    // كوتش، والأدمن بيشوف مكانه اسم البروسكاوت اللي أنشأه في صفحة التفاصيل.
+    if (req.user.role === ROLES.ADMIN) {
+        query.populate({ path: "createdBy", select: "name" });
+    }
+
+    const document = await query;
 
     if (!document) {
         return next(new AppError(`No document for this Id '${req.params.id}'`, 404));

@@ -14,6 +14,7 @@ import { SocketService } from '../../../core/services/socket.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { Player, PlayerStatus, PLAYER_POSITIONS } from '../../../core/models/player.model';
 import { PlayerContextService } from '../../../core/services/player-context.service';
+import { contractLabel } from '../contract.util';
 import { BreadcrumbContextService } from '../../../core/services/breadcrumb-context.service';
 import { StatusBadgeComponent } from '../../../shared/components/status-badge/status-badge.component';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
@@ -249,6 +250,54 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                   </div>
                 </div>
               }
+
+              <!-- specs/010-professional-lens-creator — اللاعب المحترف مالوش كوتش؛
+                   مالكه الفعلي هو البروسكاوت اللي أنشأه (createdBy، فرع سكوب
+                   { team: null, createdBy }). بيتعرض مكان الكوتش، للأدمن بس. -->
+              @if (isProfessionalOwned()) {
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                       style="background:rgba(56,189,248,0.12)">
+                    <svg class="w-4 h-4" fill="none" stroke="#38bdf8" stroke-width="2" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">
+                      {{ 'PLAYERS.DETAIL.PROSCOUT' | translate }}
+                    </p>
+                    @if (creatorId()) {
+                      <a [routerLink]="['/users', creatorId()]"
+                         class="text-sm font-semibold transition-colors hover:underline" style="color:#38bdf8">
+                        {{ creatorName() }}
+                      </a>
+                    } @else {
+                      <p class="text-sm font-semibold" style="color:var(--text-primary)">{{ creatorName() || '—' }}</p>
+                    }
+                  </div>
+                </div>
+              }
+
+              <!-- اللاعب اللي الأدمن أسنده لأوبزيرفر عند الإنشاء — مالكه الأوبزيرفر
+                   بالفعل، فبيتعرض هنا مكان الكوتش زيه زي البروسكاوت فوق. isProfessionalOwned()
+                   بيرجع false لو ليه أوبزيرفر (تعيين ملكية صريح بياخد أولوية على
+                   createdBy)، فالفرعين متبادلين مش متداخلين. -->
+              @if (auth.isAdmin() && hasObservers()) {
+                <div class="flex items-start gap-3">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                       style="background:rgba(139,92,246,0.12)">
+                    <svg class="w-4 h-4" style="color:#a78bfa" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">
+                      {{ 'PLAYERS.DETAIL.OBSERVED_BY' | translate }}
+                    </p>
+                    <p class="text-sm font-semibold" style="color:var(--text-primary)">{{ assignedObserverNames() || '—' }}</p>
+                  </div>
+                </div>
+              }
             </div>
 
             <!-- Actions -->
@@ -266,11 +315,12 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                 </a>
               }
               @if (auth.isAdmin()) {
-                <!-- Coach picker — أدمن-فقط. admin-assign-players-reports-media —
-                     isOrphaned() اتشالت من هنا؛ الأدمن بقى يقدر يعيد تعيين كوتش
-                     للاعب عنده كوتش فعلاً بالفعل (السيرفر كان بيسمح بيها من الأول،
-                     الواجهة بس كانت بتقفلها على اللاعب اليتيم). نفس نمط الـobserver
-                     picker تحت، بس اختيار واحد. -->
+                <!-- owner-directed — بيكر الكوتش وبيكر البروسكاوت بيظهروا بس
+                     للاعب اللي ملوش مالك خالص (playerHasOwner()). أول ما يتعيّن
+                     كوتش/بروسكاوت/متابع اللاعب بيبقى ملك مين اتعيّن ومبيتغيّرش من
+                     هنا تاني — التعيين بيحصل مرة واحدة وقت بداية اللاعب. -->
+                @if (!playerHasOwner()) {
+                <!-- Coach picker — أدمن-فقط. نفس نمط الـobserver picker تحت، بس اختيار واحد. -->
                 <div class="rounded-xl overflow-hidden"
                      style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.22)">
                   <button type="button"
@@ -403,6 +453,7 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                     }
                   }
                 </div>
+                }
 
                 <div class="space-y-1.5">
                   <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">
@@ -1014,11 +1065,53 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
     return typeof coach === 'object' ? (coach as any)._id ?? '' : (coach as string);
   }
 
+  // specs/010-professional-lens-creator — البروسكاوت المسؤول عن اللاعب (createdBy).
+  // بيتعمله populate للأدمن بس على GET /players/:id؛ لغيره بيفضل id نص أو غايب،
+  // فنفس حارس coachName() بالظبط: اسم يظهر يعني أدمن + محترف فعلاً.
+  creatorName(): string {
+    const createdBy = this.player()?.createdBy;
+    if (!createdBy || typeof createdBy === 'string') return '';
+    return createdBy.name ?? '';
+  }
+
+  creatorId(): string {
+    const createdBy = this.player()?.createdBy;
+    if (!createdBy || typeof createdBy === 'string') return '';
+    return createdBy._id ?? '';
+  }
+
+  // اللاعب المحترف مالوش كوتش بحكم التصميم ومالكه البروسكاوت اللي أنشأه —
+  // فبنعرض اسمه مكان الكوتش بدل ما نوصف اللاعب إنه "بدون كوتش". لو ليه أوبزيرفر
+  // معيَّن كمان (الأدمن ممكن يعمل الاتنين)، الأوبزيرفر هو المالك الفعلي —
+  // تعيين ملكية صريح بياخد أولوية على "مين اللي أنشأ السجل".
+  isProfessionalOwned(): boolean {
+    return this.auth.isAdmin() && !!this.player() && !this.player()!.coach
+      && !!this.player()!.isProfessional && !this.hasObservers();
+  }
+
+  hasObservers(): boolean {
+    const obs = this.player()?.observers;
+    return Array.isArray(obs) && obs.length > 0;
+  }
+
+  // owner-directed — الأدمن بيعيّن الكوتش/البروسكاوت/المتابع مرة واحدة وقت
+  // بداية اللاعب. أول ما يبقى ليه مالك (كوتش، أو بروسكاوت عن طريق كونه محترف،
+  // أو متابع واحد على الأقل) اللاعب بيبقى ملك مين اتعيّن، وبيكرا التعيين بيختفي.
+  // لسه بيظهر للاعب اليتيم تماماً (اتنشأ من غير أي إسناد، أو كوتشه اتمسح).
+  playerHasOwner(): boolean {
+    const p = this.player();
+    if (!p) return false;
+    return !!p.coach || !!p.isProfessional || this.hasObservers();
+  }
+
   // لاعب "يتيم" — كوتشه اتمسح نهائياً فالسيرفر فضّى الحقل (شوف §9 في الباكإند).
   // مشروط بالأدمن لأنه الوحيد اللي الـAPI بيرجّعله حقل الكوتش؛ عند الكوتش نفسه
   // والأوبزيرفر الحقل مابيتبعتش أصلاً، ففراغه عندهم مش معناه غياب كوتش.
+  // اللاعب المحترف واللاعب المسنَد لأوبزيرفر مستثنيين: مالهمش كوتش بحكم التصميم
+  // مش لأنه اتمسح، وليهم مالك فعلي (البروسكاوت / الأوبزيرفر).
   isOrphaned(): boolean {
-    return this.auth.isAdmin() && !!this.player() && !this.player()!.coach;
+    return this.auth.isAdmin() && !!this.player() && !this.player()!.coach
+      && !this.player()!.isProfessional && !this.hasObservers();
   }
 
   playerFields() {
@@ -1030,12 +1123,24 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
       { label: this.translate.instant('PLAYERS.DETAIL.ADDRESS'), value: p.address },
       { label: this.translate.instant('PLAYERS.DETAIL.NOTES'), value: p.notes || '—' },
     ];
+    const contract = contractLabel(p, this.translate);
+    if (contract) {
+      fields.push({ label: this.translate.instant('PLAYERS.FORM.CONTRACT'), value: contract });
+    }
     if (this.auth.isAdmin()) {
-      // اللاعب اليتيم بيتقال صراحةً بدل شرطة مبهمة تخلط بين "مفيش كوتش" و"البيانات ناقصة"
-      fields.unshift({
-        label: this.translate.instant('PLAYERS.DETAIL.COACH'),
-        value: this.coachName() || this.translate.instant('PLAYERS.NO_COACH'),
-      });
+      // مين المسؤول عن اللاعب، بالترتيب: كوتش فعلي ← بروسكاوت (لاعب محترف) ←
+      // أوبزيرفر (أسنده الأدمن عند الإنشاء) ← "بدون كوتش" (لاعب يتيم فعلاً).
+      // بيتقال صراحةً بدل شرطة مبهمة تخلط بين "مفيش مالك" و"البيانات ناقصة".
+      const coachName = this.coachName();
+      fields.unshift(
+        coachName
+          ? { label: this.translate.instant('PLAYERS.DETAIL.COACH'), value: coachName }
+          : this.isProfessionalOwned()
+          ? { label: this.translate.instant('PLAYERS.DETAIL.PROSCOUT'), value: this.creatorName() || '—' }
+          : this.hasObservers()
+          ? { label: this.translate.instant('PLAYERS.DETAIL.OBSERVED_BY'), value: this.assignedObserverNames() || '—' }
+          : { label: this.translate.instant('PLAYERS.DETAIL.COACH'), value: this.translate.instant('PLAYERS.NO_COACH') },
+      );
     }
     return fields;
   }

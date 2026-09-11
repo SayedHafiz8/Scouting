@@ -223,31 +223,13 @@ describe('PlayerListComponent — orphaned players filter behaviour', () => {
 // with it (PC-1, tested above on the orphaned chip itself).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const professionalChip = () => compiled.querySelector('[data-testid="professional-filter"]');
 const teamDropdown = () => compiled.querySelector('[data-testid="professional-team-filter"]');
 
-describe('PlayerListComponent — professional league filter visibility (FR-010)', () => {
-  it('is offered to an admin', async () => {
-    await setup('admin');
-    expect(professionalChip()).toBeTruthy();
-  });
-
-  it('is hidden from a coach', async () => {
-    await setup('coach');
-    expect(professionalChip()).toBeNull();
-  });
-
-  it('is hidden from an observer', async () => {
-    await setup('observer');
-    expect(professionalChip()).toBeNull();
-  });
-
-  it('is hidden from a proScout — their entire scope is already professional', async () => {
-    await setup('proScout');
-    expect(professionalChip()).toBeNull();
-  });
-});
-
+// owner-directed — the admin's route into the professional lens is the grid
+// card now, not a filter chip. Visibility of that card is covered in the
+// "professional card in the grid" block below (admin + observer get it,
+// coach + proScout don't). These behaviour tests drive toggleProfessional()
+// directly, which is unchanged.
 describe('PlayerListComponent — professional league filter behaviour (FR-013, FR-013a, PC-1)', () => {
   it('navigates with isProfessional=true and no other params when switched on', async () => {
     const comp = await setup('admin');
@@ -342,31 +324,16 @@ describe('PlayerListComponent — professional lens composes with search (US2, F
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// US3 — the chip badge shows the professional count while the grid (not the
-// flat view) is visible — the INVERSE of every other chip badge in this
-// file, which shows its count only while its own chip is active. FR-011.
+// US3 — the professional count is shown on the grid card (matching the
+// age-group cards), for admin the same as for observer. FR-011.
 // ═══════════════════════════════════════════════════════════════════════════
-describe('PlayerListComponent — professional count badge on the grid (US3, FR-011)', () => {
-  it('shows the professional count on the chip while the grid is visible', async () => {
+describe('PlayerListComponent — professional count on the grid card (US3, FR-011)', () => {
+  it('shows the professional count on the card while the grid is visible', async () => {
     await setup('admin', {}, { counts: { ag1: 3 }, total: 5, professional: 2 });
     fixture.detectChanges();
 
-    const badge = professionalChip()?.querySelector('.chip-badge');
-    expect(badge?.textContent?.trim()).toBe('2');
-  });
-
-  it('shows no badge when there are no professional players', async () => {
-    await setup('admin', {}, { counts: { ag1: 5 }, total: 5, professional: 0 });
-    fixture.detectChanges();
-
-    expect(professionalChip()?.querySelector('.chip-badge')).toBeNull();
-  });
-
-  it('shows no badge while the chip itself is active (flat view) — inverted vs. every other chip badge', async () => {
-    await setup('admin', { isProfessional: 'true' }, { counts: {}, total: 2, professional: 2 });
-    fixture.detectChanges();
-
-    expect(professionalChip()?.querySelector('.chip-badge')).toBeNull();
+    const card = compiled.querySelector('[data-testid="professional-card"]');
+    expect(card?.textContent).toContain('2');
   });
 });
 
@@ -475,44 +442,64 @@ describe('PlayerListComponent — other roles keep the age-group UI (FR-014)', (
     expect(countsSpy).toHaveBeenCalled();
   });
 
-  it('an observer gets the Add player control', async () => {
+  // owner-directed — the Add control only appears once a scope is chosen (a
+  // specific age group, or the professional lens). On the bare grid there's no
+  // age-group context to create into, so it's hidden there for admin/observer.
+  it('an observer does not get the Add control on the bare grid', async () => {
     await setup('observer');
+    expect(addButton()).toBeNull();
+  });
+
+  it('an observer gets the Add control once an age group is selected', async () => {
+    const comp = await setup('observer', { ageGroup: 'ag1' });
+    expect(comp.selectedGroup()).not.toBeNull();
+    fixture.detectChanges();
     expect(addButton()).toBeTruthy();
   });
 
-  // admin-assign-players-reports-media — deliberate behavior change: the admin
-  // can now create (and assign) a player, so it gets the Add control too.
-  it('an admin gets the Add player control', async () => {
+  it('an admin does not get the Add control on the bare grid', async () => {
     await setup('admin');
+    expect(addButton()).toBeNull();
+  });
+
+  it('an admin gets the Add control once an age group is selected', async () => {
+    const comp = await setup('admin', { ageGroup: 'ag1' });
+    expect(comp.selectedGroup()).not.toBeNull();
+    fixture.detectChanges();
+    expect(addButton()).toBeTruthy();
+  });
+
+  it('an admin gets the Add control inside the professional lens', async () => {
+    const comp = await setup('admin', { isProfessional: 'true' });
+    expect(comp.flatView()).toBeTrue();
+    fixture.detectChanges();
     expect(addButton()).toBeTruthy();
   });
 });
 
-// observer-matches-and-players — the professional card added to the age-group
-// grid, entered the same way as any age-group card. Additive for observer only;
-// admin keeps its existing chip-based route into this lens (professionalChip()
-// above, unchanged), and coach/proScout get neither.
+// A professional-league card in the age-group grid, entered the same way as any
+// age-group card. owner-directed — the admin now reaches the lens through this
+// same card (its filter chip was removed), so admin + observer both get it;
+// coach and proScout get neither.
 const professionalCard = () => compiled.querySelector('.age-group-card--professional');
 
-describe('PlayerListComponent — professional card in the grid (observer-matches-and-players)', () => {
+describe('PlayerListComponent — professional card in the grid', () => {
   // setup() flushes /ages asynchronously (loadGroupCounts's own subscribe fires
-  // inside that flush), so a second detectChanges() is needed to paint the grid
-  // (as opposed to the status-chips row, which isn't gated behind the loading
-  // skeleton and so doesn't need one — see professionalChip() tests above).
+  // inside that flush), so a second detectChanges() is needed to paint the grid.
   it('is offered to an observer', async () => {
     await setup('observer');
     fixture.detectChanges();
     expect(professionalCard()).toBeTruthy();
   });
 
-  it('is absent for a coach', async () => {
-    await setup('coach');
+  it('is offered to an admin', async () => {
+    await setup('admin');
     fixture.detectChanges();
-    expect(professionalCard()).toBeNull();
+    expect(professionalCard()).toBeTruthy();
   });
 
-  it('is absent for an admin', async () => {
-    await setup('admin');
+  it('is absent for a coach', async () => {
+    await setup('coach');
     fixture.detectChanges();
     expect(professionalCard()).toBeNull();
   });
@@ -548,8 +535,10 @@ describe('PlayerListComponent — Add player context hint (observer-matches-and-
   });
 
   it('carries no context param outside the professional lens', async () => {
-    await setup('observer');
+    await setup('observer', { ageGroup: 'ag1' });
+    fixture.detectChanges();
     const link = addButton() as HTMLAnchorElement;
+    expect(link).toBeTruthy();
     const debugEl = fixture.debugElement.query(el => el.nativeElement === link);
     const routerLink = debugEl.injector.get(RouterLink);
     expect(routerLink.queryParams).toEqual({});
@@ -630,6 +619,31 @@ describe('PlayerListComponent — creatorName()', () => {
     const comp = await setup('admin');
     const player = {} as Player;
     expect(comp.creatorName(player)).toBe('');
+  });
+});
+
+// owner-directed — isOrphaned() excludes players that already have an owner: a
+// professional player (owned by its proScout) and a player the admin assigned to
+// an observer at creation (owned by that observer, the same as a coach's player).
+describe('PlayerListComponent — isOrphaned()', () => {
+  it('is true for an admin on a coachless, non-professional, unobserved player', async () => {
+    const comp = await setup('admin');
+    expect(comp.isOrphaned({ coach: undefined, observers: [] } as unknown as Player)).toBeTrue();
+  });
+
+  it('is false when the player has observers', async () => {
+    const comp = await setup('admin');
+    expect(comp.isOrphaned({ coach: undefined, observers: ['o1'] } as unknown as Player)).toBeFalse();
+  });
+
+  it('is false for a professional player', async () => {
+    const comp = await setup('admin');
+    expect(comp.isOrphaned({ coach: undefined, isProfessional: true, observers: [] } as unknown as Player)).toBeFalse();
+  });
+
+  it('is false for every non-admin role', async () => {
+    const comp = await setup('coach');
+    expect(comp.isOrphaned({ coach: undefined, observers: [] } as unknown as Player)).toBeFalse();
   });
 });
 

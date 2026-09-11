@@ -114,6 +114,9 @@ const options = {
               default: "pending",
             },
             ageGroup:  { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/AgeGroup" }] },
+            isProfessional: { type: "boolean", default: false, description: "Stage 4b — an adult professional-league player. Server-set only (locked from the client); professional players carry no ageGroup and are owned by their creating proScout (createdBy), not a coach." },
+            contractEndDate: { type: "string", format: "date-time", nullable: true, description: "End of the player's contract with their club — stored as UTC midnight on the first day of the contract's final month (client sends YYYY-MM-01 from a month/year picker). null when there is no contract or the player is a free agent. Remaining time (years/months) is a client-side display concern." },
+            isFreeAgent: { type: "boolean", default: false, description: "The player currently has no club contract. Mutually exclusive with contractEndDate (the server nulls the date when this is true)." },
             coach:     { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/User" }] },
             observers: {
               type: "array",
@@ -121,7 +124,7 @@ const options = {
             },
             createdBy: {
               oneOf: [{ type: "string" }, { $ref: "#/components/schemas/User" }],
-              description: "specs/010-professional-lens-creator — the user who created this player. Populated to { _id, name } only for GET /players requests made by an admin; absent for every other role and for GET /players/:id.",
+              description: "specs/010-professional-lens-creator — the user who created (and, for professional players, owns) this player. Populated to { _id, name } only for admins, on GET /players and GET /players/:id; a bare id (or absent) for every other role.",
             },
             createdAt: { type: "string", format: "date-time" },
             updatedAt: { type: "string", format: "date-time" },
@@ -144,12 +147,13 @@ const options = {
 
         PhysicalSkills: {
           type: "object",
-          required: ["shortSprints", "longSprints", "agility", "duels"],
+          required: ["shortSprints", "longSprints", "agility", "aerialDuels", "groundDuels"],
           properties: {
             shortSprints: { type: "number", minimum: 1, maximum: 10, description: "اسبرنتات قصيرة" },
             longSprints:  { type: "number", minimum: 1, maximum: 10, description: "اسبرنتات طويلة" },
             agility:      { type: "number", minimum: 1, maximum: 10, description: "الرشاقة والمرونة" },
-            duels:        { type: "number", minimum: 1, maximum: 10, description: "التحامات هوائية وأرضية" },
+            aerialDuels:  { type: "number", minimum: 1, maximum: 10, description: "الالتحامات الهوائية" },
+            groundDuels:  { type: "number", minimum: 1, maximum: 10, description: "الالتحامات الأرضية" },
           },
         },
 
@@ -338,7 +342,8 @@ const options = {
             shortSprints:   { type: "number" },
             longSprints:    { type: "number" },
             agility:        { type: "number" },
-            duels:          { type: "number" },
+            aerialDuels:    { type: "number" },
+            groundDuels:    { type: "number" },
             vision:         { type: "number" },
             personality:    { type: "number" },
             movement:       { type: "number" },

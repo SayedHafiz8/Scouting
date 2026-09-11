@@ -31,7 +31,8 @@ const PHYSICAL_FIELDS: RatingField[] = [
   { key: 'shortSprints', label: 'REPORTS.FORM.SHORT_SPRINTS' },
   { key: 'longSprints', label: 'REPORTS.FORM.LONG_SPRINTS' },
   { key: 'agility', label: 'REPORTS.FORM.AGILITY' },
-  { key: 'duels', label: 'REPORTS.FORM.DUELS' },
+  { key: 'aerialDuels', label: 'REPORTS.FORM.AERIAL_DUELS' },
+  { key: 'groundDuels', label: 'REPORTS.FORM.GROUND_DUELS' },
 ];
 
 const MENTAL_FIELDS: RatingField[] = [
@@ -583,7 +584,8 @@ export class ReportFormComponent implements OnInit {
       shortSprints: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
       longSprints: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
       agility: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      duels: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      aerialDuels: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      groundDuels: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
     }),
     mental: this.fb.group({
       vision: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
@@ -601,10 +603,10 @@ export class ReportFormComponent implements OnInit {
     const scores = [
       v.technical?.turning, v.technical?.dribbling, v.technical?.tackling, v.technical?.twoFooted,
       v.technical?.longPassing, v.technical?.shortPassing, v.technical?.heading,
-      v.physical?.shortSprints, v.physical?.longSprints, v.physical?.agility, v.physical?.duels,
+      v.physical?.shortSprints, v.physical?.longSprints, v.physical?.agility, v.physical?.aerialDuels, v.physical?.groundDuels,
       v.mental?.vision, v.mental?.personality, v.mental?.movement,
     ].filter((s): s is number => s != null && s > 0);
-    return scores.length === 14 ? +(scores.reduce((a, b) => a + b, 0) / 14).toFixed(1) : null;
+    return scores.length === 15 ? +(scores.reduce((a, b) => a + b, 0) / 15).toFixed(1) : null;
   });
 
   readonly categoryAverages = computed(() => {
@@ -615,7 +617,7 @@ export class ReportFormComponent implements OnInit {
     };
     return {
       technical: avg([v.technical?.turning, v.technical?.dribbling, v.technical?.tackling, v.technical?.twoFooted, v.technical?.longPassing, v.technical?.shortPassing, v.technical?.heading]),
-      physical:  avg([v.physical?.shortSprints, v.physical?.longSprints, v.physical?.agility, v.physical?.duels]),
+      physical:  avg([v.physical?.shortSprints, v.physical?.longSprints, v.physical?.agility, v.physical?.aerialDuels, v.physical?.groundDuels]),
       mental:    avg([v.mental?.vision, v.mental?.personality, v.mental?.movement]),
     };
   });
@@ -633,7 +635,8 @@ export class ReportFormComponent implements OnInit {
       shortSprints: v.physical?.shortSprints ?? 5,
       longSprints: v.physical?.longSprints ?? 5,
       agility: v.physical?.agility ?? 5,
-      duels: v.physical?.duels ?? 5,
+      aerialDuels: v.physical?.aerialDuels ?? 5,
+      groundDuels: v.physical?.groundDuels ?? 5,
       vision: v.mental?.vision ?? 5,
       personality: v.mental?.personality ?? 5,
       movement: v.mental?.movement ?? 5,

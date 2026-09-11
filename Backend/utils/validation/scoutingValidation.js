@@ -10,7 +10,7 @@ import { ROLES } from "../../constants/roles.js";
 // طلب مالك 2026-09 — استبدال كامل لمجموعة الفيلدز (راجع scoutingReportModel.js
 // لتفاصيل القرار). القوائم دي مصدر الحقيقة اللي createValidate/updateValidate تحتها بترجع منه.
 const technicalFields = ["turning", "dribbling", "tackling", "twoFooted", "longPassing", "shortPassing", "heading"];
-const physicalFields = ["shortSprints", "longSprints", "agility", "duels"];
+const physicalFields = ["shortSprints", "longSprints", "agility", "aerialDuels", "groundDuels"];
 const mentalFields = ["vision", "personality", "movement"];
 
 // rating field (1 -> 10) - مطلوبة (للـ create)

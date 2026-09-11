@@ -166,6 +166,28 @@ describe('PlayerDetailComponent — player with no coach', () => {
     expect(coachField).toBeDefined();
     expect(coachField!.value).toBe('PLAYERS.NO_COACH');
   });
+
+  // owner-directed — a player the admin assigned to an observer at creation
+  // belongs to that observer, the same way a coach's player does. It is not
+  // "orphaned"/"no coach"; the responsible-party row names the observer.
+  it('a player assigned to an observer is not flagged orphaned', async () => {
+    const comp = await setup(
+      basePlayer({ coach: undefined, status: 'observed', observers: [{ _id: 'o1', name: 'Obs One' }] as any }),
+      true,
+    );
+    expect(comp.isOrphaned()).toBeFalse();
+    expect(compiled.textContent).not.toContain('PLAYERS.NO_COACH');
+  });
+
+  it('the responsible-party row names the observer for an observer-owned player', async () => {
+    const comp = await setup(
+      basePlayer({ coach: undefined, status: 'observed', observers: [{ _id: 'o1', name: 'Obs One' }] as any }),
+      true,
+    );
+    const row = comp.playerFields().find((f) => f.label === 'PLAYERS.DETAIL.OBSERVED_BY');
+    expect(row).toBeDefined();
+    expect(row!.value).toBe('Obs One');
+  });
 });
 
 describe('PlayerDetailComponent — assigning a coach', () => {
@@ -179,12 +201,17 @@ describe('PlayerDetailComponent — assigning a coach', () => {
     expect(compiled.textContent).not.toContain('PLAYERS.DETAIL.ASSIGN_COACH');
   });
 
-  // admin-assign-players-reports-media — deliberate behavior change: the admin
-  // can now reassign a player who already has a coach (the server has always
-  // allowed PATCH /:id/coach unconditionally; only the UI gated it on isOrphaned()).
-  it('still offers the control (reassignment) when the player already has a coach', async () => {
+  // owner-directed — assignment happens once, at the start of the player's life.
+  // Once the player has an owner (here: a coach), the picker is gone — the admin
+  // can't reassign from the detail page.
+  it('hides the control when the player already has a coach', async () => {
     await setup(basePlayer({ coach: { _id: 'c9', name: 'Existing' } as any }), true);
-    expect(compiled.textContent).toContain('PLAYERS.DETAIL.ASSIGN_COACH');
+    expect(compiled.textContent).not.toContain('PLAYERS.DETAIL.ASSIGN_COACH');
+  });
+
+  it('hides the control when the player already has observers', async () => {
+    await setup(basePlayer({ coach: undefined, observers: [{ _id: 'o1', name: 'Obs' }] as any }), true);
+    expect(compiled.textContent).not.toContain('PLAYERS.DETAIL.ASSIGN_COACH');
   });
 
   it('loads the coach list only once the panel is opened', async () => {
@@ -238,13 +265,18 @@ describe('PlayerDetailComponent — assigning a coach', () => {
   });
 });
 
-// admin-assign-players-reports-media — same shape as the coach panel above, on
-// the proScout ownership axis (createdBy). No "orphaned" gate: any player can be
-// assigned to any proScout at any time (matches the server exactly).
+// owner-directed — same shape as the coach panel above, on the proScout
+// ownership axis (createdBy). Both pickers share one gate: shown only for a
+// player with no owner at all.
 describe('PlayerDetailComponent — assigning a proScout', () => {
-  it('offers the control to an admin regardless of whether the player already has an owner', async () => {
-    await setup(basePlayer({ coach: { _id: 'c9', name: 'Existing' } as any }), true);
+  it('offers the control to an admin on a player with no owner', async () => {
+    await setup(basePlayer({ coach: undefined }), true);
     expect(compiled.textContent).toContain('PLAYERS.DETAIL.ASSIGN_PROSCOUT');
+  });
+
+  it('hides the control once the player has an owner', async () => {
+    await setup(basePlayer({ coach: { _id: 'c9', name: 'Existing' } as any }), true);
+    expect(compiled.textContent).not.toContain('PLAYERS.DETAIL.ASSIGN_PROSCOUT');
   });
 
   it('hides the control from a coach', async () => {

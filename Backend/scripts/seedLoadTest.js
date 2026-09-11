@@ -302,7 +302,7 @@ async function seed() {
         const scout = proScouts.length ? proScouts[i % proScouts.length] : null;
         const usePro = isProPlayer && scout;
 
-        const birthYear = usePro ? randInt(1996, 2006) : randInt(2007, 2019);
+        const birthYear = usePro ? randInt(1995, 2006) : randInt(2007, 2019);
         const dateOfBirth = new Date(Date.UTC(birthYear, randInt(0, 11), randInt(1, 28)));
         const coach = coaches[i % coaches.length];
         const status = pick(STATUSES);
@@ -427,7 +427,7 @@ async function seed() {
                 ? p.observers[0]
                 : (p.coach ?? p.createdBy);
             const technical = { turning: rating(), dribbling: rating(), tackling: rating(), twoFooted: rating(), longPassing: rating(), shortPassing: rating(), heading: rating() };
-            const physical = { shortSprints: rating(), longSprints: rating(), agility: rating(), duels: rating() };
+            const physical = { shortSprints: rating(), longSprints: rating(), agility: rating(), aerialDuels: rating(), groundDuels: rating() };
             const mental = { vision: rating(), personality: rating(), movement: rating() };
             reports.push({
                 _id: oid(),

@@ -464,14 +464,14 @@ export class ReportListComponent implements OnInit {
     return {
       turning: s.turning ?? 0, dribbling: s.dribbling ?? 0, tackling: s.tackling ?? 0, twoFooted: s.twoFooted ?? 0,
       longPassing: s.longPassing ?? 0, shortPassing: s.shortPassing ?? 0, heading: s.heading ?? 0,
-      shortSprints: s.shortSprints ?? 0, longSprints: s.longSprints ?? 0, agility: s.agility ?? 0, duels: s.duels ?? 0,
+      shortSprints: s.shortSprints ?? 0, longSprints: s.longSprints ?? 0, agility: s.agility ?? 0, aerialDuels: s.aerialDuels ?? 0, groundDuels: s.groundDuels ?? 0,
       vision: s.vision ?? 0, personality: s.personality ?? 0, movement: s.movement ?? 0,
     };
   }
 
   private categoryFields(category: 'technical' | 'physical' | 'mental'): (keyof ReportStatistics)[] {
     if (category === 'technical') return ['turning', 'dribbling', 'tackling', 'twoFooted', 'longPassing', 'shortPassing', 'heading'];
-    if (category === 'physical') return ['shortSprints', 'longSprints', 'agility', 'duels'];
+    if (category === 'physical') return ['shortSprints', 'longSprints', 'agility', 'aerialDuels', 'groundDuels'];
     return ['vision', 'personality', 'movement'];
   }
 
@@ -487,7 +487,7 @@ export class ReportListComponent implements OnInit {
     return this.statistics() ? this.categoryAverageNum(category).toFixed(1) : '—';
   }
 
-  // متوسط كل مهارة من الـ 14 لوحدها (مش بس متوسط الفئة) — بتتحط تحت الـ radar chart
+  // متوسط كل مهارة من الـ 15 لوحدها (مش بس متوسط الفئة) — بتتحط تحت الـ radar chart
   skillAverages(): { key: string; label: string; value: number; color: string }[] {
     const s = this.statistics();
     if (!s) return [];
@@ -502,7 +502,8 @@ export class ReportListComponent implements OnInit {
       { key: 'shortSprints', labelKey: 'REPORTS.FORM.SHORT_SPRINTS', color: '#38bdf8' },
       { key: 'longSprints', labelKey: 'REPORTS.FORM.LONG_SPRINTS', color: '#38bdf8' },
       { key: 'agility', labelKey: 'REPORTS.FORM.AGILITY', color: '#38bdf8' },
-      { key: 'duels', labelKey: 'REPORTS.FORM.DUELS', color: '#38bdf8' },
+      { key: 'aerialDuels', labelKey: 'REPORTS.FORM.AERIAL_DUELS', color: '#38bdf8' },
+      { key: 'groundDuels', labelKey: 'REPORTS.FORM.GROUND_DUELS', color: '#38bdf8' },
       { key: 'vision', labelKey: 'REPORTS.FORM.VISION', color: '#8b5cf6' },
       { key: 'personality', labelKey: 'REPORTS.FORM.PERSONALITY', color: '#8b5cf6' },
       { key: 'movement', labelKey: 'REPORTS.FORM.MOVEMENT', color: '#8b5cf6' },

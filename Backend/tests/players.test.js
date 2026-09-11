@@ -260,6 +260,26 @@ describe('GET /api/v1/players', () => {
       expect(res.body.data.documents.map((p) => p.name)).not.toContain(orphan.name);
       expect(res.body.data.documents.length).toBe(1);
     });
+
+    // A player the admin created and assigned to an observer at creation belongs
+    // to that observer (ownerFields.observer), just like a coach's player — it is
+    // not "waiting for a coach", so it must not appear in this lens.
+    it('excludes a player the admin assigned to an observer at creation', async () => {
+      const { token: adminToken } = await createAdmin({ email: 'orphan_obs_admin@test.com' });
+      const obs = await createObserver({ email: 'orphan_obs@test.com' });
+
+      await request(app)
+        .post('/api/v1/players')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(playerPayload({ name: 'Observer Owned', observers: [obs.user._id.toString()] }))
+        .expect(201);
+
+      const res = await request(app)
+        .get('/api/v1/players?coach=none')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.documents.map((p) => p.name)).not.toContain('Observer Owned');
+    });
   });
 
   it('admin sees all players', async () => {
