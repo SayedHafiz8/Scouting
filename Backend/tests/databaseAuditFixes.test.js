@@ -166,26 +166,37 @@ describe("audit-database — regression cover for the five findings", () => {
         const build = (Model, params, allowed) =>
             new ApiFeature(Model.find(), params, {}, null).sort(allowed);
 
-        it("drops a field that is not on the list", () => {
+        // ⚠️ العقد اتغيّر: ApiFeature.sort() بقت بتضيف `_id` كفاصل تعادل على كل
+        // ترتيب، عشان الترتيب يبقى **كلّي** والترقيم مستقر (شوف الشرح في
+        // utils/apiFeatures.js وtests/defaultSort.test.js). الوايت ليست نفسها
+        // ماتغيرتش — التوقعات تحت بتضيف الفاصل، مش بتوسّع أي قايمة.
+
+        it("drops a field that is not on the list (tie-breaker only remains)", () => {
             const f = build(Player, { sort: "name" }, ["createdAt"]);
-            expect(f.query.getOptions().sort).toBeUndefined();
+            // "name" اتشال؛ مفيش مفتاح باقي فبنقع على الفاصل تصاعدي —
+            // مش sort فاضي، لأن الخروج بلا ترتيب هو نفسه مصدر عدم الاستقرار.
+            expect(f.query.getOptions().sort).toEqual({ _id: 1 });
         });
 
         it("keeps an allowed field and honours the descending prefix", () => {
+            // الفاصل بياخد اتجاه آخر مفتاح باقي عشان الترتيب يفضل متسق
             expect(build(Player, { sort: "createdAt" }, ["createdAt"]).query.getOptions().sort)
-                .toEqual({ createdAt: 1 });
+                .toEqual({ createdAt: 1, _id: 1 });
             expect(build(Player, { sort: "-createdAt" }, ["createdAt"]).query.getOptions().sort)
-                .toEqual({ createdAt: -1 });
+                .toEqual({ createdAt: -1, _id: -1 });
         });
 
         it("keeps only the allowed members of a comma list", () => {
             const f = build(ScoutingReport, { sort: "-matchDate,overallRating" }, ["matchDate"]);
-            expect(f.query.getOptions().sort).toEqual({ matchDate: -1 });
+            // overallRating اتشال، matchDate فضل، والفاصل تنازلي زي آخر مفتاح باقي
+            expect(f.query.getOptions().sort).toEqual({ matchDate: -1, _id: -1 });
         });
 
-        it("defaults to no client sort at all when no whitelist is passed (fails closed)", () => {
+        it("still fails closed on the client's field when no whitelist is passed", () => {
             const f = new ApiFeature(Player.find(), { sort: "createdAt" }, {}, null).sort();
-            expect(f.query.getOptions().sort).toBeUndefined();
+            // القايمة الفاضية = مفيش أي حقل مسموح من العميل — "createdAt" اتشال
+            // زي ما كان بالظبط. اللي اتغير إن الناتج بقى حتمي بدل ما يبقى بلا ترتيب.
+            expect(f.query.getOptions().sort).toEqual({ _id: 1 });
         });
 
         it("over HTTP: ?sort=name on players does not reach the query planner", async () => {

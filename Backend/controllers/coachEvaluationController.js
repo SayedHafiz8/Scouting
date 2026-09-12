@@ -20,6 +20,20 @@ import { isCurrentMonthUTC as isCurrentMonth } from "../utils/time.js";
 // index عليه، وقايمة التقييمات مسكوبة بس مش صغيرة بالضرورة.
 const EVALUATION_SORT_FIELDS = ["year", "month", "createdAt"];
 
+// الترتيب لما العميل مايبعتش ?sort.
+//
+// ⚠️ ماينفعش يتطبّق بـ`req.query.sort = "..."`: في Express 5 الـquery عبارة عن
+// getter بيعيد الـparse في كل قراءة من غير memoization — مقيس:
+// `req.query === req.query` بترجع false. فالكتابة بتروح على أوبجكت مؤقت وبتضيع
+// أول ما ApiFeature يقرا الـquery تاني، والاستعلام بيتنفّذ **بلا أي ترتيب**.
+// (نفس الفخ الموثّق في middlewares/rejectOperatorKeys.js.)
+//
+// مفيش `,-_id` هنا: فاصل التعادل بقى مسؤولية ApiFeature.sort() وبيتحط لكل ترتيب.
+// ومهم هنا بالذات — (year, month) أسوأ حالة تعادل في المشروع (كل تقييمات نفس
+// الشهر متساوية تماماً)، و?sort=-year اللي بيبعته العميل كان لسه بيسيبهم عشوائيين
+// حتى بعد إصلاح الافتراضي. راجع الشرح في ApiFeature.sort().
+const DEFAULT_SORT = "-year,-month";
+
 const populate = [
     { path: "coach", select: "name email" },
     { path: "evaluator", select: "name" },
@@ -148,11 +162,11 @@ export const getAll = asyncHandler(async (req, res, next) => {
         if (req.query.status) baseFilter.status = req.query.status;
     }
 
-    if (!req.query.sort) req.query.sort = "-year,-month";
+    const queryParams = { ...req.query, sort: req.query.sort || DEFAULT_SORT };
 
     const features = new ApiFeature(
         CoachEvaluation.find(baseFilter),
-        req.query,
+        queryParams,
         req.params,
         req.user
     );
