@@ -50,10 +50,7 @@ import app from "./app.js";
 import { dbConnection } from "./config/database.js";
 import { createServer } from "http";
 import { initSocket } from "./socket/index.js";
-import { startDailySummary } from "./socket/handlers/dailySummary.js";
-import { startCleanupJob } from "./socket/handlers/cleanupDeactivated.js";
-import { startVideoReconcile } from "./socket/handlers/videoReconcile.js";
-import { startMediaRetention } from "./socket/handlers/mediaRetention.js";
+import { startBackgroundJobs } from "./socket/handlers/index.js";
 import User from "./models/userModel.js";
 import { ROLES } from "./constants/roles.js";
 
@@ -80,10 +77,11 @@ const server = createServer(app);
 server.timeout = 120000;
 
 initSocket(server);
-startDailySummary();
-startCleanupJob();
-startVideoReconcile();
-startMediaRetention();
+
+// audit-database 2026-09-12 — الأربعة كانوا بيتجدولوا بلا شرط، فأي تشغيل للسيرفر
+// (بما فيه لابتوب مطوّر مصوّب على الإنتاج) كان بيجدول جوبات حذف على الإنتاج.
+// الافتراضي بقى OFF، والحالتين بتتسجّل. التفاصيل في socket/handlers/index.js
+startBackgroundJobs();
 
 server.listen(port, () => {
     console.log("Server running 🚀");
