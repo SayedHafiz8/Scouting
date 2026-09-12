@@ -7,7 +7,13 @@ import ApiFeature from "../utils/apiFeatures.js";
 // @desc    Create new AgeGroup
 // @route   POST api/v1/ages
 // @access  private
-export const create = creating(AgeGroup);
+// audit-backend — AgeGroup مالوش أي حقل حسّاس (name و birthYear بس)، فالوايت
+// ليست هنا مش بتقفل ثغرة قائمة. موجودة لأن `allowed` إجبارية في الفاكتوري:
+// الغياب بيبقى "بلا حماية"، وأي حقل يتضاف للمخطط بعدين مايبقاش قابل للكتابة
+// من العميل تلقائياً.
+const AGE_GROUP_CREATE_FIELDS = ["name", "birthYear"];
+
+export const create = creating(AgeGroup, { allowed: AGE_GROUP_CREATE_FIELDS });
 
 // audit-database I2 — وايت ليست الترتيب. birthYear مفهرس (unique)، وهو القيمة
 // الوحيدة اللي بتوصل هنا أصلاً (DEFAULT_SORT تحت). name مضاف لأنه unique ومفهرس برضه.

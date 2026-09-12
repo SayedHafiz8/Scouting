@@ -45,6 +45,134 @@ describe('Blocker 1 — profileImg cannot be set via text-only profile updates',
     const fresh = await User.findById(coach._id);
     expect(fresh.profileImg).toBeFalsy();
   });
+
+  // ── audit-backend — نفس الفحوص بالظبط على مسار **الإنشاء** ────────────────
+  //
+  // الباب كان مقفول من ناحيتين ومفتوح من التالتة: التستين فوق بيغطّوا
+  // updateLoggedUser و update، وPOST /users كان `creating(User)` = req.body
+  // الخام لـUser.create(). createValidate بيتحقق من الحقول المعروفة بس
+  // مابيشيلش اللي غيرها.
+  const newUserPayload = (extra = {}) => ({
+    name: 'Created Coach',
+    email: `mass_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@test.com`,
+    password: 'Passw0rd',
+    passwordConfirm: 'Passw0rd',
+    phoneNumber: '01012345678',
+    role: 'coach',
+    ...extra,
+  });
+
+  it('admin cannot set profileImg via POST /users', async () => {
+    const { token: adminToken } = await createAdmin();
+    const payload = newUserPayload({ profileImg: 'players/attacker-guessed-uuid.webp' });
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(payload);
+
+    expect(res.status).toBe(201);
+    // مش موقّع في الرد...
+    expect(res.body.data.document.profileImg).toBeFalsy();
+    // ...ولا متخزّن
+    const fresh = await User.findOne({ email: payload.email });
+    expect(fresh.profileImg).toBeFalsy();
+  });
+
+  it('POST /users ignores every field outside the create whitelist', async () => {
+    const { token: adminToken } = await createAdmin();
+    const payload = newUserPayload({
+      profileImg: 'players/oracle.webp',
+      idCardFrontImg: 'vault/front.webp',
+      idCardBackImg: 'vault/back.webp',
+      active: false,
+      passwordChangedAt: new Date('2030-01-01'),
+      refreshToken: 'attacker-supplied-refresh-token',
+      vaultFailedAttempts: 99,
+      vaultLockedUntil: new Date('2030-01-01'),
+    });
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(payload);
+
+    expect(res.status).toBe(201);
+
+    const fresh = await User.findOne({ email: payload.email })
+      .setOptions({ bypassFilter: true })
+      .select('+refreshToken +vaultFailedAttempts +vaultLockedUntil');
+
+    expect(fresh).toBeTruthy();
+    expect(fresh.profileImg).toBeFalsy();
+    expect(fresh.idCardFrontImg).toBeFalsy();
+    expect(fresh.idCardBackImg).toBeFalsy();
+    // active:false كان معناه يوزر بيتولد متخفي من hook الحذف الناعم
+    expect(fresh.active).not.toBe(false);
+    expect(fresh.refreshToken).toBeFalsy();
+    // passwordChangedAt في المستقبل بتبطّل توكنات صالحة عند protect
+    expect(fresh.passwordChangedAt == null || fresh.passwordChangedAt < new Date('2029-01-01')).toBe(true);
+    expect(fresh.vaultFailedAttempts ?? 0).toBe(0);
+    expect(fresh.vaultLockedUntil).toBeFalsy();
+  });
+
+  it('the legitimate create fields still land', async () => {
+    const { token: adminToken } = await createAdmin();
+    const payload = newUserPayload({ address: 'Cairo', birthDate: '1995-04-02' });
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(payload);
+
+    expect(res.status).toBe(201);
+    const fresh = await User.findOne({ email: payload.email });
+    expect(fresh.name).toBe('Created Coach');
+    expect(fresh.role).toBe('coach');
+    expect(fresh.phoneNumber).toBe('01012345678');
+    expect(fresh.address).toBe('Cairo');
+    expect(fresh.birthDate).toBeTruthy();
+    // والباسورد اتهشّ فعلاً، مش اتخزّن نص صريح
+    const withPassword = await User.findById(fresh._id).select('+password');
+    expect(withPassword.password).not.toBe('Passw0rd');
+  });
+
+  it('a created user can actually log in — the whitelist did not break auth', async () => {
+    const { token: adminToken } = await createAdmin();
+    const payload = newUserPayload();
+
+    await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(payload);
+
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: payload.email, password: 'Passw0rd' });
+
+    expect(login.status).toBe(200);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  الفاكتوري نفسه: `allowed` إجبارية، فأي creating() جديد مايفتحش الباب بصمت
+// ══════════════════════════════════════════════════════════════════════════════
+describe('creating() refuses to build a route without a field whitelist', () => {
+  it('throws when `allowed` is missing, empty, or not an array', async () => {
+    const { creating } = await import('../services/services.js');
+
+    expect(() => creating(User)).toThrow(/requires a non-empty `allowed` field whitelist/);
+    expect(() => creating(User, {})).toThrow(/allowed/);
+    expect(() => creating(User, { allowed: [] })).toThrow(/allowed/);
+    expect(() => creating(User, { allowed: 'name' })).toThrow(/allowed/);
+    // والاسم بيبان في الرسالة عشان يوصّل المطوّر للموديل الصح
+    expect(() => creating(User)).toThrow(/creating\(User\)/);
+  });
+
+  it('builds normally once a whitelist is declared', async () => {
+    const { creating } = await import('../services/services.js');
+    expect(typeof creating(User, { allowed: ['name'] })).toBe('function');
+  });
 });
 
 describe('Blocker 2 — PATCH /api/v1/players/:id cannot reassign ownership/oversight', () => {

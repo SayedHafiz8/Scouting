@@ -13,7 +13,15 @@ export const setAgeIdToBody = (req, res, next) => {
 // @desc    Create new AgeGroup
 // @route   POST api/v1/ages
 // @access  private
-export const create = creating(Team); 
+// audit-backend — `active` **مش** هنا عن قصد. هو بيفترض true من المخطط،
+// والفهرس الفريد على Team شرطي عليه
+// (partialFilterExpression: { active: { $eq: true } })، يعني إنشاء فريق
+// بـactive: false كان بيعدّي من قيد التفرّد على (name, ageGroup, league).
+// ageGroup بيوصل في الـbody: setAgeIdToBody بيحطه من param الراوت المتداخل
+// قبل الفاليديشن والكنترولر.
+const TEAM_CREATE_FIELDS = ["name", "ageGroup", "league", "clubName"];
+
+export const create = creating(Team, { allowed: TEAM_CREATE_FIELDS }); 
 
 // Team مالهاش حقل ملكية أصلاً (ownerFields متغيّبة عمداً) — دي داتا مرجعية مشتركة.
 // لو حد ضاف protect للراوت ده بكرة، مفيش أي سكوب ملكية ممكن يتحسب بالغلط.

@@ -18,16 +18,65 @@ const applyPopulate = (query, populateOptions) => {
     return query;
 };
 
-export const creating = (model, field = null, populateOptions = null) => {
+// ============================================================================
+// audit-backend — الـmass assignment على مسار الإنشاء.
+//
+// الشكل القديم كان `model.create(req.body)` — الـbody الخام بالكامل. الفاليديشن
+// (createValidate) بيتحقق من الحقول المعروفة لكن **مابيشيلش** اللي مش معروف،
+// فأي حقل موجود في المخطط كان قابل للكتابة من العميل. strict mode بيسقط اللي
+// مش في المخطط، فالخطر هو الحقول اللي **جوه** المخطط ومش مفروض العميل يكتبها.
+//
+// على User ده كان: profileImg و idCardFrontImg/BackImg و active و
+// passwordChangedAt و refreshToken و vaultFailedAttempts و vaultLockedUntil.
+//
+// و`profileImg` تحديداً هو نفس الـsigning oracle اللي اتقفل صراحةً في
+// authController.updateLoggedUser و userController.update: كتابة المسار حر من
+// غير رفع فعلي بتخلي resolveImageUrl يوقّعه تلقائي ويرجّع URL صالح على media
+// zone. التعليقين هناك موجودين وموثّقين، وtests/massAssignment.test.js بيغطّي
+// مسارَي التعديل الاتنين — والإنشاء كان مفتوح. الباب كان مقفول من ناحيتين
+// ومفتوح من التالتة.
+//
+// ليه الإصلاح هنا في الفاكتوري مش في كل كنترولر:
+//   • `update` و`updateLoggedUser` كنترولرز مكتوبين بالإيد، فتعداد الحقول
+//     جوّاهم طبيعي. أما `create` فهو `creating(Model)` — مفيش جسم أعدّد فيه،
+//     فمطابقة نفس الشكل حرفياً كانت معناها التخلي عن الفاكتوري في User وحده،
+//     وده تغيير أكبر وبيبعده عن التلات مواضع التانية.
+//   • الآلية واحدة زي ما هي: وايت ليست حقول معلَنة. اللي اتغير إن مكانها بقى
+//     عند نقطة الكتابة نفسها.
+//
+// `allowed` **إجبارية**: لو اختيارية، غيابها بيبقى معناه "بلا حماية"، وأي
+// `creating(NewModel)` في المستقبل بيفتح الباب تاني بصمت. الرمي بيحصل وقت
+// تحميل الموديول — صاخب وفوري ومستحيل يعدّي.
+//
+// وترتيب الإسناد اتعكس عن قصد: الانتقاء الأول وبعده ownerField. كان
+// `req.body[field] = req.user._id` قبل الإنشاء (فالعميل مكانش يقدر يزوّره
+// أصلاً)، بس دلوقتي بقى مستحيل تركيبياً مش بالترتيب بس.
+// ============================================================================
+export const creating = (model, { ownerField = null, populate = null, allowed } = {}) => {
+    if (!Array.isArray(allowed) || allowed.length === 0) {
+        throw new Error(
+            `creating(${model.modelName}) requires a non-empty \`allowed\` field whitelist. ` +
+            `Passing req.body straight to create() lets a client write any schema field, ` +
+            `including ones it must never set (on User: profileImg, active, passwordChangedAt, ` +
+            `refreshToken, the vault lockout counters). Declare the fields this route accepts.`
+        );
+    }
+
     return asyncHandler(async (req, res, next) => {
-        if (field) {
-            req.body[field] = req.user._id;
+        const payload = {};
+        for (const key of allowed) {
+            if (req.body[key] !== undefined) payload[key] = req.body[key];
         }
 
-        let document = await model.create(req.body);
+        // بعد الانتقاء: الحقل ده بيتحدد من التوكن، مش من العميل
+        if (ownerField) {
+            payload[ownerField] = req.user._id;
+        }
 
-        if (populateOptions) {
-            document = await applyPopulate(model.findById(document._id), populateOptions);
+        let document = await model.create(payload);
+
+        if (populate) {
+            document = await applyPopulate(model.findById(document._id), populate);
         }
 
         res.status(201).json({
