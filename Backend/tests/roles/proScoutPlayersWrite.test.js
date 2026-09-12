@@ -339,12 +339,12 @@ describe('US3 — POST /players (FR-007, FR-016)', () => {
   it('a birth year outside the professional range fails (invariant I-4, amended by Stage 4b)', async () => {
     // ⚠️ التست ده كان بيبعت 2001 ويتوقع 400، لأن المدى وقتها كان 2007→2019 لكل
     // الرولات. المرحلة 4b وسّعته للـproScout لـ1996→2019 (لاعبين محترفين بالغين)،
-    // فـ2001 بقت **صالحة**. الحد اتنقل، ما اتشالش — 1995 لسه بتترفض.
-    // التغطية الكاملة في describe بتاع "Stage 4b" تحت.
+    // وبعدها المالك نزّل الحد لـ1995→2019، فـ2001 بقت **صالحة**. الحد اتنقل، ما
+    // اتشالش — 1994 لسه بتترفض. التغطية الكاملة في describe بتاع "Stage 4b" تحت.
     const res = await request(app)
       .post('/api/v1/players')
       .set(...auth(scout.token))
-      .send(playerPayload({ team: proTeam._id.toString(), dateOfBirth: '1995-05-05' }));
+      .send(playerPayload({ team: proTeam._id.toString(), dateOfBirth: '1994-05-05' }));
 
     expect(res.status).toBe(400);
   });
@@ -892,22 +892,22 @@ describe('Stage 4b — proScout registers professional adults', () => {
       .set(...auth(token))
       .send(playerPayload({ team: proTeam._id.toString(), ...overrides }));
 
-  it('accepts a 30-year-old (born 1996) — the new floor', async () => {
-    const res = await createAs(scout.token, { dateOfBirth: dobIn(1996) });
+  it('accepts a player born 1995 — the floor (owner lowered it from 1996)', async () => {
+    const res = await createAs(scout.token, { dateOfBirth: dobIn(1995) });
     expect(res.status).toBe(201);
   });
 
   it('accepts every year across the widened range', async () => {
-    for (const y of [1996, 2000, 2006, 2007, 2019]) {
+    for (const y of [1995, 2000, 2006, 2007, 2019]) {
       const res = await createAs(scout.token, { dateOfBirth: dobIn(y), name: `Player ${y}` });
       expect(res.status).toBe(201);
     }
   });
 
-  it('still rejects 1995 — the floor is a real bound, not "anything older"', async () => {
-    const res = await createAs(scout.token, { dateOfBirth: dobIn(1995) });
+  it('still rejects 1994 — the floor is a real bound, not "anything older"', async () => {
+    const res = await createAs(scout.token, { dateOfBirth: dobIn(1994) });
     expect(res.status).toBe(400);
-    expect(JSON.stringify(res.body)).toContain('1996');
+    expect(JSON.stringify(res.body)).toContain('1995');
   });
 
   it('still rejects 2020 — the upper bound is unchanged for every role', async () => {

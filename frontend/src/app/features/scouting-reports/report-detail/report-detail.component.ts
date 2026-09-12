@@ -61,10 +61,13 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
             <div class="card p-5">
               <h3 class="text-xs font-semibold uppercase tracking-wide mb-4 text-primary-600">{{ 'REPORTS.DETAIL.TECHNICAL' | translate }}</h3>
               <div class="space-y-3">
-                <app-rating-bar [label]="'REPORTS.FORM.PASSING' | translate" [value]="report()!.technical.passing" />
+                <app-rating-bar [label]="'REPORTS.FORM.TURNING' | translate" [value]="report()!.technical.turning" />
                 <app-rating-bar [label]="'REPORTS.FORM.DRIBBLING' | translate" [value]="report()!.technical.dribbling" />
-                <app-rating-bar [label]="'REPORTS.FORM.SHOOTING' | translate" [value]="report()!.technical.shooting" />
-                <app-rating-bar [label]="'REPORTS.FORM.BALL_CONTROL' | translate" [value]="report()!.technical.ballControl" />
+                <app-rating-bar [label]="'REPORTS.FORM.TACKLING' | translate" [value]="report()!.technical.tackling" />
+                <app-rating-bar [label]="'REPORTS.FORM.TWO_FOOTED' | translate" [value]="report()!.technical.twoFooted" />
+                <app-rating-bar [label]="'REPORTS.FORM.LONG_PASSING' | translate" [value]="report()!.technical.longPassing" />
+                <app-rating-bar [label]="'REPORTS.FORM.SHORT_PASSING' | translate" [value]="report()!.technical.shortPassing" />
+                <app-rating-bar [label]="'REPORTS.FORM.HEADING' | translate" [value]="report()!.technical.heading" />
               </div>
             </div>
 
@@ -72,10 +75,11 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
             <div class="card p-5">
               <h3 class="text-xs font-semibold uppercase tracking-wide mb-4 text-accent-600">{{ 'REPORTS.DETAIL.PHYSICAL' | translate }}</h3>
               <div class="space-y-3">
-                <app-rating-bar [label]="'REPORTS.FORM.SPEED' | translate" [value]="report()!.physical.speed" />
-                <app-rating-bar [label]="'REPORTS.FORM.STAMINA' | translate" [value]="report()!.physical.stamina" />
-                <app-rating-bar [label]="'REPORTS.FORM.STRENGTH' | translate" [value]="report()!.physical.strength" />
+                <app-rating-bar [label]="'REPORTS.FORM.SHORT_SPRINTS' | translate" [value]="report()!.physical.shortSprints" />
+                <app-rating-bar [label]="'REPORTS.FORM.LONG_SPRINTS' | translate" [value]="report()!.physical.longSprints" />
                 <app-rating-bar [label]="'REPORTS.FORM.AGILITY' | translate" [value]="report()!.physical.agility" />
+                <app-rating-bar [label]="'REPORTS.FORM.AERIAL_DUELS' | translate" [value]="report()!.physical.aerialDuels" />
+                <app-rating-bar [label]="'REPORTS.FORM.GROUND_DUELS' | translate" [value]="report()!.physical.groundDuels" />
               </div>
             </div>
 
@@ -83,10 +87,9 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
             <div class="card p-5">
               <h3 class="text-xs font-semibold uppercase tracking-wide mb-4" style="color:#8b5cf6">{{ 'REPORTS.DETAIL.MENTAL' | translate }}</h3>
               <div class="space-y-3">
-                <app-rating-bar [label]="'REPORTS.FORM.POSITIONING' | translate" [value]="report()!.mental.positioning" />
-                <app-rating-bar [label]="'REPORTS.FORM.DECISION_MAKING' | translate" [value]="report()!.mental.decisionMaking" />
-                <app-rating-bar [label]="'REPORTS.FORM.TEAMWORK' | translate" [value]="report()!.mental.teamwork" />
-                <app-rating-bar [label]="'REPORTS.FORM.ATTITUDE' | translate" [value]="report()!.mental.attitude" />
+                <app-rating-bar [label]="'REPORTS.FORM.VISION' | translate" [value]="report()!.mental.vision" />
+                <app-rating-bar [label]="'REPORTS.FORM.PERSONALITY' | translate" [value]="report()!.mental.personality" />
+                <app-rating-bar [label]="'REPORTS.FORM.MOVEMENT' | translate" [value]="report()!.mental.movement" />
               </div>
             </div>
 
@@ -170,12 +173,13 @@ export class ReportDetailComponent implements OnInit, OnDestroy {
     const r = this.report();
     if (!r) return {};
     return {
-      passing: r.technical.passing, dribbling: r.technical.dribbling,
-      shooting: r.technical.shooting, ballControl: r.technical.ballControl,
-      speed: r.physical.speed, stamina: r.physical.stamina,
-      strength: r.physical.strength, agility: r.physical.agility,
-      positioning: r.mental.positioning, decisionMaking: r.mental.decisionMaking,
-      teamwork: r.mental.teamwork, attitude: r.mental.attitude,
+      turning: r.technical.turning, dribbling: r.technical.dribbling,
+      tackling: r.technical.tackling, twoFooted: r.technical.twoFooted,
+      longPassing: r.technical.longPassing, shortPassing: r.technical.shortPassing,
+      heading: r.technical.heading,
+      shortSprints: r.physical.shortSprints, longSprints: r.physical.longSprints,
+      agility: r.physical.agility, aerialDuels: r.physical.aerialDuels, groundDuels: r.physical.groundDuels,
+      vision: r.mental.vision, personality: r.mental.personality, movement: r.mental.movement,
     };
   }
 

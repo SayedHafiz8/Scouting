@@ -168,6 +168,24 @@ export const createValidate = [
         return true;
     }),
     check('position').notEmpty().withMessage("Enter the position of the player"),
+
+    // تاريخ انتهاء العقد + اللاعب الحر. الاتنين اختياريين ومتبادلي الاستبعاد:
+    // العميل بيبعت "YYYY-MM-01" (من دروبداون شهر/سنة) أو isFreeAgent=true، مش
+    // الاتنين. الموديل بيصفّر التاريخ لو حر برضه (حزام وحمّالة).
+    check('contractEndDate')
+        .optional({ nullable: true })
+        .isISO8601().withMessage('Invalid contract end date'),
+    check('isFreeAgent')
+        .optional()
+        .isBoolean().withMessage('isFreeAgent must be a boolean')
+        .toBoolean(),
+    body().custom((_, { req }) => {
+        if (req.body.isFreeAgent === true && req.body.contractEndDate) {
+            throw new Error('A free agent cannot also have a contract end date');
+        }
+        return true;
+    }),
+
     // الملكية والإشراف والفئة العمرية قرارات سيرفر/أدمن — مش بتتبعت من العميل:
     // coach بيتحط من التوكن (setUserIdToBody/req.user._id)، ageGroup بيتشتق من
     // dateOfBirth في الـpre-save hook، observers وstatus بيتحطوا بس من الأدمن
@@ -233,6 +251,19 @@ export const updateValidate = [
     body().custom((_, { req }) => {
         if (req.body.team && req.body.teamName) {
             throw new Error('Choose either an existing team or a free-text team name, not both');
+        }
+        return true;
+    }),
+    check('contractEndDate')
+        .optional({ nullable: true })
+        .isISO8601().withMessage('Invalid contract end date'),
+    check('isFreeAgent')
+        .optional()
+        .isBoolean().withMessage('isFreeAgent must be a boolean')
+        .toBoolean(),
+    body().custom((_, { req }) => {
+        if (req.body.isFreeAgent === true && req.body.contractEndDate) {
+            throw new Error('A free agent cannot also have a contract end date');
         }
         return true;
     }),

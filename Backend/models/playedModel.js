@@ -123,7 +123,7 @@ const playerSchema = new mongoose.Schema({
     // Stage 4b — لاعب محترف (بالغ) بدل لاعب ناشئ.
     //
     // بيغيّر حاجتين في الـpre-save hooks تحت، وبس:
-    //   1) مدى سنة الميلاد المسموح: 1996→2019 بدل 2007→2019.
+    //   1) مدى سنة الميلاد المسموح: 1995→2019 بدل 2007→2019.
     //   2) اشتقاق ageGroup: **بيتخطّى تماماً**، فالحقل بيفضل فاضي.
     //
     // ليه علم صريح مش استنتاج من الرول أو من دوري الفريق:
@@ -141,6 +141,20 @@ const playerSchema = new mongoose.Schema({
     // إجبارياً على Player". القيد اتكتب في سياق "متشيلش الحقل من المخطط"، مش في
     // سياق لاعبين بالغين مالهمش فئة عمرية أصلاً. الحقل باقٍ كما هو للناشئين.
     isProfessional: {
+        type: Boolean,
+        default: false,
+    },
+    // تاريخ انتهاء عقد اللاعب مع فريقه — بيتخزن منتصف ليل UTC لأول يوم في شهر
+    // انتهاء العقد (العميل بيبعت "YYYY-MM-01" من دروبداون شهر/سنة). العقد بيفضل
+    // ساري لحد آخر الشهر ده. null = مفيش عقد مسجّل، أو اللاعب حر (isFreeAgent).
+    // الحساب المتبقّي (سنين/شهور) عرض بس، بيتعمل في الفرونت.
+    contractEndDate: {
+        type: Date,
+        default: null,
+    },
+    // اللاعب حاليًا بلا عقد (free agent). متبادل الاستبعاد مع contractEndDate —
+    // لو true بنصفّر التاريخ في الـpre hooks تحت.
+    isFreeAgent: {
         type: Boolean,
         default: false,
     },
@@ -170,14 +184,14 @@ const playerSchema = new mongoose.Schema({
 const MIN_BIRTH_YEAR = 2007;
 const MAX_BIRTH_YEAR = 2019;
 
-// Stage 4b — الحد الأدنى للاعب المحترف: 1996 (= 30 سنة في 2026).
+// Stage 4b — الحد الأدنى للاعب المحترف: 1995 (= 31 سنة في 2026).
 //
 // رقم **ثابت** بقرار المالك، مش محسوب من السنة الحالية. المتحرك
-// (currentYear - 30) كان بيعمل فخ: لاعب مواليد 1996 مسجّل النهارده يبقى تعديل
-// تاريخ ميلاده مرفوض في 2027، لأن pre('findOneAndUpdate') بيعيد الفحص بنفس
-// الحدود. الثابت بيزحف ببطء (31 سنة في 2027) لكنه مابيبطّلش بيانات قائمة،
-// وهو نفس أسلوب MAX_BIRTH_YEAR الموجود أصلاً.
-const PRO_MIN_BIRTH_YEAR = 1996;
+// (currentYear - N) كان بيعمل فخ: لاعب مسجّل النهارده على الحد يبقى تعديل
+// تاريخ ميلاده مرفوض السنة اللي بعدها، لأن pre('findOneAndUpdate') بيعيد الفحص
+// بنفس الحدود. الثابت بيزحف ببطء لكنه مابيبطّلش بيانات قائمة، وهو نفس أسلوب
+// MAX_BIRTH_YEAR الموجود أصلاً.
+const PRO_MIN_BIRTH_YEAR = 1995;
 
 // audit-backend C3 — UTC، مش توقيت السيرفر. dateOfBirth بيتخزن منتصف ليل UTC،
 // والسبب الكامل في utils/time.js:yearOfUTC.
@@ -206,6 +220,11 @@ export const buildSearchTokens = (...values) => {
 
 
 
+
+playerSchema.pre('save', function () {
+    // اللاعب الحر مالوش عقد — نضمن الاتساق بدل ما نسيب الاتنين متبعوتين.
+    if (this.isFreeAgent) this.contractEndDate = null;
+});
 
 playerSchema.pre('save', async function () {
     const birthYear = getBirthYear(this.dateOfBirth);
@@ -344,6 +363,12 @@ playerSchema.pre('findOneAndUpdate', async function () {
         if (update.$set) update.$set[field] = value;
         else update[field] = value;
     };
+
+    // اللاعب الحر مالوش عقد — نفس المنطق في pre('save'). لو التعديل بيحوّله لحر،
+    // نصفّر contractEndDate حتى لو العميل مابعتش القيمة دي.
+    if (incoming.isFreeAgent === true) {
+        setDerived('contractEndDate', null);
+    }
 
     if (incoming.dateOfBirth) {
 

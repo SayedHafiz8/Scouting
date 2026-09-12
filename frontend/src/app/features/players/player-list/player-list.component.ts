@@ -6,8 +6,9 @@ import { catchError, debounceTime, distinctUntilChanged, switchMap, tap } from '
 import { FormsModule } from '@angular/forms';
 import { TitleCasePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { TranslatePipe } from '@ngx-translate/core';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { environment } from '../../../../environments/environment';
+import { contractLabel } from '../contract.util';
 import { PlayerService } from '../services/player.service';
 import { ScoutingReportService } from '../../scouting-reports/services/scouting-report.service';
 import { TeamService } from '../../teams/services/team.service';
@@ -46,8 +47,13 @@ const SEARCH_DEBOUNCE_MS = 300;
              filter param: while inside the professional lens (professionalOnly()),
              an observer's "Add" must land in the professional context, since — unlike
              proScout — that role isn't determined by identity alone. -->
-        <!-- admin-assign-players-reports-media — admin joins the write-role triad. -->
-        @if (auth.isCoach() || auth.isProScout() || auth.isObserver() || auth.isAdmin()) {
+        <!-- admin-assign-players-reports-media — admin joins the write-role triad.
+             owner-directed — the "Add" control only appears once a scope is chosen:
+             a specific age group, or the professional-league lens. On the bare
+             grid there's no age-group context to create into, so it's hidden
+             there. proScout has no age-group dimension at all (flatView() is
+             always true for them), so it stays visible for that role throughout. -->
+        @if ((auth.isCoach() || auth.isProScout() || auth.isObserver() || auth.isAdmin()) && (selectedGroup() || flatView())) {
           <a routerLink="/players/new" [queryParams]="professionalOnly() ? { context: 'professional' } : {}" class="btn btn-primary">
             <!-- observer-matches-and-players — the "+" icon is dropped for observer only
                  (requested after the observer players page shipped); coach/proScout keep it,
@@ -128,28 +134,6 @@ const SEARCH_DEBOUNCE_MS = 300;
               <span class="chip-badge">{{ total() }}</span>
             }
           </button>
-
-          <!-- specs/006-admin-professional-lens — Stage 4c. Gap-fix, not part
-               of the original scout-pro plan: Stage 4b left professional
-               players with no ageGroup at all, so they had no card and no
-               search route on this page. This chip is their only intentional
-               route (FR-007/FR-008), admin-only (FR-010) since proScout's
-               entire scope is already professional. -->
-          <button class="status-chip status-chip-professional" [class.status-chip-on]="professionalOnly()"
-                  data-testid="professional-filter"
-                  [attr.aria-pressed]="professionalOnly()"
-                  (click)="toggleProfessional()">
-            <span class="chip-dot" style="background:#38bdf8"></span>
-            {{ 'PLAYERS.PROFESSIONAL_LEAGUE' | translate }}
-            <!-- FR-011 — inverted vs. every badge above: those show a count
-                 while their OWN chip is active (echoing the current total).
-                 This one shows while the chip is INACTIVE — i.e. while the
-                 grid is visible — so the admin sees, on the grid itself, the
-                 count the cards don't include (header total = Σ cards + this). -->
-            @if (!professionalOnly() && professionalCount() > 0) {
-              <span class="chip-badge">{{ professionalCount() }}</span>
-            }
-          </button>
         }
       </div>
       }
@@ -174,11 +158,16 @@ const SEARCH_DEBOUNCE_MS = 300;
           <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             <!-- observer-matches-and-players — a professional-league card alongside the
                  age-group ones, entered the same way as any age-group card, before adding
-                 a player. Admin keeps its existing chip-based route into this lens
-                 (Principle III, unchanged); this card is additive for observer only. -->
-            @if (auth.isObserver()) {
+                 a player.
+                 owner-directed — the admin's route into this lens is now this same
+                 card, not a filter chip: one visual language for "pick a scope",
+                 matching the age-group cards exactly (specs/006-admin-professional-lens
+                 FR-007/FR-008/FR-010 still hold — the route is admin/observer only,
+                 proScout's whole scope is already professional). -->
+            @if (auth.isObserver() || auth.isAdmin()) {
               <button type="button"
                       class="relative overflow-hidden rounded-2xl text-left group/card age-group-card age-group-card--professional"
+                      data-testid="professional-card"
                       [attr.aria-label]="('PLAYERS.PROFESSIONAL_LEAGUE' | translate)"
                       (click)="toggleProfessional()">
                 <div style="position:absolute;top:-24px;inset-inline-end:-20px;width:96px;height:96px;border-radius:50%;
@@ -288,10 +277,14 @@ const SEARCH_DEBOUNCE_MS = 300;
       <!-- ═══════════ PLAYERS VIEW (a group is selected, or groups are skipped entirely) ═══════════ -->
       @if (selectedGroup() || flatView()) {
 
-      <!-- Back to groups + selected group banner (only when a specific age group is chosen) -->
-      @if (selectedGroup()) {
+      <!-- Back to groups + scope banner. Shown for a specific age group, and —
+           owner-directed, now that the chip is gone — for the professional lens
+           too, so admin/observer have a way back to the grid. proScout has no
+           grid to return to (professionalOnly() is false for them; their flat
+           list comes from the role itself), so no banner there. -->
+      @if (selectedGroup() || (professionalOnly() && !auth.isProScout())) {
         <div class="flex items-center gap-3">
-          <button type="button" class="btn btn-secondary btn-sm" (click)="backToGroups()">
+          <button type="button" class="btn btn-secondary btn-sm" (click)="selectedGroup() ? backToGroups() : toggleProfessional()">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
@@ -302,7 +295,13 @@ const SEARCH_DEBOUNCE_MS = 300;
             <svg style="width:14px;height:14px;color:#38bdf8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
             </svg>
-            <span class="text-sm font-bold tabular-nums" style="color:#38bdf8">{{ 'PLAYERS.BIRTH_YEAR' | translate }} {{ selectedGroup()!.birthYear }}</span>
+            <span class="text-sm font-bold tabular-nums" style="color:#38bdf8">
+              @if (selectedGroup()) {
+                {{ 'PLAYERS.BIRTH_YEAR' | translate }} {{ selectedGroup()!.birthYear }}
+              } @else {
+                {{ 'PLAYERS.PROFESSIONAL_LEAGUE' | translate }}
+              }
+            </span>
           </div>
         </div>
       }
@@ -457,6 +456,31 @@ const SEARCH_DEBOUNCE_MS = 300;
                         </svg>
                         <span class="truncate">{{ coachName(player) }}</span>
                       </p>
+                    } @else if (observerNames(player); as obs) {
+                      <!-- اللاعب اللي الأدمن أسنده لأوبزيرفر عند الإنشاء — مالكه هو
+                           الأوبزيرفر بالفعل (ownerFields.observer)، ده تعيين ملكية حقيقي
+                           مش مجرد "مين اللي أنشأ السجل". فبييجي قبل فرع createdBy تحت —
+                           لو اللاعب محترف وكمان ليه أوبزيرفر معيَّن، الأوبزيرفر هو
+                           المالك الفعلي مش اسم الأدمن اللي عمل الإنشاء. observers
+                           بيتعمله populate للأدمن بس. -->
+                      <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
+                        <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <span class="truncate">{{ obs }}</span>
+                      </p>
+                    } @else if (player.isProfessional && creatorName(player)) {
+                      <!-- specs/010-professional-lens-creator — اللاعب المحترف مالوش كوتش
+                           بحكم التصميم؛ المالك الفعلي هو البروسكاوت اللي أنشأه (createdBy،
+                           وده فرع النطاق { team: null, createdBy } على السيرفر). فبنعرضه في
+                           سطر الكوتش نفسه بدل ما نوصف اللاعب إنه "يتيم/بدون كوتش". createdBy
+                           بيتعمله populate للأدمن بس، فالسطر ده أدمن-فقط بحكم creatorName(). -->
+                      <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
+                        <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <span class="truncate">{{ creatorName(player) }}</span>
+                      </p>
                     } @else if (isOrphaned(player)) {
                       <!-- كوتش اللاعب اتحذف نهائياً — بيتعرض للأدمن بس، لأنه الوحيد اللي
                            بيشوف حقل الكوتش أصلاً وهو الوحيد اللي يقدر يعيّن واحد جديد -->
@@ -468,14 +492,13 @@ const SEARCH_DEBOUNCE_MS = 300;
                         <span class="truncate">{{ 'PLAYERS.NO_COACH' | translate }}</span>
                       </p>
                     }
-                    <!-- specs/010-professional-lens-creator — who added this player, admin-only,
-                         only inside the Professional League lens (Stage 4c's flat view). -->
-                    @if (professionalOnly() && auth.isAdmin() && creatorName(player)) {
+                    <!-- Club contract — precomputed label ("1y 2m left" / "Free agent" / "Contract expired") -->
+                    @if (contractLabels()[player._id]; as contract) {
                       <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
                         <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                          <path d="M12 5v14M5 12h14"/>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
                         </svg>
-                        <span class="truncate">{{ 'PLAYERS.CREATED_BY' | translate }}: {{ creatorName(player) }}</span>
+                        <span class="truncate">{{ contract }}</span>
                       </p>
                     }
                     <!-- Status badge -->
@@ -684,8 +707,12 @@ export class PlayerListComponent implements OnInit {
   readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
+  private readonly translate = inject(TranslateService);
 
   readonly players = signal<Player[]>([]);
+  // Localized "X left on contract" / "Free agent" / "Contract expired" per
+  // player, precomputed on load (never a function call inside the card @for).
+  readonly contractLabels = signal<Record<string, string>>({});
   readonly loading = signal(true);
   readonly total = signal(0);
   readonly lightboxSrc = signal<string | null>(null);
@@ -990,7 +1017,13 @@ export class PlayerListComponent implements OnInit {
           )
         ),
         tap(res => {
-          this.players.set(res.data?.documents ?? []);
+          const docs = res.data?.documents ?? [];
+          this.players.set(docs);
+          this.contractLabels.set(
+            Object.fromEntries(
+              docs.map(p => [p._id, contractLabel(p, this.translate)]).filter(([, v]) => v),
+            ) as Record<string, string>,
+          );
           this.total.set(res.count ?? 0);
           this.pagination.set(res.pagination ?? null);
           this.loading.set(false);
@@ -1112,12 +1145,31 @@ export class PlayerListComponent implements OnInit {
     return createdBy.name;
   }
 
+  // اللاعب اللي الأدمن أسنده لأوبزيرفر عند الإنشاء — أسماء المتابعين المعيَّنين
+  // له. observers بيتعمله populate ({ _id, name }) للأدمن بس؛ لغيره بيرجع ids
+  // خام أو بيتشال، فبيرجّع '' وما يظهرش السطر. مرآة creatorName().
+  observerNames(player: Player): string {
+    const observers = player.observers;
+    if (!Array.isArray(observers)) return '';
+    const names = observers
+      .filter((o): o is Exclude<typeof o, string> => typeof o === 'object' && o !== null && !!o.name)
+      .map(o => o.name);
+    return names.join('، ');
+  }
+
   // لاعب "يتيم" — كوتشه اتمسح نهائياً فالحقل اتفضّى من السيرفر. ملحوظة مهمة:
   // غياب الاسم لوحده مش دليل — الحقل بيتشال أصلاً للأوبزيرفرز وللكوتش في قايمة
   // لاعبينه (شوف التعليق فوق). فبنشرط على الأدمن، اللي هو الوحيد اللي الـAPI
   // بيرجّعله الحقل ده معمول له populate، وبالتالي فراغه عنده معناه فراغ حقيقي.
+  //
+  // اللاعب المحترف مستثنى: مالوش كوتش بحكم التصميم مش لأن كوتشه اتمسح، ومالكه
+  // الفعلي هو البروسكاوت اللي أنشأه — فوصفه بـ"بدون كوتش" غلط دلالياً.
+  //
+  // اللاعب اللي الأدمن أنشأه وأسنده لأوبزيرفر عند الإنشاء مستثنى بنفس المنطق:
+  // مالكه هو الأوبزيرفر (ownerFields.observer = "observers")، زيه زي لاعب الكوتش.
   isOrphaned(player: Player): boolean {
-    return this.auth.isAdmin() && !player.coach;
+    return this.auth.isAdmin() && !player.coach && !player.isProfessional
+      && !(player.observers && player.observers.length > 0);
   }
 
   calcAge(dob: string): number {

@@ -234,9 +234,9 @@ describe('Observer evaluations — auto-captured stats', () => {
       matchDate: new Date(),
       homeTeam: home._id,
       awayTeam: away._id,
-      technical: { passing: 8, dribbling: 7, shooting: 6, ballControl: 8 },
-      physical: { speed: 9, stamina: 7, strength: 6, agility: 8 },
-      mental: { positioning: 7, decisionMaking: 6, teamwork: 8, attitude: 9 },
+      technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
+      physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
+      mental: { vision: 7, personality: 8, movement: 9 },
     });
 
     // one attended match this month

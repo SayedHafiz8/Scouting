@@ -64,8 +64,13 @@ const scoutingReportSchema = new mongoose.Schema(
         },
 
         // ===== Technical Skills =====
+        // طلب مالك 2026-09 — استبدلت المجموعة القديمة (passing/dribbling/shooting/
+        // ballControl) بالكامل. لا توافق رجعي مقصود: تقارير قديمة بالحقول القديمة
+        // بتفضل موجودة في الداتابيز بس مش بتتعرض (Mongoose strict mode بيتجاهل
+        // مسارات مش معرّفة في المخطط وقت القراءة) — قرار مالك صريح "امسح إلي مش
+        // محتاجينه وخلي الموجود عادي"، بلا migration.
         technical: {
-            passing: {
+            turning: {
                 type: Number,
                 min: 1,
                 max: 10,
@@ -77,13 +82,31 @@ const scoutingReportSchema = new mongoose.Schema(
                 max: 10,
                 required: true,
             },
-            shooting: {
+            tackling: {
                 type: Number,
                 min: 1,
                 max: 10,
                 required: true,
             },
-            ballControl: {
+            twoFooted: {
+                type: Number,
+                min: 1,
+                max: 10,
+                required: true,
+            },
+            longPassing: {
+                type: Number,
+                min: 1,
+                max: 10,
+                required: true,
+            },
+            shortPassing: {
+                type: Number,
+                min: 1,
+                max: 10,
+                required: true,
+            },
+            heading: {
                 type: Number,
                 min: 1,
                 max: 10,
@@ -93,19 +116,13 @@ const scoutingReportSchema = new mongoose.Schema(
 
         // ===== Physical Skills =====
         physical: {
-            speed: {
+            shortSprints: {
                 type: Number,
                 min: 1,
                 max: 10,
                 required: true,
             },
-            stamina: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            strength: {
+            longSprints: {
                 type: Number,
                 min: 1,
                 max: 10,
@@ -117,29 +134,39 @@ const scoutingReportSchema = new mongoose.Schema(
                 max: 10,
                 required: true,
             },
+            // طلب مالك 2026-09 — الالتحامات اتقسمت لهوائية وأرضية، كل واحدة تقييم
+            // مستقل. التقارير القديمة فيها physical.duels لسه في الداتابيز بس مش
+            // بتتعرض (Mongoose strict mode)، بلا migration — نفس قرار استبدال
+            // مجموعة الفيلدز فوق.
+            aerialDuels: {
+                type: Number,
+                min: 1,
+                max: 10,
+                required: true,
+            },
+            groundDuels: {
+                type: Number,
+                min: 1,
+                max: 10,
+                required: true,
+            },
         },
 
         // ===== Mental Skills =====
         mental: {
-            positioning: {
+            vision: {
                 type: Number,
                 min: 1,
                 max: 10,
                 required: true,
             },
-            decisionMaking: {
+            personality: {
                 type: Number,
                 min: 1,
                 max: 10,
                 required: true,
             },
-            teamwork: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            attitude: {
+            movement: {
                 type: Number,
                 min: 1,
                 max: 10,
@@ -164,18 +191,21 @@ const scoutingReportSchema = new mongoose.Schema(
 // ===== حساب Overall Rating تلقائي قبل الحفظ =====
 function calcOverallRating(doc) {
     const allScores = [
-        doc.technical.passing,
+        doc.technical.turning,
         doc.technical.dribbling,
-        doc.technical.shooting,
-        doc.technical.ballControl,
-        doc.physical.speed,
-        doc.physical.stamina,
-        doc.physical.strength,
+        doc.technical.tackling,
+        doc.technical.twoFooted,
+        doc.technical.longPassing,
+        doc.technical.shortPassing,
+        doc.technical.heading,
+        doc.physical.shortSprints,
+        doc.physical.longSprints,
         doc.physical.agility,
-        doc.mental.positioning,
-        doc.mental.decisionMaking,
-        doc.mental.teamwork,
-        doc.mental.attitude,
+        doc.physical.aerialDuels,
+        doc.physical.groundDuels,
+        doc.mental.vision,
+        doc.mental.personality,
+        doc.mental.movement,
     ];
 
     const sum = allScores.reduce((acc, val) => acc + val, 0);
@@ -219,12 +249,13 @@ scoutingReportSchema.pre("findOneAndUpdate", async function () {
     };
 
     const allScores = [
-        merged.technical.passing, merged.technical.dribbling,
-        merged.technical.shooting, merged.technical.ballControl,
-        merged.physical.speed, merged.physical.stamina,
-        merged.physical.strength, merged.physical.agility,
-        merged.mental.positioning, merged.mental.decisionMaking,
-        merged.mental.teamwork, merged.mental.attitude,
+        merged.technical.turning, merged.technical.dribbling,
+        merged.technical.tackling, merged.technical.twoFooted,
+        merged.technical.longPassing, merged.technical.shortPassing,
+        merged.technical.heading,
+        merged.physical.shortSprints, merged.physical.longSprints,
+        merged.physical.agility, merged.physical.aerialDuels, merged.physical.groundDuels,
+        merged.mental.vision, merged.mental.personality, merged.mental.movement,
     ];
 
     update.overallRating = parseFloat(

@@ -4016,9 +4016,24 @@ export interface components {
              */
             status: "pending" | "selected" | "rejected" | "observed";
             ageGroup?: string | components["schemas"]["AgeGroup"];
+            /**
+             * @description Stage 4b — an adult professional-league player. Server-set only (locked from the client); professional players carry no ageGroup and are owned by their creating proScout (createdBy), not a coach.
+             * @default false
+             */
+            isProfessional: boolean;
+            /**
+             * Format: date-time
+             * @description End of the player's contract with their club — stored as UTC midnight on the first day of the contract's final month (client sends YYYY-MM-01 from a month/year picker). null when there is no contract or the player is a free agent. Remaining time (years/months) is a client-side display concern.
+             */
+            contractEndDate?: string | null;
+            /**
+             * @description The player currently has no club contract. Mutually exclusive with contractEndDate (the server nulls the date when this is true).
+             * @default false
+             */
+            isFreeAgent: boolean;
             coach?: string | components["schemas"]["User"];
             observers?: (string | components["schemas"]["User"])[];
-            /** @description specs/010-professional-lens-creator — the user who created this player. Populated to { _id, name } only for GET /players requests made by an admin; absent for every other role and for GET /players/:id. */
+            /** @description specs/010-professional-lens-creator — the user who created (and, for professional players, owns) this player. Populated to { _id, name } only for admins, on GET /players and GET /players/:id; a bare id (or absent) for every other role. */
             createdBy?: string | components["schemas"]["User"];
             /** Format: date-time */
             createdAt?: string;
@@ -4026,22 +4041,40 @@ export interface components {
             updatedAt?: string;
         };
         TechnicalSkills: {
-            passing: number;
+            /** @description الارتداد */
+            turning: number;
+            /** @description المراوغة */
             dribbling: number;
-            shooting: number;
-            ballControl: number;
+            /** @description استخلاص الكرة */
+            tackling: number;
+            /** @description اللعب بالقدمين */
+            twoFooted: number;
+            /** @description التمريرات الطويلة الصحيحة */
+            longPassing: number;
+            /** @description التمريرات القصيرة الصحيحة */
+            shortPassing: number;
+            /** @description اللعب بالرأس */
+            heading: number;
         };
         PhysicalSkills: {
-            speed: number;
-            stamina: number;
-            strength: number;
+            /** @description اسبرنتات قصيرة */
+            shortSprints: number;
+            /** @description اسبرنتات طويلة */
+            longSprints: number;
+            /** @description الرشاقة والمرونة */
             agility: number;
+            /** @description الالتحامات الهوائية */
+            aerialDuels: number;
+            /** @description الالتحامات الأرضية */
+            groundDuels: number;
         };
         MentalSkills: {
-            positioning: number;
-            decisionMaking: number;
-            teamwork: number;
-            attitude: number;
+            /** @description الرؤية داخل الملعب */
+            vision: number;
+            /** @description الشخصية في الملعب */
+            personality: number;
+            /** @description التحركات */
+            movement: number;
         };
         ScoutingReport: {
             _id?: string;
@@ -4181,18 +4214,21 @@ export interface components {
             /** Format: date-time */
             lastReport?: string;
             overallRating?: number;
-            passing?: number;
+            turning?: number;
             dribbling?: number;
-            shooting?: number;
-            ballControl?: number;
-            speed?: number;
-            stamina?: number;
-            strength?: number;
+            tackling?: number;
+            twoFooted?: number;
+            longPassing?: number;
+            shortPassing?: number;
+            heading?: number;
+            shortSprints?: number;
+            longSprints?: number;
             agility?: number;
-            positioning?: number;
-            decisionMaking?: number;
-            teamwork?: number;
-            attitude?: number;
+            aerialDuels?: number;
+            groundDuels?: number;
+            vision?: number;
+            personality?: number;
+            movement?: number;
         };
         Pagination: {
             currentPage?: number;

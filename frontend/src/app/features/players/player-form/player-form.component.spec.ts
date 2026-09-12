@@ -118,9 +118,16 @@ describe('PlayerFormComponent — professionalContext() (observer-matches-and-pl
     expect((comp as any).professionalContext()).toBeFalse();
   });
 
-  it('is false for an admin', async () => {
+  it('is false for an admin creating with no context param', async () => {
     const comp = await setup('admin');
     expect((comp as any).professionalContext()).toBeFalse();
+  });
+
+  // owner-directed — the admin reaches this form from the professional-league
+  // grid card, which routes with ?context=professional, same as the observer.
+  it('is true for an admin creating with ?context=professional', async () => {
+    const comp = await setup('admin', { context: 'professional' });
+    expect((comp as any).professionalContext()).toBeTrue();
   });
 
   it('is false for an observer creating with no context param (age-group-card entry)', async () => {
@@ -140,13 +147,23 @@ describe('PlayerFormComponent — professionalContext() (observer-matches-and-pl
 });
 
 describe('PlayerFormComponent — professionalContext() drives the form, same as it did for proScout alone', () => {
-  it('widens the birth-year floor to 1996 for an observer in the professional context', async () => {
+  it('widens the birth-year floor to 1995 for an observer in the professional context', async () => {
     const comp = await setup('observer', { context: 'professional' });
-    expect(Math.min(...comp.dobYears)).toBe(1996);
+    expect(Math.min(...comp.dobYears)).toBe(1995);
+  });
+
+  it('widens the birth-year floor to 1995 for an admin in the professional context', async () => {
+    const comp = await setup('admin', { context: 'professional' });
+    expect(Math.min(...comp.dobYears)).toBe(1995);
   });
 
   it('keeps the youth floor at 2007 for an observer with no context', async () => {
     const comp = await setup('observer');
+    expect(Math.min(...comp.dobYears)).toBe(2007);
+  });
+
+  it('keeps the youth floor at 2007 for an admin with no context', async () => {
+    const comp = await setup('admin');
     expect(Math.min(...comp.dobYears)).toBe(2007);
   });
 
