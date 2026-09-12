@@ -10,11 +10,14 @@
 //
 // التستات دي بتقفل تلات حاجات لكل endpoint:
 //   1) الترتيب الافتراضي بيتطبّق فعلاً لما العميل مايبعتش ?sort
-//   2) `_id` مقبول في وايت ليست الترتيب — ApiFeature.sort() بتسقط المرفوض
-//      **بصمت**، فمن غير الفحص ده فاصل التعادل بيتشال والإصلاح يبان شغّال وهو
-//      مش عامل حاجة
+//   2) `_id` **مش** قابل للطلب من العميل: مش في أي وايت ليست، وهو تفصيل داخلي
+//      بيضمن الحتمية. طلبه صراحةً بيترفض زي أي حقل تاني برّه الوايت ليست.
 //   3) الترقيم مستقر مع تعادل متعمّد: مفيش _id بيتكرر بين الصفحات، واتحاد
 //      الصفحات = المجموعة الكاملة
+//
+// ملاحظة على الحارس: ApiFeature.sort() بترمي على أي حقل ترتيب مرفوض في غير
+// الإنتاج، وبتشيله بصمت في الإنتاج. عشان كده كل تست هنا بيلمس حقل مرفوض بيتأكد
+// من **السلوكين**: 500 في بيئة التست، والسلوك القديم (شيل + إكمال) في الإنتاج.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
@@ -111,11 +114,10 @@ describe('الترتيب الافتراضي للقوايم (Express 5 — req.qu
       expect(new Date(res.body.data.documents[0].matchDate).getUTCDate()).toBe(5);
     });
 
-    it('`_id` مش قابل للطلب من العميل — بيتشال، والفاصل الداخلي بيتطبّق تصاعدي', async () => {
-      // العقد الجديد: `_id` **مش** في أي وايت ليست — هو تفصيل داخلي في
-      // ApiFeature.sort() مش جزء من سطح الـAPI. فـ?sort=-_id بيتشال زي أي حقل
-      // مرفوض، ومفيش مفتاح باقي، فبيقع على الفاصل تصاعدي.
-      // لو `_id` رجع للوايت ليست، الرد هيبقى تنازلي والتست ده بيفشل.
+    it('`_id` مش قابل للطلب من العميل — بيترفض في التست، وبيتشال في الإنتاج', async () => {
+      // `_id` **مش** في أي وايت ليست — تفصيل داخلي، مش جزء من سطح الـAPI.
+      // فـ?sort=-_id بيترفض زي أي حقل تاني برّه الوايت ليست. لو رجع للوايت
+      // ليست يوماً ما، الفرع الإنتاجي تحت هيرجّع تنازلي والتست ده بيفشل.
       await seedMatches(
         [
           new Date(Date.UTC(2026, 5, 1)),
@@ -129,9 +131,23 @@ describe('الترتيب الافتراضي للقوايم (Express 5 — req.qu
         .get('/api/v1/seasonMatches?sort=-_id')
         .set('Authorization', `Bearer ${token}`);
 
-      expect(res.status).toBe(200);
-      expect(res.body.data.documents).toHaveLength(3);
-      expect(isStrictlyAscending(idsOf(res))).toBe(true);
+      // `_id` مش في الوايت ليست، والحارس بيرمي في غير الإنتاج → 500.
+      expect(res.status).toBe(500);
+
+      // وفي الإنتاج: بيتشال بصمت، والفاصل الداخلي بيطبّق تصاعدي بدل التنازلي المطلوب.
+      const previous = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      let prod;
+      try {
+        prod = await request(app)
+          .get('/api/v1/seasonMatches?sort=-_id')
+          .set('Authorization', `Bearer ${token}`);
+      } finally {
+        process.env.NODE_ENV = previous;
+      }
+      expect(prod.status).toBe(200);
+      expect(prod.body.data.documents).toHaveLength(3);
+      expect(isStrictlyAscending(idsOf(prod))).toBe(true);
     });
 
     it('الترقيم مستقر مع تعادل كامل في matchDate', async () => {
@@ -204,7 +220,7 @@ describe('الترتيب الافتراضي للقوايم (Express 5 — req.qu
       expect(keys[0]).toBe((PAST_YEAR + 1) * 100 + 1);
     });
 
-    it('`_id` مش قابل للطلب من العميل — بيتشال، والفاصل الداخلي بيتطبّق تصاعدي', async () => {
+    it('`_id` مش قابل للطلب من العميل — بيترفض في التست، وبيتشال في الإنتاج', async () => {
       await seedEvaluations([
         { year: PAST_YEAR, month: 1 },
         { year: PAST_YEAR, month: 2 },
@@ -215,9 +231,23 @@ describe('الترتيب الافتراضي للقوايم (Express 5 — req.qu
         .get('/api/v1/coachEvaluations?sort=-_id')
         .set('Authorization', `Bearer ${token}`);
 
-      expect(res.status).toBe(200);
-      expect(res.body.data.documents).toHaveLength(3);
-      expect(isStrictlyAscending(idsOf(res))).toBe(true);
+      // `_id` مش في الوايت ليست، والحارس بيرمي في غير الإنتاج → 500.
+      expect(res.status).toBe(500);
+
+      // وفي الإنتاج: بيتشال بصمت، والفاصل الداخلي بيطبّق تصاعدي بدل التنازلي المطلوب.
+      const previous = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      let prod;
+      try {
+        prod = await request(app)
+          .get('/api/v1/coachEvaluations?sort=-_id')
+          .set('Authorization', `Bearer ${token}`);
+      } finally {
+        process.env.NODE_ENV = previous;
+      }
+      expect(prod.status).toBe(200);
+      expect(prod.body.data.documents).toHaveLength(3);
+      expect(isStrictlyAscending(idsOf(prod))).toBe(true);
     });
 
     it('ترتيب العميل الجزئي (?sort=-year) بياخد فاصل تعادل تلقائي', async () => {
@@ -312,7 +342,7 @@ describe('الترتيب الافتراضي للقوايم (Express 5 — req.qu
       expect(keys[0]).toBe((PAST_YEAR + 1) * 100 + 1);
     });
 
-    it('`_id` مش قابل للطلب من العميل — بيتشال، والفاصل الداخلي بيتطبّق تصاعدي', async () => {
+    it('`_id` مش قابل للطلب من العميل — بيترفض في التست، وبيتشال في الإنتاج', async () => {
       await seedEvaluations([
         { year: PAST_YEAR, month: 1 },
         { year: PAST_YEAR, month: 2 },
@@ -323,9 +353,23 @@ describe('الترتيب الافتراضي للقوايم (Express 5 — req.qu
         .get('/api/v1/observerEvaluations?sort=-_id')
         .set('Authorization', `Bearer ${token}`);
 
-      expect(res.status).toBe(200);
-      expect(res.body.data.documents).toHaveLength(3);
-      expect(isStrictlyAscending(idsOf(res))).toBe(true);
+      // `_id` مش في الوايت ليست، والحارس بيرمي في غير الإنتاج → 500.
+      expect(res.status).toBe(500);
+
+      // وفي الإنتاج: بيتشال بصمت، والفاصل الداخلي بيطبّق تصاعدي بدل التنازلي المطلوب.
+      const previous = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      let prod;
+      try {
+        prod = await request(app)
+          .get('/api/v1/observerEvaluations?sort=-_id')
+          .set('Authorization', `Bearer ${token}`);
+      } finally {
+        process.env.NODE_ENV = previous;
+      }
+      expect(prod.status).toBe(200);
+      expect(prod.body.data.documents).toHaveLength(3);
+      expect(isStrictlyAscending(idsOf(prod))).toBe(true);
     });
 
     it('ترتيب العميل الجزئي (?sort=-year) بياخد فاصل تعادل تلقائي', async () => {
@@ -423,10 +467,7 @@ describe('الترتيب الافتراضي للقوايم (Express 5 — req.qu
   // الاحتياطي لما مفيش مفتاح ترتيب باقي بعد الوايت ليست
   // ───────────────────────────────────────────────────────────────────────────
   describe('الاحتياطي: مفيش مفتاح باقي بعد الوايت ليست', () => {
-    it('?sort=bogusField بيدّي ترتيب حتمي (_id تصاعدي) مش sort فاضي', async () => {
-      // الحقل المرفوض بيتشال، ومايتبقاش أي مفتاح — الحالة دي كانت بتخرج بلا أي
-      // ترتيب خالص (القديم: `if (fields.length)`)، وهي بالظبط اللي بتخلي الترقيم
-      // غير مستقر. دلوقتي بتقع على الفاصل لوحده.
+    it('?sort=bogusField بيترفض بصوت عالي في غير الإنتاج', async () => {
       await seedAgeGroups();
       const { token } = await createAdmin();
 
@@ -434,22 +475,40 @@ describe('الترتيب الافتراضي للقوايم (Express 5 — req.qu
         .get('/api/v1/ages?sort=bogusField')
         .set('Authorization', `Bearer ${token}`);
 
-      expect(res.status).toBe(200);
-      expect(res.body.data.documents.length).toBeGreaterThan(1);
-      expect(isStrictlyAscending(idsOf(res))).toBe(true);
+      expect(res.status).toBe(500);
     });
 
-    it('الترقيم يفضل مستقر حتى مع حقل ترتيب مرفوض', async () => {
+    it('في الإنتاج: الحقل المرفوض بيتشال والاحتياطي بيدّي _id تصاعدي', async () => {
+      // الحقل المرفوض بيتشال، ومايتبقاش أي مفتاح — الحالة دي كانت بتخرج بلا أي
+      // ترتيب خالص (القديم: `if (fields.length)`)، وهي بالظبط اللي بتخلي الترقيم
+      // غير مستقر. دلوقتي بتقع على الفاصل لوحده.
       await seedAgeGroups();
       const { token } = await createAdmin();
 
-      const [p1, p2, p3] = await Promise.all([
-        request(app).get('/api/v1/ages?sort=bogusField&limit=4&page=1').set('Authorization', `Bearer ${token}`),
-        request(app).get('/api/v1/ages?sort=bogusField&limit=4&page=2').set('Authorization', `Bearer ${token}`),
-        request(app).get('/api/v1/ages?sort=bogusField&limit=4&page=3').set('Authorization', `Bearer ${token}`),
-      ]);
+      const previous = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      let res;
+      let pages;
+      try {
+        res = await request(app)
+          .get('/api/v1/ages?sort=bogusField')
+          .set('Authorization', `Bearer ${token}`);
 
-      const paged = [...idsOf(p1), ...idsOf(p2), ...idsOf(p3)];
+        pages = await Promise.all([
+          request(app).get('/api/v1/ages?sort=bogusField&limit=4&page=1').set('Authorization', `Bearer ${token}`),
+          request(app).get('/api/v1/ages?sort=bogusField&limit=4&page=2').set('Authorization', `Bearer ${token}`),
+          request(app).get('/api/v1/ages?sort=bogusField&limit=4&page=3').set('Authorization', `Bearer ${token}`),
+        ]);
+      } finally {
+        process.env.NODE_ENV = previous;
+      }
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.documents.length).toBeGreaterThan(1);
+      expect(isStrictlyAscending(idsOf(res))).toBe(true);
+
+      // والترقيم يفضل مستقر حتى والحقل مرفوض
+      const paged = pages.flatMap(idsOf);
       expect(paged).toHaveLength(11);
       expect(new Set(paged).size).toBe(11);
       expect(isStrictlyAscending(paged)).toBe(true);

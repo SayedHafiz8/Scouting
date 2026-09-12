@@ -171,11 +171,22 @@ describe("audit-database — regression cover for the five findings", () => {
         // utils/apiFeatures.js وtests/defaultSort.test.js). الوايت ليست نفسها
         // ماتغيرتش — التوقعات تحت بتضيف الفاصل، مش بتوسّع أي قايمة.
 
-        it("drops a field that is not on the list (tie-breaker only remains)", () => {
-            const f = build(Player, { sort: "name" }, ["createdAt"]);
-            // "name" اتشال؛ مفيش مفتاح باقي فبنقع على الفاصل تصاعدي —
-            // مش sort فاضي، لأن الخروج بلا ترتيب هو نفسه مصدر عدم الاستقرار.
-            expect(f.query.getOptions().sort).toEqual({ _id: 1 });
+        it("throws on a field that is not on the list (non-production tripwire)", () => {
+            expect(() => build(Player, { sort: "name" }, ["createdAt"]))
+                .toThrow(/non-whitelisted sort field "name" for Player/);
+        });
+
+        it("stays silent in production and drops the field instead", () => {
+            // نفس الاستدعاء بالظبط، بس في بيئة الإنتاج: مفيش رمي، الحقل بيتشال،
+            // والاستعلام بيكمل على فاصل التعادل لوحده — سلوك العميل زي ما كان.
+            const previous = process.env.NODE_ENV;
+            process.env.NODE_ENV = "production";
+            try {
+                const f = build(Player, { sort: "name" }, ["createdAt"]);
+                expect(f.query.getOptions().sort).toEqual({ _id: 1 });
+            } finally {
+                process.env.NODE_ENV = previous;
+            }
         });
 
         it("keeps an allowed field and honours the descending prefix", () => {
@@ -186,20 +197,39 @@ describe("audit-database — regression cover for the five findings", () => {
                 .toEqual({ createdAt: -1, _id: -1 });
         });
 
-        it("keeps only the allowed members of a comma list", () => {
-            const f = build(ScoutingReport, { sort: "-matchDate,overallRating" }, ["matchDate"]);
-            // overallRating اتشال، matchDate فضل، والفاصل تنازلي زي آخر مفتاح باقي
-            expect(f.query.getOptions().sort).toEqual({ matchDate: -1, _id: -1 });
+        it("rejects a comma list containing a non-whitelisted member", () => {
+            // مفيش "قبول جزئي" بصمت: عضو واحد مرفوض بيوقّف الطلب كله في غير الإنتاج
+            expect(() => build(ScoutingReport, { sort: "-matchDate,overallRating" }, ["matchDate"]))
+                .toThrow(/non-whitelisted sort field "overallRating" for ScoutingReport/);
+        });
+
+        it("in production keeps only the allowed members of a comma list", () => {
+            const previous = process.env.NODE_ENV;
+            process.env.NODE_ENV = "production";
+            try {
+                const f = build(ScoutingReport, { sort: "-matchDate,overallRating" }, ["matchDate"]);
+                // overallRating اتشال، matchDate فضل، والفاصل تنازلي زي آخر مفتاح باقي
+                expect(f.query.getOptions().sort).toEqual({ matchDate: -1, _id: -1 });
+            } finally {
+                process.env.NODE_ENV = previous;
+            }
         });
 
         it("still fails closed on the client's field when no whitelist is passed", () => {
-            const f = new ApiFeature(Player.find(), { sort: "createdAt" }, {}, null).sort();
-            // القايمة الفاضية = مفيش أي حقل مسموح من العميل — "createdAt" اتشال
-            // زي ما كان بالظبط. اللي اتغير إن الناتج بقى حتمي بدل ما يبقى بلا ترتيب.
+            // القايمة الفاضية = مفيش أي حقل مسموح من العميل — "createdAt" مرفوض
+            // زي ما كان بالظبط، واللي اتغير إن الرفض بقى صريح بدل ما يكون صامت.
+            expect(() => new ApiFeature(Player.find(), { sort: "createdAt" }, {}, null).sort())
+                .toThrow(/non-whitelisted sort field "createdAt" for Player/);
+        });
+
+        it("appends the tie-breaker when nothing was requested at all", () => {
+            // المسار ده مابيمرّش على الحارس خالص (مفيش حقل مرفوض) — بيثبت إن
+            // الاحتياطي نفسه شغّال: مفيش مفتاح باقي → `_id` تصاعدي، مش sort فاضي.
+            const f = new ApiFeature(Player.find(), {}, {}, null).sort(["createdAt"]);
             expect(f.query.getOptions().sort).toEqual({ _id: 1 });
         });
 
-        it("over HTTP: ?sort=name on players does not reach the query planner", async () => {
+        it("over HTTP: ?sort=name on players is rejected loudly outside production", async () => {
             const { token: coachToken } = await createCoach({ email: "audit_i2@test.com" });
             await createPlayer(coachToken, { name: "Zed Sorted" });
             await createPlayer(coachToken, { name: "Abe Sorted" });
@@ -208,10 +238,34 @@ describe("audit-database — regression cover for the five findings", () => {
                 .get("/api/v1/players?sort=name")
                 .set("Authorization", `Bearer ${coachToken}`);
 
+            // الحارس بيرمي في غير الإنتاج فبيوصل errorMiddleware كخطأ غير تشغيلي (500).
+            // ده المقصود: الفرونت مفروض مايبعتش حقل مش في الوايت ليست أصلاً، فالرمي
+            // تربواير للمطوّر مش مسار مستخدم.
+            expect(res.status).toBe(500);
+        });
+
+        it("over HTTP: in production ?sort=name is dropped and the list still returns", async () => {
+            const { token: coachToken } = await createCoach({ email: "audit_i2c@test.com" });
+            await createPlayer(coachToken, { name: "Zed Sorted" });
+            await createPlayer(coachToken, { name: "Abe Sorted" });
+
+            const previous = process.env.NODE_ENV;
+            process.env.NODE_ENV = "production";
+            let res;
+            try {
+                res = await request(app)
+                    .get("/api/v1/players?sort=name")
+                    .set("Authorization", `Bearer ${coachToken}`);
+            } finally {
+                process.env.NODE_ENV = previous;
+            }
+
             expect(res.status).toBe(200);
-            // الطلب بينجح (المفتاح بيتشال بصمت زي الفلاتر) بس الترتيب مابيتطبّقش —
-            // الترتيب الافتراضي -createdAt بيخلي آخر لاعب اتعمل هو الأول
-            expect(res.body.data.documents[0].name).toBe("Abe Sorted");
+            // "name" اتشال، فالترتيب هو فاصل التعادل لوحده: `_id` تصاعدي =
+            // ترتيب الإدخال. مفيش ترتيب افتراضي على اللاعبين — الادّعاء القديم
+            // إن "-createdAt الافتراضي بيخلي آخر لاعب هو الأول" كان غلط، والتست
+            // كان بيقرا ترتيب الفهرس بالمصادفة.
+            expect(res.body.data.documents.map((d) => d.name)).toEqual(["Zed Sorted", "Abe Sorted"]);
         });
 
         it("over HTTP: an allowed sort still works end to end", async () => {

@@ -153,14 +153,30 @@ describe('US1 — query params cannot widen the scope (FR-004)', () => {
     expect(p3.body.count).toBe(0); // مفيش صفحة تالتة — الـpremier مش معدود
   });
 
+  // التست ده بيتحقق من **عزل النطاق**، مش من الترتيب الأبجدي.
+  //
+  // الترتيب المؤكَّد هنا هو `_id` تصاعدي، لأن `name` مش في PLAYER_SORT_FIELDS
+  // فبيتشال من الوايت ليست، وApiFeature.sort() بتقع على فاصل التعادل لوحده.
+  //
+  // الشكل القديم كان بيبعت `?sort=name` ويؤكّد ترتيب أبجدي — وكان بيعدّي
+  // بالمصادفة لأن الـplanner بيمشي على {createdBy:1, createdAt:-1} فبيدّي
+  // الأحدث أولاً. ادّعاء مش بيتنفّذ: خضرا لسبب مالوش علاقة بالمقصود، وكان
+  // هيقلب أحمر أول ما أي فهرس يتغيّر. الباراميتر اتشال بدل ما يتساب —
+  // دلوقتي ApiFeature بترمي على الحقل المرفوض في غير الإنتاج.
   it('sorting stays inside scope', async () => {
     await inScopePlayer({ name: 'B Player' });
     await inScopePlayer({ name: 'A Player' });
     await outOfScopePlayer({ name: 'A Premier' });
 
-    const res = await request(app).get('/api/v1/players?sort=name').set(...auth(scout.token));
+    const res = await request(app).get('/api/v1/players').set(...auth(scout.token));
+
     expect(res.body.count).toBe(2);
-    expect(res.body.data.documents[0].name).toBe('A Player');
+    const names = res.body.data.documents.map((d) => d.name);
+    expect(names).not.toContain('A Premier');        // العزل: الـpremier برّه النطاق
+    expect(names).toEqual(['B Player', 'A Player']); // _id تصاعدي = ترتيب الإدخال
+
+    const ids = res.body.data.documents.map((d) => d._id);
+    expect(ids).toEqual([...ids].sort());
   });
 });
 
