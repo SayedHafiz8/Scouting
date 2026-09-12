@@ -74,6 +74,34 @@ export const gettingAll = (model, filterOptions = {}, populateOptions = null, ba
         // applyPagination مابيغيروش الفلتر، بيضيفوا sort/projection/skip/limit بس.
         const countFilter = features.query.getFilter();
 
+        // TODO (مقرَّر، مش منفَّذ — خارج نطاق فرع الترتيب عن قصد):
+        //
+        // الذيل ده — التقاط countFilter، بعده sort/limitFields/applyPagination،
+        // بعده Promise.all([countDocuments, query]) — **متكرر حرفياً في تمانية
+        // مواضع**: هنا، وسبع نسخ مكتوبة باليد في:
+        //
+        //   controllers/agesController.js:56
+        //   controllers/coachEvaluationController.js:181
+        //   controllers/observerEvaluationController.js:131
+        //   controllers/playerController.js:445
+        //   controllers/playerMediaController.js:222
+        //   controllers/scoutingReportController.js:256
+        //   controllers/seasonMatchController.js:112
+        //
+        // ليه ده مهم: ترتيب الخطوات هنا **عقد أمني**، مش ستايل. countFilter لازم
+        // يتلقط بعد .filter() وقبل applyPagination بالظبط — لو اتلقط قبل .filter()
+        // العدّ بيتم على نطاق أوسع من اللي المستخدم مسموح له يشوفه، فبيسرّب وجود
+        // مستندات برّه نطاق ملكيته في الـpagination metadata. تمانية مواضع بتعيد
+        // تنفيذ نفس العقد يدوياً = تمانية أماكن العقد ده يقدر يتكسر فيها بصمت
+        // واحد ورا التاني.
+        //
+        // الحل المقرَّر: استخراج الذيل لهيلبر واحد ينده منه الفاكتوري والكنترولرز
+        // المكتوبة باليد، فالترتيب يتحدد في مكان واحد. اللي اترفض صراحةً بدلاً منه:
+        // تمرير queryParams كـargument رابع لهاندلر Express — بيدي نفس الدالة
+        // سلوكين حسب اللي بيناديها، وبيعتمد على "Express بيمرّر تلات arguments بس"
+        // كعقد ضمني يتكسر بصمت مع أي wrapper أو middleware جديد.
+        //
+        // مااتعملش هنا لأنه مالوش علاقة بالترتيب وكان هيكبّر الـdiff.
         features.sort(sortable).limitFields().applyPagination();
 
         const finalQuery = applyPopulate(features.query, populateOptions);
