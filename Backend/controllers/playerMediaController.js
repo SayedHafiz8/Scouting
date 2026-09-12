@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import sharp from "sharp";
 import fs from "fs";
 import crypto from "crypto";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
 
 import PlayerMedia from "../models/playerMediaModel.js";
 import SeasonMatch from "../models/seasonMatchModel.js";
@@ -497,15 +499,67 @@ export const downloadVideo = asyncHandler(async (req, res, next) => {
         return next(new AppError("This video is not available for download", 400));
     }
 
-    const upstream = await fetch(streamMp4Url(media.bunnyVideoId));
-    if (!upstream.ok) {
-        return next(new AppError("Download failed", 502));
+    // ── audit-backend — الملف بيتـstream، مابيتحمّلش في الذاكرة ──────────────
+    //
+    // الشكل القديم كان `Buffer.from(await upstream.arrayBuffer())` وبعده send():
+    // الملف كله بيتحمّل في allocation واحد في الـheap قبل ما أول بايت يوصل
+    // العميل. الحجم مقيّد بـBUNNY_MAX_VIDEO_MB بس، وهو متغيّر بيئة — يعني
+    // تعديل الرقم ده لـ1500 بيحوّل تعديل كونفيج لـOOM بيقتل البروسيس كله، مش
+    // الطلب بس. واتنين أدمن بيحمّلوا في نفس الوقت بيضاعفوه.
+    //
+    // بـpipeline الذاكرة بتبقى ثابتة مهما كان حجم الملف (حجم الـbuffer الداخلي
+    // للـstream بس)، والبايتات بتبدأ توصل العميل فوراً.
+    //
+    // ليه مش redirect للـURL الموقّع بدل البروكسي أصلاً: streamMp4Url فعلاً
+    // بترجّع URL موقّع (token على المسار + expires نصف ساعة)، والـredirect كان
+    // هيوفّر الذاكرة **والباندويدث** الاتنين. بس الـendpoint ده موجود مخصوص
+    // عشان هيدر الـattachment (F7d) — وباني بيسلّم الملف بـvideo/mp4 من غير
+    // Content-Disposition، فالمتصفح هيشغّله inline بدل ما ينزّله، والاسم هيبقى
+    // play_480p.mp4 بدل عنوان الميديا. فرض الهيدر من ناحية باني بيعتمد على
+    // إعداد pull zone مش متحقَّق منه، والـtoken بيغطّي /videoId/file بس فأي
+    // باراميتر زيادة ممكن يرجّع 403. الـstreaming بيحل مشكلة الذاكرة من غير
+    // ما يغيّر السلوك.
+    const abort = new AbortController();
+    const onClientGone = () => abort.abort();
+    res.on("close", onClientGone);
+
+    try {
+        let upstream;
+        try {
+            upstream = await fetch(streamMp4Url(media.bunnyVideoId), { signal: abort.signal });
+        } catch (err) {
+            // العميل قطع قبل ما الهيدرز توصل — مفيش رد نبعته ومفيش خطأ حقيقي
+            if (abort.signal.aborted) return;
+            return next(new AppError("Download failed", 502));
+        }
+
+        // ⚠️ الفحص ده **لازم** يكون قبل أي setHeader. الشكل القديم كان بيقرا
+        // الجسم كله الأول فجسم الخطأ بتاع باني كان بيتبلع؛ دلوقتي إحنا بنـpipe،
+        // فلو عدّى من غير فحص كان هيتبعت للعميل كأنه فيديو.
+        if (!upstream.ok || !upstream.body) {
+            await upstream.body?.cancel().catch(() => {});
+            return next(new AppError("Download failed", 502));
+        }
+
+        const safeName = (media.title || "video").replace(/[^\w.-]+/g, "_");
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Disposition", `attachment; filename="${safeName}.mp4"`);
+        // لو باني بعت الطول بنمرّره — العميل بيشوف progress حقيقي بدل تحميل مفتوح
+        const contentLength = upstream.headers.get("content-length");
+        if (contentLength) res.setHeader("Content-Length", contentLength);
+
+        try {
+            await pipeline(Readable.fromWeb(upstream.body), res);
+        } catch (err) {
+            // الهيدرز اتبعتت خلاص، فمفيش status ينفع يتغيّر — ومنرميش للـ
+            // errorMiddleware لأنه هيحاول يكتب على رد مبعوت. اللي مهم إن طلب
+            // باني يتقفل (مايفضلش ساحب بايتات للفاضي) والـsocket يتدمّر.
+            abort.abort();
+            if (!res.writableEnded) res.destroy();
+        }
+    } finally {
+        res.off("close", onClientGone);
     }
-    const safeName = (media.title || "video").replace(/[^\w.-]+/g, "_");
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeName}.mp4"`);
-    const buffer = Buffer.from(await upstream.arrayBuffer());
-    res.status(200).send(buffer);
 });
 
 // @desc  Bunny Stream webhook — UNTRUSTED trigger only (C1). Never writes status
