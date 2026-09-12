@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
+import mongoose from 'mongoose';
 import app from '../app.js';
 import SeasonMatch from '../models/seasonMatchModel.js';
 import { createAdmin, createCoach, createObserver, createPlayer, createReport, createTeam, defaultTeamIds, reportPayload, seedAgeGroups, setupPlayerMatchDay } from './helpers/factory.js';
@@ -667,6 +668,110 @@ describe('GET /api/v1/players/reports/average-ratings', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.averages[playerA._id].totalReports).toBe(2);
     expect(res.body.data.averages[playerB._id].totalReports).toBe(1);
+  });
+
+  // ── audit-backend — ?ids= كان آخر مدخل عميل بلا سقف ─────────────────────
+  //
+  // أي مستخدم موثَّق كان يقدر يبعت 50,000 id على سرعة الـrate limiter، وكلهم
+  // بيروحوا لـ$in جوه aggregation. السقف بقى ApiFeature.MAX_LIMIT (200).
+  //
+  // الرفض بـ400 مش slice() متعمّد: الرد الجزئي الصامت بيخلي المستدعي يفتكر إنه
+  // خد كل حاجة — نفس النقد اللي اتوجّه لإسقاط ApiFeature الصامت لحقل الترتيب.
+  it('accepts exactly MAX_LIMIT ids', async () => {
+    const { token } = await createCoach();
+    const player = await createPlayer(token);
+    await createReport(token, player._id);
+
+    // 199 id مخترع + اللاعب الحقيقي = 200 بالظبط
+    const filler = Array.from({ length: 199 }, () => new mongoose.Types.ObjectId().toString());
+    const ids = [...filler, player._id.toString()].join(',');
+
+    const res = await request(app)
+      .get(`/api/v1/players/reports/average-ratings?ids=${ids}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.averages[player._id].totalReports).toBe(1);
+  });
+
+  it('rejects one id over the cap with 400 and a useful message', async () => {
+    const { token } = await createCoach();
+    const ids = Array.from({ length: 201 }, () => new mongoose.Types.ObjectId().toString()).join(',');
+
+    const res = await request(app)
+      .get(`/api/v1/players/reports/average-ratings?ids=${ids}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    // الرسالة لازم تقول الرقم المبعوت والسقف — مش "bad request" مجردة
+    expect(res.body.message).toMatch(/201/);
+    expect(res.body.message).toMatch(/200/);
+  });
+
+  it('does not silently truncate a list over the cap', async () => {
+    const { token } = await createCoach();
+    const player = await createPlayer(token);
+    await createReport(token, player._id);
+
+    // اللاعب الحقيقي في الأول، فلو حصل slice(0,200) كان هيرجع 200 مع بياناته
+    const filler = Array.from({ length: 250 }, () => new mongoose.Types.ObjectId().toString());
+    const ids = [player._id.toString(), ...filler].join(',');
+
+    const res = await request(app)
+      .get(`/api/v1/players/reports/average-ratings?ids=${ids}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.data).toBeUndefined();
+  });
+
+  it('rejects a malformed id with 400 and names it', async () => {
+    const { token } = await createCoach();
+    const player = await createPlayer(token);
+
+    const res = await request(app)
+      .get(`/api/v1/players/reports/average-ratings?ids=${player._id},not-an-objectid`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/not-an-objectid/);
+  });
+
+  it('caps before validating — an oversized list of junk is a cap error', async () => {
+    const { token } = await createCoach();
+    const ids = Array.from({ length: 300 }, (_, i) => `junk-${i}`).join(',');
+
+    const res = await request(app)
+      .get(`/api/v1/players/reports/average-ratings?ids=${ids}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/Too many player ids/);
+  });
+
+  // الفاصلة الزايدة تشويه في الشكل، مش معرّف غلط — بتتجاهل بدل ما ترفض الطلب
+  it('ignores empty segments from a trailing or doubled comma', async () => {
+    const { token } = await createCoach();
+    const player = await createPlayer(token);
+    await createReport(token, player._id);
+
+    const res = await request(app)
+      .get(`/api/v1/players/reports/average-ratings?ids=${player._id},,`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.averages[player._id].totalReports).toBe(1);
+  });
+
+  it('an all-empty ids param is an empty result, not an error', async () => {
+    const { token } = await createCoach();
+
+    const res = await request(app)
+      .get('/api/v1/players/reports/average-ratings?ids=,,')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.averages).toEqual({});
   });
 
   it('omits players with no reports at all', async () => {
