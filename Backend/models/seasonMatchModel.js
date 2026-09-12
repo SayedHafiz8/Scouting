@@ -74,7 +74,15 @@ seasonMatchSchema.index({ season: 1, status: 1 });
 // عدّاد "عدد المباريات الحاضرها" فى الداشبورد وإحصائيات التقييمات الشهرية (attendees: multikey + مدى تاريخ)
 seasonMatchSchema.index({ attendees: 1, matchDate: 1 });
 // عداد "كل المباريات الى اتلعبت" فى داشبورد الأدمن (بدون أي فلتر تاني غير matchDate)
-seasonMatchSchema.index({ matchDate: 1 });
+//
+// `_id` هنا مش تزويدة: ApiFeature.sort() بتضيف فاصل تعادل لكل ترتيب، فالترتيب
+// الفعلي للقايمة الافتراضية بقى { matchDate: 1, _id: 1 }. من غير `_id` في الفهرس
+// الـplanner مايقدرش يخدم الترتيب المركّب ده، وبيقع على SORT <- COLLSCAN على
+// المسار غير المفلتر (مقيس بـ.explain قبل الإضافة).
+//
+// و`{ matchDate: 1 }` المنفرد اتشال مش اتساب جنبه: هو بادئة زايدة من الفهرس ده،
+// يعني تكلفة كتابة على كل insert/update مقابل صفر قراءة.
+seasonMatchSchema.index({ matchDate: 1, _id: 1 });
 // بوابة رفع الفيديو (mediaMatchGate) — لاقي مباراة الفريق ده (home أو away) في نافذة 3 أيام
 seasonMatchSchema.index({ homeTeam: 1, matchDate: -1 });
 seasonMatchSchema.index({ awayTeam: 1, matchDate: -1 });

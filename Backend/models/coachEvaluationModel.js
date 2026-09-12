@@ -135,10 +135,21 @@ coachEvaluationSchema.index(
     { coach: 1, evaluator: 1, year: 1, month: 1 },
     { unique: true, partialFilterExpression: { evaluator: { $type: "objectId" } } }
 );
+// الفهارس التلاتة تحت بتنتهي كلها بـ`_id: -1` عن قصد.
+//
+// ApiFeature.sort() بتضيف فاصل تعادل لكل ترتيب، فالترتيب الفعلي للقايمة بقى
+// { year: -1, month: -1, _id: -1 }. و(year, month) هي أسوأ حالة تعادل في
+// المشروع — كل تقييمات نفس الشهر متساوية تماماً — فالفاصل مش تحسين، هو اللي
+// بيخلي الترقيم مستقر أصلاً. من غير `_id` في الفهرس، الـplanner بيخدم الفلتر
+// بس وبيعمل blocking sort فوقه.
+
 // list الكشاف لتقييماته المنشورة مرتبة بالأحدث
-coachEvaluationSchema.index({ coach: 1, status: 1, year: -1, month: -1 });
+coachEvaluationSchema.index({ coach: 1, status: 1, year: -1, month: -1, _id: -1 });
 // list الأدمن لتقييماته هو
-coachEvaluationSchema.index({ evaluator: 1, year: -1, month: -1 });
+coachEvaluationSchema.index({ evaluator: 1, year: -1, month: -1, _id: -1 });
+// list الأدمن من غير أي فلتر (baseFilter فاضي) — من غير الفهرس ده المسار ده
+// بيبقى SORT <- COLLSCAN، نفس الشكل اللي اتصلّح في SeasonMatch بالظبط.
+coachEvaluationSchema.index({ year: -1, month: -1, _id: -1 });
 
 const CoachEvaluation = mongoose.model("CoachEvaluation", coachEvaluationSchema);
 

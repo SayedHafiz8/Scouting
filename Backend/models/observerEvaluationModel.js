@@ -132,10 +132,18 @@ observerEvaluationSchema.index(
     { observer: 1, evaluator: 1, year: 1, month: 1 },
     { unique: true, partialFilterExpression: { evaluator: { $type: "objectId" } } }
 );
+// الفهارس التلاتة تحت بتنتهي كلها بـ`_id: -1` عن قصد — نفس منطق
+// coachEvaluationModel بالظبط: ApiFeature.sort() بتضيف فاصل تعادل لكل ترتيب،
+// و(year, month) بيتعادلوا على كل تقييمات نفس الشهر، فالفاصل هو اللي بيخلي
+// الترقيم مستقر. من غير `_id` في الفهرس بيبقى فيه blocking sort فوق الفلتر.
+
 // list الكشاف لتقييماته المنشورة مرتبة بالأحدث
-observerEvaluationSchema.index({ observer: 1, status: 1, year: -1, month: -1 });
+observerEvaluationSchema.index({ observer: 1, status: 1, year: -1, month: -1, _id: -1 });
 // list الأدمن لتقييماته هو
-observerEvaluationSchema.index({ evaluator: 1, year: -1, month: -1 });
+observerEvaluationSchema.index({ evaluator: 1, year: -1, month: -1, _id: -1 });
+// list الأدمن من غير أي فلتر (baseFilter فاضي) — من غير الفهرس ده المسار ده
+// بيبقى SORT <- COLLSCAN، نفس الشكل اللي اتصلّح في SeasonMatch بالظبط.
+observerEvaluationSchema.index({ year: -1, month: -1, _id: -1 });
 
 const ObserverEvaluation = mongoose.model("ObserverEvaluation", observerEvaluationSchema);
 
