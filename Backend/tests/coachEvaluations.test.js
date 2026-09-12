@@ -281,6 +281,8 @@ describe('Coach evaluations — blind review lock between admins', () => {
 
     const blockedList = await request(app).get(`${BASE}?coach=${coach._id}`).set('Authorization', `Bearer ${a2}`);
     expect(blockedList.body.data.documents.length).toBe(0);
+    // P1 — والميتاداتا كمان لازم تكون صامتة، مش بس المستندات
+    expect(blockedList.body.pagination.numberOfPages).toBe(0);
 
     // a2 publishes their own for the same coach/month → now unlocked
     const e2 = await createEval(a2, coach._id);
@@ -292,6 +294,9 @@ describe('Coach evaluations — blind review lock between admins', () => {
 
     const unlockedList = await request(app).get(`${BASE}?coach=${coach._id}`).set('Authorization', `Bearer ${a2}`);
     expect(unlockedList.body.data.documents.length).toBe(2);
+    // مش مقيَّد زيادة: العدّ والميتاداتا بيوافقوا المستندات بعد الفتح
+    expect(unlockedList.body.count).toBe(2);
+    expect(unlockedList.body.pagination.numberOfPages).toBe(1);
   });
 
   it('past-month evaluations are never locked, even without an own published evaluation', async () => {
@@ -322,6 +327,126 @@ describe('Coach evaluations — blind review lock between admins', () => {
       .set('Authorization', `Bearer ${a2}`);
     expect(panel.status).toBe(200);
     expect(panel.body.data.count).toBe(1);
+  });
+
+  // ── audit-backend P1 — القفل لازم يكون جوه الاستعلام، مش بعد الجلب ────────
+  //
+  // الشكل القديم كان بيصفّي المصفوفة بعد ما الاستعلام يرجع، والعدّ اتحسب قبل
+  // كده — فالـpagination كان بيوصف اللي **موجود** مش اللي المستدعي **يشوفه**.
+  // التستات دي بتفشل على الشكل القديم.
+  it('LEAK: pagination must not reveal a locked evaluation exists', async () => {
+    const { token: a1 } = await createAdmin();
+    const { token: a2 } = await createAdmin();
+    const { user: coach } = await createCoach();
+
+    const e1 = await createEval(a1, coach._id);
+    await request(app)
+      .patch(`${BASE}/${e1.body.data.document._id}/publish`)
+      .set('Authorization', `Bearer ${a1}`);
+
+    // a2 مانشرش حاجة للمدرب ده الشهر ده → مفروض مايعرفش إن فيه تقييم أصلاً
+    const res = await request(app)
+      .get(`${BASE}?coach=${coach._id}`)
+      .set('Authorization', `Bearer ${a2}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.documents.length).toBe(0);
+    expect(res.body.count).toBe(0);
+
+    // ده اللي كان بيسرّب: العدّ 0 بس الميتاداتا بتقول إن فيه صفحة
+    expect(res.body.pagination.numberOfPages).toBe(0);
+    expect(res.body.pagination.next).toBeFalsy();
+  });
+
+  it('a page of limit=N returns N visible documents, not fewer after stripping', async () => {
+    const { token: a1 } = await createAdmin();
+    const { token: a2 } = await createAdmin();
+    const { user: c1 } = await createCoach();
+    const { user: c2 } = await createCoach();
+    const { user: c3 } = await createCoach();
+
+    // a2 بيكتب وينشر تقييماته لتلات مدربين → كلهم مفتوحين بالنسبة له
+    for (const c of [c1, c2, c3]) {
+      const own = await createEval(a2, c._id);
+      await request(app)
+        .patch(`${BASE}/${own.body.data.document._id}/publish`)
+        .set('Authorization', `Bearer ${a2}`);
+    }
+    // وa1 كتب تقييماته هو لنفس التلاتة → ظاهرة لـa2 لأنه نشر بتاعه
+    for (const c of [c1, c2, c3]) {
+      const other = await createEval(a1, c._id);
+      await request(app)
+        .patch(`${BASE}/${other.body.data.document._id}/publish`)
+        .set('Authorization', `Bearer ${a1}`);
+    }
+
+    const page = await request(app)
+      .get(`${BASE}?limit=4&page=1`)
+      .set('Authorization', `Bearer ${a2}`);
+
+    // 6 مرئية إجمالاً → صفحة من 4 لازم ترجّع 4 بالكامل
+    expect(page.body.data.documents.length).toBe(4);
+    expect(page.body.count).toBe(4);
+    expect(page.body.pagination.numberOfPages).toBe(2);
+  });
+
+  it('an admin still sees their own evaluations normally, locked month or not', async () => {
+    const { token: a1 } = await createAdmin();
+    const { token: a2 } = await createAdmin();
+    const { user: coach } = await createCoach();
+
+    // a1 بيكتب بتاعه (درافت — مانشرهوش)
+    await createEval(a1, coach._id);
+    // وa2 بيكتب وينشر بتاعه
+    const e2 = await createEval(a2, coach._id);
+    await request(app)
+      .patch(`${BASE}/${e2.body.data.document._id}/publish`)
+      .set('Authorization', `Bearer ${a2}`);
+
+    // a1 شايف بتاعه هو رغم إنه مانشرش، ومش شايف بتاع a2
+    const res = await request(app).get(`${BASE}?coach=${coach._id}`).set('Authorization', `Bearer ${a1}`);
+    expect(res.body.data.documents.length).toBe(1);
+    expect(res.body.count).toBe(1);
+    expect(res.body.pagination.numberOfPages).toBe(1);
+  });
+
+  // الباج التاني في نفس الدالة، في الاتجاه العكسي (تقييد زيادة): تقييم شهر فات
+  // لأدمن تاني كان بيتشال من الليستة لو نفس النتيجة فيها تقييم شهر حالي مقفول،
+  // رغم إن GET /:id بيرجّعه عادي.
+  it('a locked current-month evaluation does not also hide past-month ones', async () => {
+    const { token: a1 } = await createAdmin();
+    const { token: a2 } = await createAdmin();
+    const { user: coach } = await createCoach();
+
+    const current = currentYearMonthUTC();
+    let pastYear = current.year;
+    let pastMonth = current.month - 1;
+    if (pastMonth === 0) { pastMonth = 12; pastYear -= 1; }
+
+    // a1: تقييم شهر حالي (مقفول على a2) + تقييم شهر فات (مفروض مرئي لـa2)
+    const cur = await createEval(a1, coach._id);
+    await request(app)
+      .patch(`${BASE}/${cur.body.data.document._id}/publish`)
+      .set('Authorization', `Bearer ${a1}`);
+
+    const past = await createEval(a1, coach._id, { year: pastYear, month: pastMonth });
+    const pastId = past.body.data.document._id;
+    await request(app).patch(`${BASE}/${pastId}/publish`).set('Authorization', `Bearer ${a1}`);
+
+    // النتيجة فيها الاتنين — الشهر الحالي مقفول، الشهر الفات لأ
+    const res = await request(app)
+      .get(`${BASE}?coach=${coach._id}`)
+      .set('Authorization', `Bearer ${a2}`);
+
+    const ids = res.body.data.documents.map((d) => d._id);
+    expect(ids).toContain(pastId);                       // الشهر الفات مرئي
+    expect(ids).not.toContain(cur.body.data.document._id); // الشهر الحالي مقفول
+    expect(res.body.count).toBe(1);
+    expect(res.body.pagination.numberOfPages).toBe(1);
+
+    // ومتوافق مع GET /:id على نفس المستند
+    const single = await request(app).get(`${BASE}/${pastId}`).set('Authorization', `Bearer ${a2}`);
+    expect(single.status).toBe(200);
   });
 
   it('monthly panel returns the combined average + per-admin breakdown once unlocked', async () => {
