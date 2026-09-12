@@ -3,7 +3,8 @@ import asyncHandler from "express-async-handler";
 import SeasonMatch from "../models/seasonMatchModel.js";
 import Player from "../models/playedModel.js";
 import AppError from "../utils/appError.js";
-import { creating, gettingAll, updating, deleteOne } from "../services/services.js";
+import { creating, updating, deleteOne } from "../services/services.js";
+import ApiFeature from "../utils/apiFeatures.js";
 import { decorateMedia } from "./playerMediaController.js";
 import { ROLES } from "../constants/roles.js";
 import { seasonMatchScopeFor } from "../services/scope.js";
@@ -27,6 +28,18 @@ const SEASON_MATCH_FILTERS = ["ageGroup", "season", "league", "status", "attende
 // وتنازلي)، وهي آخر حقل في تلات فهارس مركّبة وكمان index مستقل matchDate_1 —
 // فالترتيب مغطّى في كل مسارات الفلترة. قبل الإصلاح ?sort=venue كان COLLSCAN.
 const SEASON_MATCH_SORT_FIELDS = ["matchDate"];
+
+// الترتيب لما العميل مايبعتش ?sort.
+//
+// ⚠️ ماينفعش يتطبّق بـ`req.query.sort = "..."`: في Express 5 الـquery عبارة عن
+// getter بيعيد الـparse في كل قراءة من غير أي memoization — مقيس:
+// `req.query === req.query` بترجع false. فالكتابة بتروح على أوبجكت مؤقت وبتضيع
+// أول ما ApiFeature يقرا الـquery تاني، والاستعلام بيتنفّذ **بلا أي ترتيب**.
+// (نفس الفخ الموثّق في middlewares/rejectOperatorKeys.js.)
+//
+// مفيش `,_id` هنا: فاصل التعادل بقى مسؤولية ApiFeature.sort() وبيتحط لكل ترتيب
+// — الافتراضي ده واللي العميل بيبعته — مش للافتراضي بس. راجع الشرح هناك.
+const DEFAULT_SORT = "matchDate";
 
 // سكوب المباريات لكل رول — switch صريح بدل الـif القديم (Principle II).
 //
@@ -71,12 +84,43 @@ async function seasonMatchBaseFilterFor(req) {
 // @desc    Get all season matches (filter by ageGroup/season/status)
 // @route   GET api/v1/seasonMatches
 // @access  private
-export const getAll = (req, res, next) => {
-    if (!req.query.sort) req.query.sort = "matchDate";
-    // §11 — البحث في venue اتشال (مفيش UI بيبعت keyword للمباريات)، فالباراميتر
-    // searchFields اتشال من gettingAll والترتيب اتزحلق
-    return gettingAll(SeasonMatch, { allowed: SEASON_MATCH_FILTERS, sortable: SEASON_MATCH_SORT_FIELDS }, null, seasonMatchBaseFilterFor)(req, res, next);
-};
+// §11 — البحث في venue اتشال (مفيش UI بيبعت keyword للمباريات)، فالباراميتر
+// searchFields اتشال من gettingAll والترتيب اتزحلق.
+//
+// الشكل ده كان `gettingAll(...)`، واتفك منها عشان الترتيب الافتراضي يتبني في
+// **أوبجكت query صريح هنا** ويتمرّر لـApiFeature مباشرةً. الفاكتوري بتقرا
+// `req.query` جواها، ومحدش من برّه يقدر يحقن قيمة فيه من غير ما يعدّل `req` —
+// وده بالظبط اللي مينفعش في Express 5 (شوف DEFAULT_SORT فوق). باقي الجسم مطابق
+// لـservices.gettingAll سطر بسطر عن قصد، عشان يفضل قابل للمقارنة معاها.
+export const getAll = asyncHandler(async (req, res, next) => {
+    const baseFilter = await seasonMatchBaseFilterFor(req);
+
+    const queryParams = { ...req.query, sort: req.query.sort || DEFAULT_SORT };
+
+    const features = new ApiFeature(
+        SeasonMatch.find(baseFilter),
+        queryParams,
+        req.params,
+        req.user
+    ).filter({ allowed: SEASON_MATCH_FILTERS });
+
+    // perf audit — العدّ والجلب مستقلين، فبيتنفذوا مع بعض. نفس الفلتر للاتنين.
+    const countFilter = features.query.getFilter();
+    features.sort(SEASON_MATCH_SORT_FIELDS).limitFields().applyPagination();
+
+    const [documentCount, documents] = await Promise.all([
+        SeasonMatch.countDocuments(countFilter),
+        features.query,
+    ]);
+    features.buildPagination(documentCount);
+
+    res.status(200).json({
+        status: "success",
+        count: documents.length,
+        pagination: features.pagination,
+        data: { documents },
+    });
+});
 
 // @desc    Get specific season match (with linked reports, media + audit users)
 // @route   GET api/v1/seasonMatches/:id

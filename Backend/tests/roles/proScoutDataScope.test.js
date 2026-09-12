@@ -300,12 +300,23 @@ describe('proScout — player scope (US1, FR-003)', () => {
     expect(res.body.data.documents.map((d) => d.name)).toEqual(['Pro Player']);
   });
 
+  // التست ده بيتحقق من **عزل النطاق** عبر الترتيب والترقيم، مش من الترتيب الأبجدي.
+  //
+  // الترتيب المؤكَّد هنا هو `_id` تصاعدي، لأن `name` مش في PLAYER_SORT_FIELDS
+  // فبيتشال من الوايت ليست، وApiFeature.sort() بتقع على فاصل التعادل لوحده.
+  //
+  // الشكل القديم كان بيبعت `?sort=name` ويؤكّد `names === [...names].sort()` —
+  // ادّعاء مكانش بيتنفّذ أبداً: الحقل كان بيتشال بصمت، والترتيب اللي بيرجع كان
+  // ترتيب الفهرس بالمصادفة. الباراميتر اتشال بدل ما يتساب — دلوقتي ApiFeature
+  // بترمي على الحقل المرفوض في غير الإنتاج.
   it('scenario 10: sort and pagination operate strictly inside scope', async () => {
-    const sorted = await list(scout, '?sort=name');
+    const sorted = await list(scout);
     expect(sorted.status).toBe(200);
     const names = sorted.body.data.documents.map((d) => d.name);
-    expect(names).toEqual([...names].sort());
     expect(names).not.toContain('Premier Player');
+
+    const ids = sorted.body.data.documents.map((d) => d._id);
+    expect(ids).toEqual([...ids].sort());   // _id تصاعدي — ترتيب كلّي وحتمي
 
     // in-scope = Pro Player + Mine Unassigned = 2
     const paged = await list(scout, '?limit=1&page=1');

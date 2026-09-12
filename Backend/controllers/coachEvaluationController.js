@@ -11,7 +11,7 @@ import AppError from "../utils/appError.js";
 import { sendNotificationToUser } from "../socket/handlers/notification.js";
 import { EVALUATION_CRITERIA } from "../utils/coachEvaluationCriteria.js";
 import { ROLES } from "../constants/roles.js";
-import { isCurrentMonthUTC as isCurrentMonth } from "../utils/time.js";
+import { isCurrentMonthUTC as isCurrentMonth, currentYearMonthUTC } from "../utils/time.js";
 
 // audit-database I2 — وايت ليست الترتيب. الكونترولر بيفرض "-year,-month"
 // كافتراضي فوق، والاتنين آخر حقلين في {coach: 1, status: 1, year: -1, month: -1}
@@ -19,6 +19,20 @@ import { isCurrentMonthUTC as isCurrentMonth } from "../utils/time.js";
 // بتاعه، الأدمن بيشوف تقييماته) مغطّاة. overallRating **مش** هنا عن قصد: مفيش
 // index عليه، وقايمة التقييمات مسكوبة بس مش صغيرة بالضرورة.
 const EVALUATION_SORT_FIELDS = ["year", "month", "createdAt"];
+
+// الترتيب لما العميل مايبعتش ?sort.
+//
+// ⚠️ ماينفعش يتطبّق بـ`req.query.sort = "..."`: في Express 5 الـquery عبارة عن
+// getter بيعيد الـparse في كل قراءة من غير memoization — مقيس:
+// `req.query === req.query` بترجع false. فالكتابة بتروح على أوبجكت مؤقت وبتضيع
+// أول ما ApiFeature يقرا الـquery تاني، والاستعلام بيتنفّذ **بلا أي ترتيب**.
+// (نفس الفخ الموثّق في middlewares/rejectOperatorKeys.js.)
+//
+// مفيش `,-_id` هنا: فاصل التعادل بقى مسؤولية ApiFeature.sort() وبيتحط لكل ترتيب.
+// ومهم هنا بالذات — (year, month) أسوأ حالة تعادل في المشروع (كل تقييمات نفس
+// الشهر متساوية تماماً)، و?sort=-year اللي بيبعته العميل كان لسه بيسيبهم عشوائيين
+// حتى بعد إصلاح الافتراضي. راجع الشرح في ApiFeature.sort().
+const DEFAULT_SORT = "-year,-month";
 
 const populate = [
     { path: "coach", select: "name email" },
@@ -54,29 +68,64 @@ const hasOwnPublished = async (evaluatorId, coachId, year, month) => {
     return !!own;
 };
 
-// بيصفّي ليستة تقييمات: تقييمي أنا يفضل زي ما هو، تقييم أدمن تاني بيتشال لحد ما يبقى
-// عندي أنا تقييم منشور لنفس (المدرب، السنة، الشهر)
-const filterBlindReviewList = async (documents, adminId) => {
-    const others = documents.filter(
-        (d) => !d.evaluator._id.equals(adminId) && isCurrentMonth(d.year, d.month)
-    );
-    if (!others.length) return documents;
+// ============================================================================
+// قفل المراجعة العمياء **كـpredicate جوه الاستعلام**، مش تصفية بعد الجلب.
+//
+// audit-backend P1 — الشكل القديم (filterBlindReviewList) كان بيشيل المستندات
+// من المصفوفة **بعد** ما الاستعلام يرجع، والعدّ كان اتحسب قبل كده. فالرد كان
+// بيطلع بـcount مصفّى وpagination مش مصفّى:
+//
+//     count: 0,  pagination: { numberOfPages: 1, next: null }
+//
+// يعني الأدمن A كان يقدر يعرف إن الأدمن B كتب تقييم للمدرب ده الشهر ده — من
+// الميتاداتا، من غير ما يقرا حرف. وده بالظبط اللي القفل موجود عشانه: القفل
+// مش بيخفي **كلام** B، هو بيخفي **إن B قيّم أصلاً**، عشان A ما يتأثرش قبل ما
+// يكتب تقييمه هو. معرفة الوجود لوحدها كافية للتحيّز.
+//
+// وكان فيه باج تاني في نفس الدالة في الاتجاه العكسي (تقييد زيادة): `others`
+// كانت بتجمع تقييمات الشهر الحالي بس، وunlockedKeys منها، بس الفلتر الأخير كان
+// بيختبر **كل** مستند مش بتاعي على unlockedKeys — فتقييم شهر فات لأدمن تاني
+// مفتاحه مش موجود وبيتشال، رغم إن GET /:id بيرجّعه عادي. الـearly return
+// (`if (!others.length)`) كان بيخفي الباج ده لما الصفحة مافيهاش تقييم شهر حالي
+// لأدمن تاني.
+//
+// الشكل الجديد بيحط القاعدة في الفلتر نفسه، فالعدّ والجلب بيمشوا على نفس
+// الشرط بالتعريف — **مستحيل تركيبياً** إن العدّ يوصف مستندات المستدعي مش
+// قادر يجيبها. ونفس شكل باقي الكنترولرز: النطاق في baseFilter.
+//
+// القاعدة (نفس getSpecific بالحرف، منفية): المستند بيتخفى لو **كل** دول صح:
+//   1. evaluator مش أنا
+//   2. الشهر هو الشهر الحالي (UTC)
+//   3. ومانشرتش أنا تقييم لنفس (المدرب، السنة، الشهر)
+//
+// ليه الشرط التالت ينفع يبقى predicate: القفل على الشهر الحالي بس، فالسؤال
+// "نشرت لنفس (المدرب، السنة، الشهر)؟" بيتحول لسؤال واحد محدود — "أنهي مدربين
+// نشرت لهم الشهر الحالي؟" — استعلام واحد مستقل عن محتوى الصفحة. مفيش $lookup
+// ولا شغل async لكل مستند.
+//
+// ملاحظة على evaluator: null (§12 بيصفّره لما أدمن يتمسح): الشكل القديم كان
+// بيعمل `d.evaluator._id.equals(...)` على null → TypeError. الـpredicate
+// بيتعامل معاه كـ"مش بتاعي" فبيتقفل لو شهر حالي وغير مفتوح — من غير كراش.
+const blindReviewFilter = async (adminId) => {
+    const { year, month } = currentYearMonthUTC();
 
-    const keys = [...new Set(others.map((d) => `${d.coach._id}|${d.year}|${d.month}`))];
-    const unlockedKeys = new Set();
-    await Promise.all(
-        keys.map(async (key) => {
-            const [coachId, year, month] = key.split("|");
-            if (await hasOwnPublished(adminId, coachId, Number(year), Number(month))) {
-                unlockedKeys.add(key);
-            }
-        })
-    );
-
-    return documents.filter((d) => {
-        if (d.evaluator._id.equals(adminId)) return true;
-        return unlockedKeys.has(`${d.coach._id}|${d.year}|${d.month}`);
+    const unlockedCoachIds = await CoachEvaluation.distinct("coach", {
+        evaluator: adminId,
+        year,
+        month,
+        status: "published",
     });
+
+    return {
+        $nor: [
+            {
+                evaluator: { $ne: adminId },
+                year,
+                month,
+                coach: { $nin: unlockedCoachIds },
+            },
+        ],
+    };
 };
 
 // ============================================================================
@@ -146,34 +195,34 @@ export const getAll = asyncHandler(async (req, res, next) => {
         if (req.query.year) baseFilter.year = Number(req.query.year);
         if (req.query.month) baseFilter.month = Number(req.query.month);
         if (req.query.status) baseFilter.status = req.query.status;
+
+        // قفل المراجعة العمياء جوه الفلتر — قبل بناء ApiFeature، فالعدّ والجلب
+        // الاتنين بيورثوه. بيستخدم مفتاح $nor لوحده فمفيش تصادم مع أي فلتر فوق.
+        Object.assign(baseFilter, await blindReviewFilter(req.user._id));
     }
 
-    if (!req.query.sort) req.query.sort = "-year,-month";
+    const queryParams = { ...req.query, sort: req.query.sort || DEFAULT_SORT };
 
     const features = new ApiFeature(
         CoachEvaluation.find(baseFilter),
-        req.query,
+        queryParams,
         req.params,
         req.user
     );
 
     // perf audit — العدّ والجلب مستقلين، فبيتنفذوا مع بعض. نفس الفلتر للاتنين.
-    // ملاحظة: قفل المراجعة العمياء (filterBlindReviewList) لسه بيتطبّق بعد الجلب
-    // بالظبط زي ما كان — التوازي هنا بين استعلامين للقراءة بس، مش تخطّي أي فلترة.
+    //
+    // audit-backend P1 — قفل المراجعة العمياء بقى جوه baseFilter فوق، يعني
+    // countFilter شايله بالفعل. العدّ والجلب بيمشوا على نفس الشرط بالتعريف،
+    // فالـpagination مابيقدرش يوصف مستندات المستدعي مش شايفها.
     const countFilter = features.query.getFilter();
     features.sort(EVALUATION_SORT_FIELDS).limitFields().applyPagination();
 
-    const [documentCount, fetched] = await Promise.all([
+    const [documentCount, documents] = await Promise.all([
         CoachEvaluation.countDocuments(countFilter),
         features.query.populate(populate),
     ]);
     features.buildPagination(documentCount);
-
-    let documents = fetched;
-
-    if (req.user.role === ROLES.ADMIN) {
-        documents = await filterBlindReviewList(documents, req.user._id);
-    }
 
     res.status(200).json({
         status: "success",

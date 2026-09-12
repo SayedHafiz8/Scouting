@@ -87,7 +87,7 @@ describe("A2 — zero-byte abandoned uploads cleaned after 24h", () => {
 
         getStreamVideo.mockResolvedValue({ status: 0, storageSize: 0 }); // never uploaded
 
-        const removed = await cleanupOrphanedVideos();
+        const { removed } = await cleanupOrphanedVideos();
         expect(removed).toBe(1);
         expect(deleteStreamVideo).toHaveBeenCalledWith("orphan-1");
         expect(await PlayerMedia.findById(media._id)).toBeNull();
@@ -106,9 +106,101 @@ describe("A2 — zero-byte abandoned uploads cleaned after 24h", () => {
         await backdate(media._id, { createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000) });
 
         getStreamVideo.mockResolvedValue({ status: 3, storageSize: 5 * 1024 * 1024 });
-        const removed = await cleanupOrphanedVideos();
+        const { removed } = await cleanupOrphanedVideos();
         expect(removed).toBe(0);
         expect(await PlayerMedia.findById(media._id)).not.toBeNull();
+    });
+
+    // ── audit-database 2026-09-12 — "مقدرتش أسأل" ≠ "مش موجود" ──────────────
+    //
+    // الشكل القديم كان `getStreamVideo(...).catch(() => null)`، وgetStreamVideo
+    // بترجّع null على 404 بالتحديد. يعني فشل الشبكة كان بياخد نفس قيمة الـ404،
+    // والنتيجة إن فيديو مرفوع بالكامل (واقف في processing لأن الـwebhook ماوصلش)
+    // بيتمسح هو ومستنده لمجرد إن باني مارضيش يجاوب لحظة تشغيل الكرون.
+    const stuckProcessingVideo = async (bunnyVideoId) => {
+        const { coachId, player } = await coachAndPlayer();
+        const media = await PlayerMedia.create({
+            player: player._id,
+            uploadedBy: coachId,
+            type: "video",
+            storage: "bunny",
+            bunnyVideoId,
+            status: "processing",
+        });
+        await backdate(media._id, { createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000) });
+        return media;
+    };
+
+    it("Bunny query fails → the record is PRESERVED, not deleted", async () => {
+        const media = await stuckProcessingVideo("orphan-net-fail");
+
+        getStreamVideo.mockRejectedValue(new Error("Bunny getStreamVideo failed: 503"));
+
+        const { removed, skipped } = await cleanupOrphanedVideos();
+
+        expect(removed).toBe(0);
+        expect(skipped).toBe(1);
+        // والأهم: مااتنادتش أصلاً — مفيش حذف اتبدأ على فيديو إحنا مش متأكدين منه
+        expect(deleteStreamVideo).not.toHaveBeenCalled();
+        expect(await PlayerMedia.findById(media._id)).not.toBeNull();
+    });
+
+    it("Bunny confirms 404 (null) → deleted, and no pointless delete call", async () => {
+        const media = await stuckProcessingVideo("orphan-gone");
+
+        getStreamVideo.mockResolvedValue(null); // 404 صريح من getStreamVideo
+
+        const { removed, skipped } = await cleanupOrphanedVideos();
+
+        expect(removed).toBe(1);
+        expect(skipped).toBe(0);
+        // باني بيقول مش موجود → مفيش بايتات نمسحها
+        expect(deleteStreamVideo).not.toHaveBeenCalled();
+        expect(await PlayerMedia.findById(media._id)).toBeNull();
+    });
+
+    it("confirmed zero bytes → Bunny delete first, then the document", async () => {
+        const media = await stuckProcessingVideo("orphan-empty");
+
+        getStreamVideo.mockResolvedValue({ status: 0, storageSize: 0 });
+
+        const { removed } = await cleanupOrphanedVideos();
+
+        expect(removed).toBe(1);
+        expect(deleteStreamVideo).toHaveBeenCalledWith("orphan-empty");
+        expect(await PlayerMedia.findById(media._id)).toBeNull();
+    });
+
+    it("deleteStreamVideo fails → document RETAINED (no orphaned bytes)", async () => {
+        const media = await stuckProcessingVideo("orphan-del-fail");
+
+        getStreamVideo.mockResolvedValue({ status: 0, storageSize: 0 });
+        deleteStreamVideo.mockRejectedValue(new Error("Bunny deleteStreamVideo failed: 500"));
+
+        const { removed, skipped } = await cleanupOrphanedVideos();
+
+        expect(removed).toBe(0);
+        expect(skipped).toBe(1);
+        // المستند هو المرجع الوحيد لـbunnyVideoId. لو مشي والبايتات فضلت،
+        // مفيش حتى مفتاح نوصل بيه ليها بعدين — وده اللي الملف مكتوب يمنعه.
+        expect(await PlayerMedia.findById(media._id)).not.toBeNull();
+    });
+
+    it("one unreachable record does not block the others in the same cycle", async () => {
+        const bad = await stuckProcessingVideo("orphan-mixed-bad");
+        const good = await stuckProcessingVideo("orphan-mixed-good");
+
+        getStreamVideo.mockImplementation(async (id) => {
+            if (id === "orphan-mixed-bad") throw new Error("Bunny getStreamVideo failed: 429");
+            return null; // الباقي: باني بيأكّد إنه مش موجود
+        });
+
+        const { removed, skipped } = await cleanupOrphanedVideos();
+
+        expect(removed).toBe(1);
+        expect(skipped).toBe(1);
+        expect(await PlayerMedia.findById(bad._id)).not.toBeNull();
+        expect(await PlayerMedia.findById(good._id)).toBeNull();
     });
 });
 

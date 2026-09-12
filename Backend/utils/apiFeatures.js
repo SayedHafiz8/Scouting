@@ -162,19 +162,60 @@ class ApiFeature {
      * القاعدة: **الحقل المسموح لازم يكون مفهرس**. الوايت ليست مش تجميلية — لو
      * حقل اتضاف هنا وهو مش مفهرس، فهو نفس المشكلة باسم مسموح.
      *
-     * السلوك مع المرفوض: بيتشال بصمت (زي filter() بالظبط) والباقي بيتنفّذ. الرفض
-     * الصريح بـ400 كان هيكسر أي عميل قديم بيبعت ?sort=name، والمكسب الأمني صفر.
+     * السلوك مع المرفوض: **بيرمي في غير الإنتاج، وبيتشال بصمت في الإنتاج**.
+     *
+     * الصمت المطلق (اللي كان هنا قبل كده) هو اللي خلّى تلات تستات تفضل خضرا وهي
+     * بتدّعي حاجة مش بتحصل: `?sort=name` على اللاعبين كان بيتشال، والتستات كانت
+     * بتقرا ترتيب الفهرس بالمصادفة وتعتبره ترتيب أبجدي. وهو نفسه اللي خلّى باج
+     * `req.query.sort` يعيش في تلات كنترولرز من غير ما حد ياخد باله.
+     *
+     * التفرقة بين البيئتين مقصودة: الرمي تربواير للمطوّر (التست/الديف بيقع فوراً
+     * ويسمّي الحقل والموديل)، لكن العميل في الإنتاج مايتكسرش على باراميتر زيادة —
+     * السلوك هناك زي ما كان بالظبط: يتشال ويكمل.
+     *
+     * Error عادي مش AppError عن قصد: ده خطأ برمجة (الفرونت مفروض مايبعتش حقل
+     * مش في الوايت ليست)، مش مدخل مستخدم غلط — فبيطلع 500 صريح في التست بدل 400
+     * اللي ممكن يتقرا كأنه فاليديشن عادية.
+     *
+     * ═══════════════════════════════════════════════════════════════════════
+     * فاصل التعادل (`_id`) — بيتضاف هنا دايماً، لكل مستهلكي ApiFeature
+     * ═══════════════════════════════════════════════════════════════════════
+     * الترتيب اللي مش **كلّي** (total) مابيصلّحش عدم استقرار الترقيم، بيضيّقه بس:
+     * MongoDB مابتضمنش أي ترتيب بين المستندات المتساوية في مفاتيح الـsort، فمع
+     * skip/limit المستند الواحد يقدر يظهر في صفحتين وواحد تاني يختفي خالص.
+     *
+     * والحالة دي مش نظرية ولا هامشية — هي **المسار الأساسي** فعلياً:
+     *   • ?sort=-year على التقييمات → كل تقييمات نفس الشهر متساوية تماماً
+     *   • ?sort=name على الفئات      → name مش unique (birthYear هو الـunique)
+     *   • ?sort=matchDate            → ماتشات كتير في نفس اليوم
+     * والفرونت بيبعت ?sort صريح في كل نداء قائمة، يعني الافتراضي في الكنترولر
+     * مابيغطّيش المسار ده أصلاً.
+     *
+     * عشان كده الفاصل مكانه هنا، مش في الـDEFAULT_SORT بتاع كل كنترولر: نقطة
+     * واحدة بتضمن ترتيباً كلّياً لكل قائمة في التطبيق، مهما كان اللي العميل بعته.
+     *
+     * الاتجاه بيتبع آخر مفتاح باقي عشان الترتيب يفضل متسق (تنازلي كله أو تصاعدي
+     * كله) بدل ما يتخلط. ومفيش مفتاح باقٍ خالص → `_id` تصاعدي لوحده، مش sort
+     * فاضي — الخروج بلا ترتيب هو بالظبط الحالة اللي بنقفلها.
+     *
+     * ملاحظة: `_id` **مش** في أي وايت ليست عن قصد. مش حقل ترتيب بيطلبه العميل،
+     * ده تفصيل داخلي بيضمن الحتمية — فهو مش جزء من سطح الـAPI العام.
      *
      * @param {string[]} allowedSortFields أسماء الحقول المسموح الترتيب بيها.
      *        القايمة الفاضية (الافتراضي) = مفيش ترتيب من العميل خالص — الفشل
      *        المقفول، عشان أي مستدعي جديد ينسى يمرّر القايمة مايفتحش الباب تاني.
+     *        (الفاصل بيتضاف برضه في الحالة دي، فالنتيجة حتمية مش عشوائية.)
      */
     sort(allowedSortFields = []){
-        if (!this.queryParams.sort) return this;
-
         const allowSet = new Set(allowedSortFields);
-        const fields = String(this.queryParams.sort)
-            .split(',')
+
+        // مفيش early return لما الـsort غايب: القائمة بلا ترتيب هي نفس مشكلة
+        // القائمة بترتيب جزئي بالظبط — بنكمل عشان الفاصل يتحط في الحالتين.
+        const requested = this.queryParams.sort
+            ? String(this.queryParams.sort).split(',')
+            : [];
+
+        const fields = requested
             .map((field) => field.trim())
             .filter(Boolean)
             .filter((field) => {
@@ -182,14 +223,28 @@ class ApiFeature {
                 const baseField = field.startsWith('-') ? field.slice(1) : field;
                 if (allowSet.has(baseField)) return true;
                 if (process.env.NODE_ENV !== 'production') {
-                    console.warn(`ApiFeature: dropped non-whitelisted sort field "${field}" for ${this.query.model.modelName}`);
+                    throw new Error(
+                        `ApiFeature: non-whitelisted sort field "${field}" for ${this.query.model.modelName}. ` +
+                        `Allowed: [${allowedSortFields.join(', ')}]. ` +
+                        `In production this field is dropped silently and the query runs without it.`
+                    );
                 }
                 return false;
             });
 
-        if (fields.length) {
-            this.query = this.query.sort(fields.join(' '));
+        // الحارس ده دفاعي: `_id` مش في أي وايت ليست حالياً فالعميل مايقدرش يبعته،
+        // لكن لو اتضاف لواحدة يوماً ما، مانضفهوش مرتين.
+        const hasTieBreaker = fields.some(
+            (field) => (field.startsWith('-') ? field.slice(1) : field) === '_id'
+        );
+
+        if (!hasTieBreaker) {
+            const lastField = fields[fields.length - 1];
+            const isDescending = lastField ? lastField.startsWith('-') : false;
+            fields.push(isDescending ? '-_id' : '_id');
         }
+
+        this.query = this.query.sort(fields.join(' '));
         return this;
     }
     limitFields(){
