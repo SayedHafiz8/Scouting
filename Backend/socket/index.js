@@ -1,5 +1,6 @@
 import { Server } from "socket.io";
-import jwt from "jsonwebtoken";
+
+import { authenticateSocket } from "./authenticateSocket.js";
 
 let io;
 
@@ -17,30 +18,9 @@ export const initSocket = (server) => {
     },
   });
 
-  // ✅ Socket Authentication Middleware
-  io.use(async (socket, next) => {
-    try {
-        const token =
-            socket.handshake.auth.token ||
-            socket.handshake.query.token;
-
-        if (!token) {
-            return next(new Error("Unauthorized"));
-        }
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET_KEY
-        );
-
-        socket.userId = decoded.userId;
-
-        next();
-
-    } catch (err) {
-        next(new Error("Unauthorized"));
-    }
-});
+  // ✅ Socket Authentication Middleware — socket/authenticateSocket.js
+  // (ملف لوحده عشان يكون قابل للاختبار؛ الشرح الكامل للإصلاحين هناك)
+  io.use(authenticateSocket);
 
 
 
