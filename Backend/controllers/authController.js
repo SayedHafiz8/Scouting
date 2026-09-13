@@ -194,6 +194,37 @@ export const logout = asyncHandler(async (req, res, next) => {
 // ============================
 // protect
 // ============================
+// ============================================================================
+// resolveTokenUser — فحص الإبطال المشترك بين protect وميدلوير الـSocket.IO.
+//
+// audit-backend — ميدلوير السوكيت كان بيتحقق من **التوقيع بس**، ومابيعملش أي
+// حاجة من الفحصين اللي تحت. يعني لما أدمن يغيّر باسورد حساب مخترق — أول حاجة
+// بتتعمل في أي حادثة — السوكيت بتاع المهاجم بيفضل متصل وبيستقبل الإشعارات لحد
+// ما التوكن يخلص لوحده. التوقيع بيفضل صالح، فالتحقق بينجح.
+//
+// الفحص متحرّك هنا بدل ما يتنسخ عشان نسختين من فحص أمني بيفترقوا مع الوقت —
+// واحدة تتصلّح والتانية تُنسى. protect مينفعش ينده من السوكيت أصلاً: هو
+// middleware بـ(req,res,next) وبيرمي AppError، والسوكيت عندها signature ونموذج
+// أخطاء مختلفين تماماً. فالمشترك هو **القرار**، مش الميدلوير.
+//
+// ملاحظة: User.findById بيمر على hook الحذف الناعم ({active: {$ne: false}})،
+// فاليوزر المعطَّل بيرجع null وبيترفض — وده مقصود، نفس سلوك protect.
+export const resolveTokenUser = async (decoded) => {
+    const currentUser = await User.findById(decoded.userId);
+    if (!currentUser) {
+        return { user: null, reason: "The user that belong to this token no longer exists" };
+    }
+
+    if (currentUser.passwordChangedAt) {
+        const passChangedTimestamp = parseInt(currentUser.passwordChangedAt.getTime() / 1000);
+        if (passChangedTimestamp > decoded.iat) {
+            return { user: null, reason: "User recently changed his password, please login again" };
+        }
+    }
+
+    return { user: currentUser, reason: null };
+};
+
 export const protect = asyncHandler(async (req, res, next) => {
     let token;
     if (req.headers.authorization?.startsWith("Bearer")) {
@@ -206,19 +237,12 @@ export const protect = asyncHandler(async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
 
-    const currentUser = await User.findById(decoded.userId);
-    if (!currentUser) {
-        return next(new AppError("The user that belong to this token no longer exists", 401));
+    const { user, reason } = await resolveTokenUser(decoded);
+    if (!user) {
+        return next(new AppError(reason, 401));
     }
 
-    if (currentUser.passwordChangedAt) {
-        const passChangedTimestamp = parseInt(currentUser.passwordChangedAt.getTime() / 1000);
-        if (passChangedTimestamp > decoded.iat) {
-            return next(new AppError("User recently changed his password, please login again", 401));
-        }
-    }
-
-    req.user = currentUser;
+    req.user = user;
     next();
 });
 

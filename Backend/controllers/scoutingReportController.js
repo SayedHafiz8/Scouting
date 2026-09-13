@@ -398,15 +398,56 @@ export const getPlayerStatistics = asyncHandler(async (req, res, next) => {
 // @access  Private - coach, admin, observer
 export const getAverageRatingsForPlayers = asyncHandler(async (req, res, next) => {
     const idsParam = (req.query.ids || "").toString();
-    const ids = idsParam
+
+    // ── audit-backend — ?ids= كان آخر مدخل عميل بلا سقف ─────────────────────
+    //
+    // الشكل القديم كان بياخد قائمة مفصولة بفاصلة بأي طول ويحطها في $in جوه
+    // aggregation. أي مستخدم موثَّق كان يقدر يبعت 50,000 id على سرعة الـrate
+    // limiter. ApiFeature قافل limit (200) وkeyword (50 حرف)، وده كان الباقي.
+    //
+    // السقف = ApiFeature.MAX_LIMIT بالمرجع مش برقم منسوخ — القائمة دي جاية من
+    // صفحة لاعبين مسقوفة بنفس الرقم، فلو اتغير هناك يتغير هنا معاه.
+    //
+    // ⚠️ 400 مش slice(0, 200). المراجعة الأصلية انتقدت إسقاط ApiFeature الصامت
+    // لحقل الترتيب بالظبط لنفس السبب: الرد الجزئي الصامت بيخلي المستدعي يفتكر
+    // إنه خد كل حاجة. حطّينا حارس بيرمي هناك — فمنرجّعش نفس النمط هنا.
+    //
+    // الفواصل الفاضية (فاصلة زايدة في الآخر) بتتجاهل: ده تشويه في الشكل مش
+    // معرّف غلط. أما id مش فاضي وشكله غلط فبيترفض بـ400 — عمره ما هيطابق
+    // لاعب، فقبوله بصمت بيخفي باج في العميل ومايفيد حد. والـendpoint دي
+    // بترجّع map مفاتيحه ids، فالصمت هنا كان بيبان زي "اللاعب مالوش تقارير".
+    const raw = idsParam
         .split(",")
         .map((id) => id.trim())
-        .filter((id) => mongoose.isValidObjectId(id))
-        .map((id) => new mongoose.Types.ObjectId(id));
+        .filter((id) => id.length > 0);
 
-    if (!ids.length) {
+    if (!raw.length) {
         return res.status(200).json({ status: "success", data: { averages: {} } });
     }
+
+    // السقف الأول: أرخص فحص، وهو الحماية الأهم
+    if (raw.length > ApiFeature.MAX_LIMIT) {
+        return next(
+            new AppError(
+                `Too many player ids: ${raw.length}. The maximum is ${ApiFeature.MAX_LIMIT}.`,
+                400
+            )
+        );
+    }
+
+    const malformed = raw.filter((id) => !mongoose.isValidObjectId(id));
+    if (malformed.length) {
+        const shown = malformed.slice(0, 5).join(", ");
+        const more = malformed.length > 5 ? ` (and ${malformed.length - 5} more)` : "";
+        return next(
+            new AppError(
+                `Invalid player id${malformed.length > 1 ? "s" : ""}: ${shown}${more}`,
+                400
+            )
+        );
+    }
+
+    const ids = raw.map((id) => new mongoose.Types.ObjectId(id));
 
     // Stage 2 — تضييق قائمة الـids للاعبين داخل نطاق الـproScout قبل ما الـpipeline
     // تشتغل. الـendpoint دي كانت **مسكوبة بالفعل** لغير الأدمن (السطر تحت) لكن على

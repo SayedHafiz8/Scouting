@@ -11,7 +11,21 @@ import { seasonMatchScopeFor } from "../services/scope.js";
 import { utcDayRange } from "../utils/time.js";
 
 // createdBy بيتحط من السيرفر (creating بيعمل req.body[field] = req.user._id)
-export const create = creating(SeasonMatch, "createdBy");
+// audit-backend — status و result و attendees **مش** هنا. seasonMatchValidation
+// بيرفضهم أصلاً بـ400 على مسار الإنشاء (statusLocked و attendeesLocked
+// متسبريدين في createValidate)، وده أفضل: رفض صريح بيقول للعميل يستخدم
+// PATCH /:id/status أو POST /:id/attend. الوايت ليست هنا طبقة تانية عند نقطة
+// الكتابة، مش استبدال للرفض ده — لو حد شال السبريد بالغلط، الحقول تفضل
+// غير قابلة للكتابة.
+// createdBy بيتحدد من التوكن عن طريق ownerField، بعد الانتقاء.
+const SEASON_MATCH_CREATE_FIELDS = [
+    "ageGroup", "season", "league", "matchDate", "homeTeam", "awayTeam", "venue",
+];
+
+export const create = creating(SeasonMatch, {
+    ownerField: "createdBy",
+    allowed: SEASON_MATCH_CREATE_FIELDS,
+});
 
 // updatedBy بيتحط قبل التعديل — نفس فكرة setUserIdToBody/setAgeIdToBody
 export const setUpdatedBy = (req, res, next) => {

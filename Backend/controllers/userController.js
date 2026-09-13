@@ -35,7 +35,26 @@ export const setTeamIdToBody = (req, res, next) => {
 // @desc    Create new User
 // @route   POST api/v1/users
 // @access  private
-export const create = creating(User); 
+// audit-backend — الحقول اللي POST /users بيقبلها، وبس. مطابِقة لـcreateValidate
+// في utils/validation/userValidation.js.
+//
+// اللي **مش** هنا عن قصد، وكان قابل للكتابة قبل كده:
+//   profileImg              — signing oracle: بيتوقّع تلقائي عن طريق
+//                             resolveImageUrl، فمسار حر = URL صالح على media
+//                             zone من غير رفع. بيتكتب بس من
+//                             PATCH /users/:id/profileImg (نفس القفل الموجود
+//                             في update و updateLoggedUser)
+//   idCardFrontImg/BackImg  — بطاقة الرقم القومي، الـvault (C3)
+//   active / deactivatedAt  — حالة الحذف الناعم
+//   passwordChangedAt       — بيبطّل التوكنات القديمة؛ تزويره بيعبث بالإبطال
+//   refreshToken            — أثر جلسة
+//   vaultFailedAttempts / vaultLockedUntil — عدّادات قفل الـvault
+//
+// passwordConfirm مش هنا لأنه مش حقل في المخطط أصلاً — الفاليديتور بيقارنه
+// بـpassword وbعدين strict mode بيسقطه.
+const USER_CREATE_FIELDS = ["name", "email", "password", "phoneNumber", "address", "birthDate", "role"];
+
+export const create = creating(User, { allowed: USER_CREATE_FIELDS });
 
 const USER_FILTERS = ["role"];
 

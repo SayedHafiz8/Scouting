@@ -5,7 +5,7 @@ import helmet from "helmet";
 import cors from "cors";
 import compression from "compression";
 import cookieParser from "cookie-parser";
-import morgan from "morgan";
+import { createRequestLogger } from "./middlewares/requestLogger.js";
 
 import ageRouter from "./routes/ageGroupRouter.js";
 import AppError from "./utils/appError.js";
@@ -31,9 +31,13 @@ import specs from "./utils/swagger.js";
 // Express Meddilware
 const app = express();
 
-// Request logging — skipped in test to keep vitest output clean
+// Request logging — skipped in test to keep vitest output clean.
+// أول middleware في السلسلة عن قصد: بيتسجّل كل طلب مهما كان اللي بيرد عليه
+// (limiter, CORS, معالج الـ404)، فمفيش رد بدري بيعدّي من غير سطر لوج — ولا من
+// غير الطمس اللي جوّاه. شوف middlewares/requestLogger.js: سر الويبهوك في مسار
+// /webhooks/bunny/:secret بيتطمس قبل ما يوصل اللوج.
 if (process.env.NODE_ENV !== 'test') {
-    app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+    app.use(createRequestLogger());
 }
 
 // security middleware
