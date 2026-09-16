@@ -400,6 +400,7 @@
       "COACH": "Coach",
       "PROSCOUT": "Pro Scout",
       "SCOUT": "Scout",
+      "CREATED_AT": "Added on",
       "CHANGE_STATUS": "Change Status",
       "EDIT": "Edit Player",
       "DELETE": "Delete Player",
