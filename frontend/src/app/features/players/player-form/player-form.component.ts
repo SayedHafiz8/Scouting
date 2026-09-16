@@ -324,14 +324,13 @@ const MAX_PLAYER_IMAGE_MB = 4;
               }
 
               @if (assignRole() === 'observer') {
-                <div class="space-y-1 max-h-48 overflow-y-auto">
-                  @for (o of assignObserverRows(); track o.id) {
-                    <label class="flex items-center gap-2 text-sm py-1 cursor-pointer" style="color:var(--text-primary)">
-                      <input type="checkbox" [checked]="o.checked" (change)="toggleAssignObserver(o.id)" />
-                      {{ o.name }}
-                    </label>
+                <!-- كشاف واحد بس — المتابعين التانيين بيتضافوا بعدين من "تحت المتابعة" -->
+                <select class="form-input" [value]="assignObserverId()" (change)="onAssignObserverChange($event)">
+                  <option value="">{{ 'PLAYERS.FORM.ASSIGN_OBSERVER_PH' | translate }}</option>
+                  @for (o of assignObserverOptions(); track o._id) {
+                    <option [value]="o._id">{{ o.name }}</option>
                   }
-                </div>
+                </select>
                 @if (assignObserverOptions().length === 0) {
                   <p class="text-xs mt-1.5" style="color:var(--text-muted)">{{ 'PLAYERS.FORM.ASSIGN_NO_OBSERVERS' | translate }}</p>
                 }
@@ -583,16 +582,10 @@ export class PlayerFormComponent implements OnInit {
   readonly assignRole = signal<'' | 'coach' | 'observer' | 'proScout'>('');
   readonly assignCoachId = signal('');
   readonly assignProScoutId = signal('');
-  private readonly assignObserverIds = signal<Set<string>>(new Set());
+  readonly assignObserverId = signal('');
   readonly assignCoachOptions = signal<{ _id: string; name: string }[]>([]);
   readonly assignObserverOptions = signal<{ _id: string; name: string }[]>([]);
   readonly assignProScoutOptions = signal<{ _id: string; name: string }[]>([]);
-
-  // Precomputed row view-models — no function calls inside the @for (CLAUDE.md).
-  readonly assignObserverRows = computed(() => {
-    const selected = this.assignObserverIds();
-    return this.assignObserverOptions().map(o => ({ id: o._id, name: o.name, checked: selected.has(o._id) }));
-  });
 
   selectAssignRole(role: '' | 'coach' | 'observer' | 'proScout'): void {
     this.assignRole.set(role);
@@ -619,10 +612,8 @@ export class PlayerFormComponent implements OnInit {
     this.assignProScoutId.set((event.target as HTMLSelectElement).value);
   }
 
-  toggleAssignObserver(id: string): void {
-    const next = new Set(this.assignObserverIds());
-    if (next.has(id)) next.delete(id); else next.add(id);
-    this.assignObserverIds.set(next);
+  onAssignObserverChange(event: Event): void {
+    this.assignObserverId.set((event.target as HTMLSelectElement).value);
   }
 
   // Days in the selected month/year (falls back to 31 until both are picked, so the
@@ -871,8 +862,8 @@ export class PlayerFormComponent implements OnInit {
     if (this.auth.isAdmin() && !this.isEdit()) {
       if (this.assignRole() === 'coach' && this.assignCoachId()) {
         payload.coach = this.assignCoachId();
-      } else if (this.assignRole() === 'observer' && this.assignObserverIds().size) {
-        payload.observers = [...this.assignObserverIds()];
+      } else if (this.assignRole() === 'observer' && this.assignObserverId()) {
+        payload.observers = [this.assignObserverId()];
       } else if (this.assignRole() === 'proScout' && this.assignProScoutId()) {
         payload.proScout = this.assignProScoutId();
       }

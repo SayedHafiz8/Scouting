@@ -16,6 +16,7 @@ import { deleteMediaBytes } from "./playerMediaController.js";
 import { resolveImageUrl } from "../utils/mediaUrl.js";
 import { ROLES } from "../constants/roles.js";
 import { playerScopeFor, MATCH_NOTHING } from "../services/scope.js";
+import { observerScoutMatch } from "../utils/observerScout.js";
 import { sendNotificationToUser, sendNotificationToAdmins } from "../socket/handlers/notification.js";
 import {
     emitAdminDashboardUpdate,
@@ -77,9 +78,18 @@ export const create = asyncHandler(async (req, res, next) => {
     // ObjectId شكله صح. لو مش أدمن، الفرع else الأصلي بيمسح coach زي ما كان تماماً
     // (منع بالافتراض — أي رول خامس مستقبلي يرث الفرع الآمن، مش القابل للاستغلال).
     let assignedProScoutId = null;
+    let assignedObserverId = null;
     if (req.user.role === ROLES.COACH) {
         req.body.coach = req.user._id;
     } else if (req.user.role === ROLES.ADMIN) {
+        // اللاعب ليه كشاف واحد بس: كوتش، أو أوبزيرفر واحد، أو proScout. أي متابعين
+        // تانيين بيتضافوا بعدين من تغيير الحالة لـ"تحت المتابعة".
+        const observerPicks = Array.isArray(req.body.observers) ? req.body.observers.length : 0;
+        const scoutPicks = [!!req.body.coach, observerPicks > 0, !!req.body.proScout].filter(Boolean).length;
+        if (scoutPicks > 1 || observerPicks > 1) {
+            return next(new AppError("A player can have only one scout: a coach, an observer, or a proScout", 400));
+        }
+
         if (req.body.coach) {
             const coachUser = await User.findOne({ _id: req.body.coach, role: ROLES.COACH }).select("_id");
             if (!coachUser) {
@@ -96,9 +106,11 @@ export const create = asyncHandler(async (req, res, next) => {
                 return next(new AppError("One or more selected observers are not valid", 400));
             }
             req.body.observers = validObserverIds;
-            // لازم status: "observed" عشان لوحة الأوبزيرفرز في player-detail تفضل
-            // قابلة لإعادة الفتح والتعديل بعد كده (اللوحة مقفولة على الحالة دي).
-            if (validObserverIds.length) req.body.status = "observed";
+            assignedObserverId = validObserverIds[0] ?? null;
+            // الإسناد لأوبزيرفر وقت الإنشاء = ملكية بس، مش قرار "تحت المتابعة" —
+            // اللاعب بيبدأ pending (قرار مالك) لحد ما الأدمن يغيّر حالته صراحةً.
+            // لوحة الأوبزيرفرز في player-detail بتفتح لما الأدمن يختار "observed"
+            // وبتتملى بالأوبزيرفرز الحاليين، وupdatePlayerStatus مابيمسحهمش.
         } else {
             delete req.body.observers;
         }
@@ -125,7 +137,10 @@ export const create = asyncHandler(async (req, res, next) => {
     // "مين أنشأه فعلياً" لهذا المستند تحديداً — قرار مالك صريح موثّق في الخطة،
     // ومش تعديل في تعريف C-4 (السكوب { createdBy: me } زي ما هو بالظبط، ومفيش
     // أي backfill على مستندات قديمة).
-    req.body.createdBy = assignedProScoutId ?? req.user._id;
+    // الأوبزيرفر المسنَد وقت الإنشاء هو الكشاف — createdBy بيحمله (زي proScout
+    // بالظبط) عشان يتفرق عن المتابعين اللي بيتضافوا لـobservers بعدين. نطاق
+    // playerScopeFor بيقرا createdBy للـproScout بس، فده مابيوسّعش رؤية أي رول.
+    req.body.createdBy = assignedProScoutId ?? assignedObserverId ?? req.user._id;
 
     // observer-matches-and-players — اللاعب اللي أوبزيرفر بينشئه بيتحط في
     // observers بتاعته من الأول، زي ما coach بيتحط لملكية الكوتش بالظبط. ده هو
@@ -301,7 +316,8 @@ const maskCoachForObserver = (doc) => {
 // لغير الأدمن دول أوراكل: ?coach= بيكشف كوتش لاعب الأوبزيرفر (ضد maskCoachForObserver)،
 // و?observers= بيكشف مين بيتابع لاعب الكوتش (ضد maskObservedForCoach). مفتاحين مختلفين
 // فعكس ترتيب الدمج في ApiFeature لوحده مش بيقفلهم — لازم يتشالوا هنا قبل ما يوصلوا للفلتر.
-const PLAYER_ADMIN_ONLY_LENSES = ["coach", "observer", "observers"];
+// proScout/createdBy بنفس المنطق: ?createdBy= لغير الأدمن بيكشف مين أنشأ لاعب الكوتش.
+const PLAYER_ADMIN_ONLY_LENSES = ["coach", "observer", "observers", "proScout", "createdBy"];
 
 // Stage 4c — isProfessional هنا وليس في PLAYER_ADMIN_ONLY_LENSES فوق: القايمة
 // دي فلترة عادية مش عدسة أوراكل. الفرق: coach/observer/observers بيكشفوا
@@ -312,7 +328,7 @@ const PLAYER_ADMIN_ONLY_LENSES = ["coach", "observer", "observers"];
 // مفيش أي كشف مش موجود أصلاً. (specs/006-admin-professional-lens D-1)
 const PLAYER_FILTERS = [
     "status", "position", "preferredFoot", "ageGroup", "team", "nationality",
-    "coach", "observers", "isProfessional",
+    "coach", "observers", "isProfessional", "createdBy",
 ];
 
 // audit-database I2 — وايت ليست الترتيب. **كل حقل هنا لازم يكون مفهرس** — الوايت
@@ -363,6 +379,26 @@ export const getAll = asyncHandler(async (req, res, next) => {
         delete queryParams.observer;
     }
 
+    // ?proScout=id — ملكية الـproScout على createdBy مش coach (services/scope.js)،
+    // فعدسة "لاعبين البروسكاوت ده" لازم تفلتر على createdBy. مغطّاة بـcreatedBy_1_createdAt_-1.
+    if (queryParams.proScout) {
+        queryParams.createdBy = queryParams.proScout;
+        delete queryParams.proScout;
+    }
+
+    // ?followed=true — لاعبين المتابع اللي بيتابعهم بس (مش كشافهم). للمتابع نفسه،
+    // وللأدمن مع ?observer=id. الشرط بيضيّق بس فوق سكوب الملكية، مابيوسّعهوش.
+    // أي رول تاني أو أدمن من غير متابع محدد بيتجاهل البارام.
+    const followedObserverId =
+        queryParams.followed === "true"
+            ? req.user.role === ROLES.OBSERVER
+                ? req.user._id
+                : req.user.role === ROLES.ADMIN && mongoose.isValidObjectId(queryParams.observers)
+                    ? queryParams.observers
+                    : null
+            : null;
+    delete queryParams.followed;
+
     // §9 — سنتينل "اللاعبين اليتامى": اللي كوتشهم اتمسح نهائياً فالحقل اتفضّى
     // (detachUserFromPlayers بتعمل $unset). من غير الفلتر ده الأدمن مالوش طريقة
     // يلمّهم عشان يعيّنلهم كوتش، وبيفضلوا مبعترين في القايمة.
@@ -404,7 +440,7 @@ export const getAll = asyncHandler(async (req, res, next) => {
     // استهلاك ليه. مربوط هنا (مش فلترة بعد الرجوع) عشان غير الأدمن ميعملش
     // الـpopulate ده أصلاً، لا يوصله ولا يتحسب لطلبه.
     if (req.user.role === ROLES.ADMIN) {
-        playerQuery.populate({ path: "createdBy", select: "name" });
+        playerQuery.populate({ path: "createdBy", select: "name role" });
         // اللاعب اللي الأدمن أسنده لأوبزيرفر عند الإنشاء مالكه هو الأوبزيرفر
         // (ownerFields.observer = "observers")، فبنعرض اسمه في سطر الكوتش على
         // الكارت بدل "بدون كوتش". للأدمن بس — الرولات التانية إما بيتشال منها
@@ -434,6 +470,13 @@ export const getAll = asyncHandler(async (req, res, next) => {
 
     if (pendingIncludesObserved) {
         features.query = features.query.find({ status: { $in: ["pending", "observed"] } });
+    }
+
+    if (followedObserverId) {
+        features.query = features.query.find({
+            observers: followedObserverId,
+            $nor: [await observerScoutMatch(followedObserverId)],
+        });
     }
 
     // perf audit — العدّ والجلب مستقلين (العدد للبيانات الوصفية بس، مش لـ
@@ -477,8 +520,9 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
     // specs/010-professional-lens-creator — نفس نمط getAll: البروسكاوت المسؤول
     // عن اللاعب (createdBy) بيتعمله populate للأدمن بس. اللاعب المحترف مالوش
     // كوتش، والأدمن بيشوف مكانه اسم البروسكاوت اللي أنشأه في صفحة التفاصيل.
+    // role مع الاسم عشان فورم التقرير يعرف لو المالك proScout فعلاً (مش الأدمن اللي أنشأه).
     if (req.user.role === ROLES.ADMIN) {
-        query.populate({ path: "createdBy", select: "name" });
+        query.populate({ path: "createdBy", select: "name role" });
     }
 
     const document = await query;
@@ -541,6 +585,34 @@ const validateObserverIds = async (ids) => {
     return uniqueIds;
 };
 
+// الكشاف (الأوبزيرفر صاحب اللاعب) والمتابعين الاتنين جوه observers[]. الكشاف =
+// createdBy لما يكون أوبزيرفر (create بيحطه كده). بيانات قبل التفرقة: الأدمن كان
+// المنشئ والأوبزيرفر المسنَد هو observers[0].
+const resolveScout = async (player) => {
+    if (!player || player.coach || !player.createdBy) return { scoutId: null, creatorRole: null };
+    const creator = await User.findById(player.createdBy).setOptions({ bypassFilter: true }).select("role");
+    const creatorRole = creator?.role ?? null;
+    const ids = (player.observers ?? []).map(String);
+    const creatorId = String(player.createdBy);
+    if (creatorRole === ROLES.OBSERVER && ids.includes(creatorId)) return { scoutId: creatorId, creatorRole };
+    if (creatorRole === ROLES.ADMIN && ids.length) return { scoutId: ids[0], creatorRole };
+    return { scoutId: null, creatorRole };
+};
+
+// الكشاف مش جزء من اختيار المتابعين — بيفضل أول عنصر في observers مهما اتبعت.
+// لاعب قديم الأدمن منشئه: createdBy بيتصحّح للكشاف (بيقفل القراءة التقريبية فوق).
+// لاعب الأدمن منشئه ومالوش كشاف: createdBy بيتشال عشان أول متابع مايتقراش كشاف بعدين.
+const withScout = async (player, requestedIds) => {
+    const { scoutId, creatorRole } = await resolveScout(player);
+    const followers = requestedIds.map(String).filter((id) => id !== scoutId);
+    const update = { observers: scoutId ? [scoutId, ...followers] : followers };
+    if (creatorRole === ROLES.ADMIN) {
+        if (scoutId) update.createdBy = scoutId;
+        else if (followers.length) update.createdBy = null;
+    }
+    return { update, followers };
+};
+
 export const updatePlayerStatus = asyncHandler(async (req, res, next) => {
     const { status, observers } = req.body;
 
@@ -554,11 +626,12 @@ export const updatePlayerStatus = asyncHandler(async (req, res, next) => {
             return next(new AppError("One or more selected observers are not valid", 400));
         }
 
-        const before = await Player.findById(req.params.id).select("observers");
+        const before = await Player.findById(req.params.id).select("observers coach createdBy");
         beforeIds = new Set((before?.observers ?? []).map(String));
-        newlyAssignedObservers = validIds.filter((id) => !beforeIds.has(id));
+        const scoutUpdate = await withScout(before, validIds);
+        newlyAssignedObservers = scoutUpdate.followers.filter((id) => !beforeIds.has(id));
 
-        update.observers = validIds;
+        Object.assign(update, scoutUpdate.update);
     }
     // ملاحظة: الربط بالأوبزيرفرز بيفضل ثابت — لو الحالة اتغيرت لأي حاجة تانية
     // (selected/rejected/pending) الأوبزيرفرز بيفضلوا شايفين اللاعب وبيشوفوا التغيير.
@@ -629,12 +702,13 @@ export const updatePlayerObservers = asyncHandler(async (req, res, next) => {
         return next(new AppError("One or more selected observers are not valid", 400));
     }
 
-    const before = await Player.findById(req.params.id).select("observers");
+    const before = await Player.findById(req.params.id).select("observers coach createdBy");
     const beforeIds = new Set((before?.observers ?? []).map(String));
+    const { update: observersUpdate } = await withScout(before, validIds ?? []);
 
     const player = await Player.findByIdAndUpdate(
         req.params.id,
-        { observers: validIds ?? [] },
+        observersUpdate,
         { new: true, runValidators: true }
     ).populate({ path: "observers", select: "name" });
 

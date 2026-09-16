@@ -177,6 +177,8 @@ export const createValidate = [
     // (المؤلف الفعلي بيبقى هو، مش الأدمن — راجع scoutingReportController.create).
     lockFieldExceptAdmin("assignedObserver"),
     body("assignedObserver").optional().isMongoId().withMessage("Invalid assignedObserver id"),
+    lockFieldExceptAdmin("assignedProScout"),
+    body("assignedProScout").optional().isMongoId().withMessage("Invalid assignedProScout id"),
 
     validatorMiddleware,
 ];
@@ -217,7 +219,7 @@ export const updateValidate = [
 // @route   GET /api/v1/players/:playerId/reports
 export const getAllValidate = [
     // بس الأدمن هو اللي بيستخدم الفلتر ده (يشوف تقارير الكشافين أو الأوبزيرفرز بس)
-    query("authorRole").optional().isIn([ROLES.COACH, ROLES.OBSERVER]).withMessage("Invalid authorRole"),
+    query("authorRole").optional().isIn([ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT]).withMessage("Invalid authorRole"),
     validatorMiddleware,
 ];
 

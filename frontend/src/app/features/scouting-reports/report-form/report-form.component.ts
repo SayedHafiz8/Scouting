@@ -142,7 +142,7 @@ const MENTAL_FIELDS: RatingField[] = [
                    from the player's own observers[] (already loaded with the player, no
                    extra request) — matches the server's requirement that assignedObserver
                    must already be assigned to this player. -->
-              @if (auth.isAdmin() && !isEdit() && playerObservers().length > 0) {
+              @if (auth.isAdmin() && !isEdit() && (playerObservers().length > 0 || playerProScout())) {
                 <div class="space-y-1.5 mb-2">
                   <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
                     {{ 'REPORTS.FORM.FILE_ON_BEHALF_OF' | translate }}
@@ -150,6 +150,9 @@ const MENTAL_FIELDS: RatingField[] = [
                   <select [ngModel]="assignedObserver()" (ngModelChange)="assignedObserver.set($event)"
                           [ngModelOptions]="{standalone: true}" class="form-input">
                     <option value="">{{ 'REPORTS.FORM.FILE_ON_BEHALF_OF_SELF' | translate }}</option>
+                    @if (playerProScout(); as ps) {
+                      <option [value]="ps._id">{{ ps.name }} — {{ 'PLAYERS.DETAIL.PROSCOUT' | translate }}</option>
+                    }
                     @for (o of playerObservers(); track o._id) {
                       <option [value]="o._id">{{ o.name }}</option>
                     }
@@ -297,7 +300,7 @@ const MENTAL_FIELDS: RatingField[] = [
                       <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
                       <span class="text-sm font-black tabular-nums w-6 text-center"
                             [style.color]="ratingColor(form.get('technical.' + field.key)?.value)">
-                        {{ form.get('technical.' + field.key)?.value ?? 5 }}
+                        {{ form.get('technical.' + field.key)?.value ?? 0 }}
                       </span>
                     </div>
                     <div class="flex gap-1">
@@ -335,7 +338,7 @@ const MENTAL_FIELDS: RatingField[] = [
                       <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
                       <span class="text-sm font-black tabular-nums w-6 text-center"
                             [style.color]="ratingColor(form.get('physical.' + field.key)?.value)">
-                        {{ form.get('physical.' + field.key)?.value ?? 5 }}
+                        {{ form.get('physical.' + field.key)?.value ?? 0 }}
                       </span>
                     </div>
                     <div class="flex gap-1">
@@ -374,7 +377,7 @@ const MENTAL_FIELDS: RatingField[] = [
                       <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
                       <span class="text-sm font-black tabular-nums w-6 text-center"
                             [style.color]="ratingColor(form.get('mental.' + field.key)?.value)">
-                        {{ form.get('mental.' + field.key)?.value ?? 5 }}
+                        {{ form.get('mental.' + field.key)?.value ?? 0 }}
                       </span>
                     </div>
                     <div class="flex gap-1">
@@ -519,6 +522,9 @@ export class ReportFormComponent implements OnInit {
   // own observers[] (populated {_id,name}, already fetched by loadScopedOptions)
   // — this is exactly the set the server accepts for assignedObserver.
   readonly playerObservers = signal<{ _id: string; name: string }[]>([]);
+  // مالك اللاعب المحترف (createdBy لما يكون role = proScout) — التقرير بيتكتب باسمه افتراضياً
+  readonly playerProScout = signal<{ _id: string; name: string } | null>(null);
+  // الـid المختار في "بالنيابة عن" — أوبزيرفر أو الـproScout (بيتفرقوا وقت الإرسال)
   readonly assignedObserver = signal('');
 
   // Teams scoped to the player's age group — homeTeam/awayTeam are Team ObjectIds
@@ -572,25 +578,25 @@ export class ReportFormComponent implements OnInit {
     awayTeamName: [''],
     notes: [''],
     technical: this.fb.group({
-      turning: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      dribbling: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      tackling: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      twoFooted: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      longPassing: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      shortPassing: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      heading: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      turning: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      dribbling: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      tackling: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      twoFooted: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      longPassing: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      shortPassing: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      heading: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
     }),
     physical: this.fb.group({
-      shortSprints: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      longSprints: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      agility: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      aerialDuels: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      groundDuels: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      shortSprints: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      longSprints: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      agility: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      aerialDuels: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      groundDuels: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
     }),
     mental: this.fb.group({
-      vision: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      personality: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
-      movement: [5, [Validators.required, Validators.min(1), Validators.max(10)]],
+      vision: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      personality: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
+      movement: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
     }),
   });
 
@@ -625,21 +631,21 @@ export class ReportFormComponent implements OnInit {
   readonly radarData = computed(() => {
     const v = this.formValues();
     return {
-      turning: v.technical?.turning ?? 5,
-      dribbling: v.technical?.dribbling ?? 5,
-      tackling: v.technical?.tackling ?? 5,
-      twoFooted: v.technical?.twoFooted ?? 5,
-      longPassing: v.technical?.longPassing ?? 5,
-      shortPassing: v.technical?.shortPassing ?? 5,
-      heading: v.technical?.heading ?? 5,
-      shortSprints: v.physical?.shortSprints ?? 5,
-      longSprints: v.physical?.longSprints ?? 5,
-      agility: v.physical?.agility ?? 5,
-      aerialDuels: v.physical?.aerialDuels ?? 5,
-      groundDuels: v.physical?.groundDuels ?? 5,
-      vision: v.mental?.vision ?? 5,
-      personality: v.mental?.personality ?? 5,
-      movement: v.mental?.movement ?? 5,
+      turning: v.technical?.turning ?? 0,
+      dribbling: v.technical?.dribbling ?? 0,
+      tackling: v.technical?.tackling ?? 0,
+      twoFooted: v.technical?.twoFooted ?? 0,
+      longPassing: v.technical?.longPassing ?? 0,
+      shortPassing: v.technical?.shortPassing ?? 0,
+      heading: v.technical?.heading ?? 0,
+      shortSprints: v.physical?.shortSprints ?? 0,
+      longSprints: v.physical?.longSprints ?? 0,
+      agility: v.physical?.agility ?? 0,
+      aerialDuels: v.physical?.aerialDuels ?? 0,
+      groundDuels: v.physical?.groundDuels ?? 0,
+      vision: v.mental?.vision ?? 0,
+      personality: v.mental?.personality ?? 0,
+      movement: v.mental?.movement ?? 0,
     };
   });
 
@@ -741,6 +747,11 @@ export class ReportFormComponent implements OnInit {
           this.playerObservers.set(
             player.observers.filter((o: any) => o && typeof o === 'object' && o._id)
           );
+        }
+        const creator = player?.createdBy;
+        if (this.auth.isAdmin() && creator && typeof creator === 'object' && creator.role === 'proScout') {
+          this.playerProScout.set({ _id: creator._id, name: creator.name });
+          if (!this.isEdit()) this.assignedObserver.set(creator._id);
         }
 
         // لاعب ناشئ من غير فئة عمرية = حالة مالهاش نطاق نحمّل بيه، زي ما كانت
@@ -898,7 +909,8 @@ export class ReportFormComponent implements OnInit {
     // admin-assign-players-reports-media — only ever attached for an admin on
     // create, and only when a specific observer was chosen (empty = self).
     if (this.auth.isAdmin() && !this.isEdit() && this.assignedObserver()) {
-      payload['assignedObserver'] = this.assignedObserver();
+      const isProScout = this.assignedObserver() === this.playerProScout()?._id;
+      payload[isProScout ? 'assignedProScout' : 'assignedObserver'] = this.assignedObserver();
     }
 
     const req$ = this.isEdit()

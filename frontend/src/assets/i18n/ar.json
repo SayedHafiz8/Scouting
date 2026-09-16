@@ -185,6 +185,7 @@
     "PROFILE": "الملف الشخصي",
     "OBSERVED": "تحت المتابعة",
     "OBSERVERS": "المتابعون",
+    "PROSCOUTS": "البروسكاوت",
     "PROFESSIONAL_LEAGUE": "دوري المحترفين",
     "MY_MATCHES": "مبارياتي"
   },
@@ -264,6 +265,7 @@
     "OBSERVER_SUBTITLE": "نظرة عامة على نشاط المتابعة الخاص بك",
     "VIEWING_OBSERVER": "عرض متابِع محدد",
     "PLAYERS_OBSERVED": "اللاعبين المتابَعين",
+    "FOLLOWED_PLAYERS": "لاعبين تحت متابعته",
     "TOTAL_MATCHES": "المباريات المحضورة",
     "VIEW_PLAYERS": "عرض كل اللاعبين",
     "MANAGE_COACHES": "إدارة المدربين",
@@ -272,6 +274,7 @@
     "SELECTED": "المختارون",
     "PENDING": "قيد الانتظار",
     "REJECTED": "المرفوضون",
+    "OBSERVED": "تحت المتابعة",
     "REPORTS": "تقارير الكشف",
     "MEDIA": "ملفات الوسائط",
     "ACTIVE_COACHES": "المدربون النشطون",
@@ -385,6 +388,7 @@
       "ASSIGN_NO_COACHES": "مفيش كباتن متاحين",
       "ASSIGN_NO_OBSERVERS": "مفيش أوبزيرفرز متاحين",
       "ASSIGN_PROSCOUT_PH": "اختر بروسكاوت",
+      "ASSIGN_OBSERVER_PH": "اختر متابع",
       "ASSIGN_NO_PROSCOUTS": "مفيش بروسكاوتس متاحين"
     },
     "CELEBRATE": {
@@ -399,6 +403,7 @@
       "NOTES": "ملاحظات",
       "COACH": "المدرب",
       "PROSCOUT": "بروسكاوت",
+      "SCOUT": "الكشاف",
       "CHANGE_STATUS": "تغيير الحالة",
       "EDIT": "تعديل اللاعب",
       "DELETE": "حذف اللاعب",
@@ -426,7 +431,7 @@
       "NO_PROSCOUTS": "مفيش بروسكاوتس متاحين",
       "PROSCOUT_UPDATED": "تم تعيين البروسكاوت بنجاح"
     },
-    "NO_COACH": "بدون كوتش",
+    "NO_COACH": "بدون كشاف",
     "PROFESSIONAL_LEAGUE": "دوري المحترفين",
     "ALL_TEAMS": "كل الفرق",
     "CREATED_BY": "أضافه",

@@ -58,7 +58,7 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
         </div>
       } @else if (data()) {
         <!-- Main stats row -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <div [class]="coachId() ? 'grid grid-cols-2 lg:grid-cols-4 gap-6' : 'grid grid-cols-2 lg:grid-cols-5 gap-6'">
           <app-stat-card [label]="'DASHBOARD.TOTAL_PLAYERS' | translate" [value]="data()!.totalPlayers" iconName="players"
             iconBg="rgba(34,197,94,0.18)"  iconColor="#22c55e"
             link="/players" [queryParams]="coachId() ? {coach: coachId()!} : null"/>
@@ -71,6 +71,12 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
           <app-stat-card [label]="'DASHBOARD.REJECTED' | translate"      [value]="data()!.rejectedPlayers" iconName="rejected"
             iconBg="rgba(244,63,94,0.18)"  iconColor="#f43f5e"
             link="/players" [queryParams]="coachId() ? {coach: coachId()!, status: 'rejected'} : {status: 'rejected'}"/>
+          <!-- observed بيتحسب منفصل للأدمن بس — داشبورد الكوتش بيطويه في pending -->
+          @if (!coachId()) {
+            <app-stat-card [label]="'DASHBOARD.OBSERVED' | translate"    [value]="adminData()!.observedPlayers" iconName="observed"
+              iconBg="rgba(139,92,246,0.18)" iconColor="#8b5cf6"
+              link="/players" [queryParams]="{status: 'observed'}"/>
+          }
         </div>
 
         <!-- Secondary row -->

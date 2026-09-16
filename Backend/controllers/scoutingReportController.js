@@ -194,7 +194,27 @@ export const create = asyncHandler(async (req, res, next) => {
         effectiveAuthor = observerUser._id;
         authorIsObserver = true;
     }
+
+    // نفس الفكرة للاعب المحترف: مالكه هو الـproScout اللي في createdBy، فالأدمن
+    // يقدر يكتب التقرير باسمه عشان يظهر في تقاريره هو (getAll بيفلتر غير الأدمن على coach = me).
+    if (req.user.role === ROLES.ADMIN && req.body.assignedProScout) {
+        if (req.body.assignedObserver) {
+            return next(new AppError("Choose either an observer or a proScout, not both", 400));
+        }
+        const player = await Player.findById(req.params.playerId).select("createdBy");
+        if (player?.createdBy?.toString() !== req.body.assignedProScout.toString()) {
+            return next(new AppError("The selected proScout does not own this player", 400));
+        }
+
+        const scoutUser = await User.findOne({ _id: req.body.assignedProScout, role: ROLES.PRO_SCOUT }).select("_id");
+        if (!scoutUser) {
+            return next(new AppError("The selected proScout is not a valid active proScout", 400));
+        }
+
+        effectiveAuthor = scoutUser._id;
+    }
     delete req.body.assignedObserver;
+    delete req.body.assignedProScout;
 
     // منع تكرار (player, coach, seasonMatch) — المؤشر الفريد في الموديل بيرفضه
     // برسالة واضحة بس في production (errorMiddleware.dublicateKeyHandler)؛ في
@@ -219,7 +239,7 @@ export const create = asyncHandler(async (req, res, next) => {
     // assignedObserver) مالوش داشبورد كوتش/أوبزيرفر يتحدث، فمفيش emit في الحالة دي.
     if (authorIsObserver) {
         emitObserverDashboardUpdate(effectiveAuthor);
-    } else if (req.user.role !== ROLES.ADMIN) {
+    } else if (req.user.role !== ROLES.ADMIN || effectiveAuthor !== req.user._id) {
         emitCoachDashboardUpdate(effectiveAuthor);
     }
 
@@ -267,9 +287,9 @@ export const getAll = asyncHandler(async (req, res, next) => {
             { $unwind: "$author" },
             { $group: { _id: "$author.role", count: { $sum: 1 } } },
         ]);
-        authorCounts = { [ROLES.COACH]: 0, [ROLES.OBSERVER]: 0 };
+        authorCounts = { [ROLES.COACH]: 0, [ROLES.OBSERVER]: 0, [ROLES.PRO_SCOUT]: 0 };
         roleAgg.forEach((r) => {
-            if (r._id === ROLES.COACH || r._id === ROLES.OBSERVER) authorCounts[r._id] = r.count;
+            if (r._id in authorCounts) authorCounts[r._id] = r.count;
         });
     }
 

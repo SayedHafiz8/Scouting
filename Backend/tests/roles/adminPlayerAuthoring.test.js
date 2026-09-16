@@ -74,40 +74,74 @@ describe('Admin authors and assigns players', () => {
       expect(asCoachB.body.data.documents.map((p) => p.name)).not.toContain('Admin Assigned');
     });
 
-    it('creates a player assigned to two observers — both see it and can open it', async () => {
+    it('creates a player with an observer as its scout — pending, createdBy is that observer, only they see it', async () => {
       const { token: adminToken } = await createAdmin();
       const obsA = await createObserver();
       const obsB = await createObserver();
-      const obsC = await createObserver();
 
       const res = await request(app)
         .post('/api/v1/players')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send(playerPayload({
-          name: 'Shared Observed',
-          observers: [obsA.user._id.toString(), obsB.user._id.toString()],
-        }));
+        .send(playerPayload({ name: 'Scouted Player', observers: [obsA.user._id.toString()] }));
 
       expect(res.status).toBe(201);
       const id = res.body.data.document._id;
-      expect(res.body.data.document.status).toBe('observed');
+      expect(res.body.data.document.status).toBe('pending');
+      expect(res.body.data.document.createdBy).toBe(obsA.user._id.toString());
 
-      for (const obs of [obsA, obsB]) {
-        const list = await request(app)
-          .get('/api/v1/players')
-          .set('Authorization', `Bearer ${obs.token}`);
-        expect(list.body.data.documents.map((p) => p.name)).toContain('Shared Observed');
-
-        const one = await request(app)
-          .get(`/api/v1/players/${id}`)
-          .set('Authorization', `Bearer ${obs.token}`);
-        expect(one.status).toBe(200);
-      }
-
-      const listC = await request(app)
+      const listA = await request(app)
         .get('/api/v1/players')
-        .set('Authorization', `Bearer ${obsC.token}`);
-      expect(listC.body.data.documents.map((p) => p.name)).not.toContain('Shared Observed');
+        .set('Authorization', `Bearer ${obsA.token}`);
+      expect(listA.body.data.documents.map((p) => p.name)).toContain('Scouted Player');
+
+      const one = await request(app)
+        .get(`/api/v1/players/${id}`)
+        .set('Authorization', `Bearer ${obsA.token}`);
+      expect(one.status).toBe(200);
+
+      const listB = await request(app)
+        .get('/api/v1/players')
+        .set('Authorization', `Bearer ${obsB.token}`);
+      expect(listB.body.data.documents.map((p) => p.name)).not.toContain('Scouted Player');
+    });
+
+    it('rejects more than one scout at creation', async () => {
+      const { token: adminToken } = await createAdmin();
+      const coach = await createCoach();
+      const obsA = await createObserver();
+      const obsB = await createObserver();
+
+      const twoObservers = await request(app)
+        .post('/api/v1/players')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(playerPayload({ observers: [obsA.user._id.toString(), obsB.user._id.toString()] }));
+      expect(twoObservers.status).toBe(400);
+
+      const coachAndObserver = await request(app)
+        .post('/api/v1/players')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(playerPayload({ coach: coach.user._id.toString(), observers: [obsA.user._id.toString()] }));
+      expect(coachAndObserver.status).toBe(400);
+    });
+
+    it('keeps the scout when the admin later puts the player under observation with another observer', async () => {
+      const { token: adminToken } = await createAdmin();
+      const scout = await createObserver();
+      const follower = await createObserver();
+
+      const created = await request(app)
+        .post('/api/v1/players')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(playerPayload({ observers: [scout.user._id.toString()] }));
+      const id = created.body.data.document._id;
+
+      const res = await request(app)
+        .patch(`/api/v1/players/${id}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ status: 'observed', observers: [follower.user._id.toString()] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.document.observers).toEqual([scout.user._id.toString(), follower.user._id.toString()]);
     });
 
     it('creates a player assigned to a proScout — createdBy is the scout, and the scout sees it', async () => {

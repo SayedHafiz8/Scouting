@@ -160,33 +160,54 @@ describe('PlayerDetailComponent — player with no coach', () => {
     expect(comp.isOrphaned()).toBeFalse();
   });
 
-  it('the details field list says "no coach" rather than a bare dash', async () => {
+  it('the details field list says "no scout" rather than a bare dash', async () => {
     const comp = await setup(basePlayer({ coach: undefined }), true);
-    const coachField = comp.playerFields().find((f) => f.label === 'PLAYERS.DETAIL.COACH');
-    expect(coachField).toBeDefined();
-    expect(coachField!.value).toBe('PLAYERS.NO_COACH');
+    const scoutField = comp.playerFields().find((f) => f.label === 'PLAYERS.DETAIL.SCOUT');
+    expect(scoutField).toBeDefined();
+    expect(scoutField!.value).toBe('PLAYERS.NO_COACH');
   });
 
-  // owner-directed — a player the admin assigned to an observer at creation
-  // belongs to that observer, the same way a coach's player does. It is not
-  // "orphaned"/"no coach"; the responsible-party row names the observer.
-  it('a player assigned to an observer is not flagged orphaned', async () => {
+  // الكشاف — اسم واحد للمالك (كوتش/أوبزيرفر/proScout)، والمتابعين في صف منفصل.
+  const scoutObserver = { _id: 'o1', name: 'Obs One', role: 'observer' };
+
+  it('a player whose scout is an observer is not flagged orphaned', async () => {
     const comp = await setup(
-      basePlayer({ coach: undefined, status: 'observed', observers: [{ _id: 'o1', name: 'Obs One' }] as any }),
+      basePlayer({ coach: undefined, createdBy: scoutObserver as any, observers: [{ _id: 'o1', name: 'Obs One' }] as any }),
       true,
     );
     expect(comp.isOrphaned()).toBeFalse();
     expect(compiled.textContent).not.toContain('PLAYERS.NO_COACH');
   });
 
-  it('the responsible-party row names the observer for an observer-owned player', async () => {
+  it('the scout row names the observer, and there is no followers row without followers', async () => {
     const comp = await setup(
-      basePlayer({ coach: undefined, status: 'observed', observers: [{ _id: 'o1', name: 'Obs One' }] as any }),
+      basePlayer({ coach: undefined, createdBy: scoutObserver as any, observers: [{ _id: 'o1', name: 'Obs One' }] as any }),
       true,
     );
-    const row = comp.playerFields().find((f) => f.label === 'PLAYERS.DETAIL.OBSERVED_BY');
-    expect(row).toBeDefined();
-    expect(row!.value).toBe('Obs One');
+    expect(comp.playerFields().find((f) => f.label === 'PLAYERS.DETAIL.SCOUT')!.value).toBe('Obs One');
+    expect(comp.playerFields().find((f) => f.label === 'PLAYERS.DETAIL.OBSERVED_BY')).toBeUndefined();
+  });
+
+  it('followers exclude the scout', async () => {
+    const comp = await setup(
+      basePlayer({
+        coach: undefined, status: 'observed', createdBy: scoutObserver as any,
+        observers: [{ _id: 'o1', name: 'Obs One' }, { _id: 'o2', name: 'Obs Two' }] as any,
+      }),
+      true,
+    );
+    expect(comp.playerFields().find((f) => f.label === 'PLAYERS.DETAIL.OBSERVED_BY')!.value).toBe('Obs Two');
+  });
+
+  it('a legacy admin-created player treats its first observer as the scout', async () => {
+    const comp = await setup(
+      basePlayer({
+        coach: undefined, createdBy: { _id: 'a1', name: 'Admin', role: 'admin' } as any,
+        observers: [{ _id: 'o1', name: 'Obs One' }] as any,
+      }),
+      true,
+    );
+    expect(comp.scout()?.name).toBe('Obs One');
   });
 });
 

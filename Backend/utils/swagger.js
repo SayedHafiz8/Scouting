@@ -124,7 +124,7 @@ const options = {
             },
             createdBy: {
               oneOf: [{ type: "string" }, { $ref: "#/components/schemas/User" }],
-              description: "specs/010-professional-lens-creator — the user who created (and, for professional players, owns) this player. Populated to { _id, name } only for admins, on GET /players and GET /players/:id; a bare id (or absent) for every other role.",
+              description: "specs/010-professional-lens-creator — the user who created (and, for professional players, owns) this player. Populated only for admins — { _id, name } on GET /players, { _id, name, role } on GET /players/:id; a bare id (or absent) for every other role. Admins can list one proScout's players with GET /players?proScout=<id> (matched against createdBy).",
             },
             createdAt: { type: "string", format: "date-time" },
             updatedAt: { type: "string", format: "date-time" },
@@ -237,6 +237,7 @@ const options = {
             {
               type: "object",
               properties: {
+                observedPlayers:    { type: "integer", description: "Players whose status is observed (admin only — coach/proScout dashboards fold these into pendingPlayers)" },
                 totalMedia:         { type: "integer" },
                 totalCoaches:       { type: "integer" },
                 totalObservers:     { type: "integer" },
@@ -251,7 +252,13 @@ const options = {
         ObserverDashboard: {
           type: "object",
           properties: {
-            totalPlayersObserved: { type: "integer" },
+            totalPlayersObserved: { type: "integer", description: "Every player the observer is on (scouted + followed)" },
+            totalPlayers:         { type: "integer", description: "Players this observer is the scout of" },
+            selectedPlayers:      { type: "integer" },
+            pendingPlayers:       { type: "integer", description: "Scouted players pending or observed" },
+            rejectedPlayers:      { type: "integer" },
+            selectionRate:        { type: "number" },
+            followedPlayers:      { type: "integer", description: "Players the observer follows but is not the scout of" },
             totalReports:         { type: "integer" },
             totalMedia:           { type: "integer" },
             totalMatches:         { type: "integer" },

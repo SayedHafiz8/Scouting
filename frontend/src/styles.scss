@@ -819,7 +819,15 @@ select.form-input {
     .chip-dot { box-shadow: 0 0 6px rgba(168,85,247,0.9); }
   }
 
-  &:not(.status-chip-selected):not(.status-chip-pending):not(.status-chip-rejected):not(.status-chip-observed):not(.status-chip-orphaned):not(.status-chip-coach):not(.status-chip-observer) {
+  &.status-chip-proscout {
+    background: rgba(56,189,248,0.20) !important;
+    border-color: rgba(56,189,248,0.55) !important;
+    color: #7dd3fc !important;
+    box-shadow: 0 0 0 3px rgba(56,189,248,0.16), 0 0 12px rgba(56,189,248,0.25);
+    .chip-dot { box-shadow: 0 0 6px rgba(56,189,248,0.9); }
+  }
+
+  &:not(.status-chip-selected):not(.status-chip-pending):not(.status-chip-rejected):not(.status-chip-observed):not(.status-chip-orphaned):not(.status-chip-coach):not(.status-chip-observer):not(.status-chip-proscout) {
     background: rgba(var(--accent-rgb, 34,197,94),0.10) !important;
     border-color: rgba(var(--accent-rgb, 34,197,94),0.30) !important;
     color: var(--accent) !important;

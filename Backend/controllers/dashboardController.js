@@ -14,6 +14,7 @@ import { getConnectedUsers } from "../socket/index.js";
 import { ROLES } from "../constants/roles.js";
 import { playerScopeFor, seasonMatchScopeFor } from "../services/scope.js";
 import { utcDayRange } from "../utils/time.js";
+import { observerScoutMatch } from "../utils/observerScout.js";
 
 // ============================
 // §11 — كاش TTL في الذاكرة لداشبورد الأدمن
@@ -139,12 +140,14 @@ const computeAdminDashboardData = async () => {
     const selectedPlayers = statusMap["selected"]    ?? 0;
     const pendingPlayers  = statusMap["pending"]     ?? 0;
     const rejectedPlayers = statusMap["rejected"]    ?? 0;
+    const observedPlayers = statusMap["observed"]    ?? 0;
 
     return {
         totalPlayers,
         selectedPlayers,
         pendingPlayers,
         rejectedPlayers,
+        observedPlayers,
         totalReports,
         totalMedia,
         totalCoaches,
@@ -230,9 +233,24 @@ const getCoachDashboardData = async (coachId) => {
 };
 
 const getObserverDashboardData = async (observerId) => {
-    const [totalPlayersObserved, totalReports, totalMedia, totalMatches] = await Promise.all([
-        // عدد اللاعبين المتابَعين من الأوبزيرفر ده (موجود فى مصفوفة observers بتاعتهم)
-        Player.countDocuments({ observers: observerId }),
+    const oid = new mongoose.Types.ObjectId(observerId);
+    const scoutMatch = await observerScoutMatch(observerId);
+
+    const [playerStats, totalReports, totalMedia, totalMatches] = await Promise.all([
+        // كل اللاعبين في observers بتاعته، ومنهم اللي هو كشافهم (مالهمش كوتش، وهو الـcreatedBy
+        // أو لاعب قديم أنشأه أدمن وهو أول متابع). الباقي = متابعة بس
+        Player.aggregate([
+            { $match: { observers: oid } },
+            {
+                $facet: {
+                    total: [{ $count: "count" }],
+                    scoutByStatus: [
+                        { $match: scoutMatch },
+                        { $group: { _id: "$status", count: { $sum: 1 } } },
+                    ],
+                },
+            },
+        ]),
         // التقارير الى كتبها — حقل coach فى الموديل هو الكاتب بغض النظر عن الدور
         ScoutingReport.countDocuments({ coach: observerId }),
         // الميديا الى رفعها
@@ -245,7 +263,32 @@ const getObserverDashboardData = async (observerId) => {
         }),
     ]);
 
-    return { totalPlayersObserved, totalReports, totalMedia, totalMatches };
+    const facet = playerStats[0];
+    const statusMap = {};
+    facet.scoutByStatus.forEach((s) => { statusMap[s._id] = s.count; });
+
+    const totalPlayersObserved = facet.total[0]?.count ?? 0;
+    const totalPlayers    = facet.scoutByStatus.reduce((sum, s) => sum + s.count, 0);
+    const selectedPlayers = statusMap["selected"] ?? 0;
+    // نفس سطر الكوتش — observed بتتطوى في pending
+    const pendingPlayers  = (statusMap["pending"] ?? 0) + (statusMap["observed"] ?? 0);
+    const rejectedPlayers = statusMap["rejected"] ?? 0;
+
+    return {
+        totalPlayersObserved,
+        totalPlayers,
+        selectedPlayers,
+        pendingPlayers,
+        rejectedPlayers,
+        followedPlayers: totalPlayersObserved - totalPlayers,
+        selectionRate:
+            totalPlayers === 0
+                ? 0
+                : Number((selectedPlayers / totalPlayers) * 100).toFixed(2),
+        totalReports,
+        totalMedia,
+        totalMatches,
+    };
 };
 
 // Stage 5 — proScout dashboard.

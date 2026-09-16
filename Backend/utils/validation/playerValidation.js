@@ -199,7 +199,7 @@ export const createValidate = [
     lockFieldExceptAdmin("coach"),
     check('coach').optional().isMongoId().withMessage('Invalid coach id'),
     lockFieldExceptAdmin("observers"),
-    check('observers').optional().isArray().withMessage('observers must be an array'),
+    check('observers').optional().isArray({ max: 1 }).withMessage('observers must be an array with at most one observer (the scout)'),
     check('observers.*').optional().isMongoId().withMessage('Invalid observer id'),
     lockFieldExceptAdmin("proScout"),
     check('proScout').optional().isMongoId().withMessage('Invalid proScout id'),

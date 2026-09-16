@@ -449,37 +449,13 @@ const SEARCH_DEBOUNCE_MS = 300;
                         }
                       </span>
                     </p>
-                    @if (coachName(player)) {
+                    @if (scoutName(player); as scout) {
+                      <!-- الكشاف — مالك اللاعب باسم واحد للكل (كوتش/أوبزيرفر/proScout)، نفس قاعدة player-detail -->
                       <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
                         <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                         </svg>
-                        <span class="truncate">{{ coachName(player) }}</span>
-                      </p>
-                    } @else if (observerNames(player); as obs) {
-                      <!-- اللاعب اللي الأدمن أسنده لأوبزيرفر عند الإنشاء — مالكه هو
-                           الأوبزيرفر بالفعل (ownerFields.observer)، ده تعيين ملكية حقيقي
-                           مش مجرد "مين اللي أنشأ السجل". فبييجي قبل فرع createdBy تحت —
-                           لو اللاعب محترف وكمان ليه أوبزيرفر معيَّن، الأوبزيرفر هو
-                           المالك الفعلي مش اسم الأدمن اللي عمل الإنشاء. observers
-                           بيتعمله populate للأدمن بس. -->
-                      <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
-                        <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                        </svg>
-                        <span class="truncate">{{ obs }}</span>
-                      </p>
-                    } @else if (player.isProfessional && creatorName(player)) {
-                      <!-- specs/010-professional-lens-creator — اللاعب المحترف مالوش كوتش
-                           بحكم التصميم؛ المالك الفعلي هو البروسكاوت اللي أنشأه (createdBy،
-                           وده فرع النطاق { team: null, createdBy } على السيرفر). فبنعرضه في
-                           سطر الكوتش نفسه بدل ما نوصف اللاعب إنه "يتيم/بدون كوتش". createdBy
-                           بيتعمله populate للأدمن بس، فالسطر ده أدمن-فقط بحكم creatorName(). -->
-                      <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
-                        <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                        </svg>
-                        <span class="truncate">{{ creatorName(player) }}</span>
+                        <span class="truncate">{{ scout }}</span>
                       </p>
                     } @else if (isOrphaned(player)) {
                       <!-- كوتش اللاعب اتحذف نهائياً — بيتعرض للأدمن بس، لأنه الوحيد اللي
@@ -781,6 +757,8 @@ export class PlayerListComponent implements OnInit {
   statusFilter: PlayerStatus | '' = '';
   coachFilter = '';
   observerFilter = '';
+  proScoutFilter = '';
+  followedOnly = false;
   // Stage 4c (PC-2) — team dropdown scoped to the professional lens only.
   // Convenience over the server-side isProfessional filter (D-1), never the
   // thing that confines the result: a non-professional team id here would
@@ -801,6 +779,8 @@ export class PlayerListComponent implements OnInit {
       this.statusFilter = (qp.get('status') as PlayerStatus | null) ?? '';
       this.coachFilter = qp.get('coach') ?? '';
       this.observerFilter = qp.get('observer') ?? '';
+      this.proScoutFilter = qp.get('proScout') ?? '';
+      this.followedOnly = qp.get('followed') === 'true';
       this.positionFilter = (qp.get('position') as PlayerPosition | null) ?? '';
       this.pendingGroupId = qp.get('ageGroup') ?? '';
       // Stage 4c — عدسة "دوري المحترفين" للأدمن. isProfessional بتتقرا زي
@@ -868,7 +848,7 @@ export class PlayerListComponent implements OnInit {
   // list stays for the admin's "?observer=<id>" lens (observerFilter, unchanged)
   // and for orphaned/professional, which are still flat views for every role.
   private skipGroupsView(): boolean {
-    return !!this.observerFilter || this.auth.isProScout() || this.orphanedOnly() || this.professionalOnly();
+    return !!this.observerFilter || !!this.proScoutFilter || this.followedOnly || this.auth.isProScout() || this.orphanedOnly() || this.professionalOnly();
   }
 
   // Decide which view to show based on the ageGroup query param
@@ -987,6 +967,8 @@ export class PlayerListComponent implements OnInit {
       status: this.statusFilter || undefined,
       coach: this.coachFilter || undefined,
       observer: this.observerFilter || undefined,
+      proScout: this.proScoutFilter || undefined,
+      followed: this.followedOnly ? 'true' : undefined,
       ageGroup: this.pendingGroupId || this.selectedGroup()?._id || undefined,
       isProfessional: this.professionalOnly() ? 'true' : undefined,
       team: this.professionalOnly() ? (this.teamFilter || undefined) : undefined,
@@ -1136,25 +1118,20 @@ export class PlayerListComponent implements OnInit {
     return coach.name;
   }
 
-  // specs/010-professional-lens-creator — createdBy is only ever populated to
-  // { _id, name } for admins; for every other role it stays a bare id string
-  // (or is absent), so this mirrors coachName()'s guard exactly.
-  creatorName(player: Player): string {
-    const createdBy = player.createdBy;
-    if (!createdBy || typeof createdBy === 'string') return '';
-    return createdBy.name;
-  }
-
-  // اللاعب اللي الأدمن أسنده لأوبزيرفر عند الإنشاء — أسماء المتابعين المعيَّنين
-  // له. observers بيتعمله populate ({ _id, name }) للأدمن بس؛ لغيره بيرجع ids
-  // خام أو بيتشال، فبيرجّع '' وما يظهرش السطر. مرآة creatorName().
-  observerNames(player: Player): string {
-    const observers = player.observers;
-    if (!Array.isArray(observers)) return '';
-    const names = observers
-      .filter((o): o is Exclude<typeof o, string> => typeof o === 'object' && o !== null && !!o.name)
-      .map(o => o.name);
-    return names.join('، ');
+  // الكشاف — مالك اللاعب: الكوتش، أو createdBy لما يكون أوبزيرفر/proScout، أو
+  // (بيانات قبل التفرقة) أول أوبزيرفر في لاعب أنشأه الأدمن. createdBy وobservers
+  // بيتعملهم populate للأدمن بس؛ لغيره الاسم الوحيد المتاح هو الكوتش.
+  scoutName(player: Player): string {
+    const coach = this.coachName(player);
+    if (coach) return coach;
+    const creator = player.createdBy;
+    if (!creator || typeof creator === 'string') return '';
+    if (creator.role === 'observer' || creator.role === 'proScout') return creator.name;
+    if (creator.role === 'admin') {
+      const first = player.observers?.[0];
+      return first && typeof first === 'object' ? first.name : '';
+    }
+    return '';
   }
 
   // لاعب "يتيم" — كوتشه اتمسح نهائياً فالحقل اتفضّى من السيرفر. ملحوظة مهمة:
@@ -1168,8 +1145,7 @@ export class PlayerListComponent implements OnInit {
   // اللاعب اللي الأدمن أنشأه وأسنده لأوبزيرفر عند الإنشاء مستثنى بنفس المنطق:
   // مالكه هو الأوبزيرفر (ownerFields.observer = "observers")، زيه زي لاعب الكوتش.
   isOrphaned(player: Player): boolean {
-    return this.auth.isAdmin() && !player.coach && !player.isProfessional
-      && !(player.observers && player.observers.length > 0);
+    return this.auth.isAdmin() && !this.scoutName(player) && !player.isProfessional;
   }
 
   calcAge(dob: string): number {

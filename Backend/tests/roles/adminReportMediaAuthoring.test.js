@@ -83,11 +83,16 @@ describe('Admin authors and assigns reports', () => {
             const obsA = await createObserver();
             const obsB = await createObserver();
 
+            // كشاف واحد وقت الإنشاء (obsA)، والتاني بيتضاف متابع بعدين
             const assigned = await request(app)
                 .post('/api/v1/players')
                 .set('Authorization', `Bearer ${adminToken}`)
-                .send(playerPayload({ observers: [obsA.user._id.toString(), obsB.user._id.toString()] }));
+                .send(playerPayload({ observers: [obsA.user._id.toString()] }));
             const player = assigned.body.data.document;
+            await request(app)
+                .patch(`/api/v1/players/${player._id}/observers`)
+                .set('Authorization', `Bearer ${adminToken}`)
+                .send({ observers: [obsB.user._id.toString()] });
             const teamIds = await reportSetup(player._id);
 
             const created = await request(app)

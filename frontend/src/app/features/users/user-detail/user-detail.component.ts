@@ -228,6 +228,7 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
               <h3 class="text-base font-semibold mb-4" style="color:var(--text-primary)">{{ 'COACHES.DETAIL.QUICK_ACCESS' | translate }}</h3>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
+                @if (!isProScoutCtx()) {
                 <a [routerLink]="dashboardLink()"
                    class="flex items-center gap-3 p-4 rounded-xl border transition-colors hover:bg-[var(--bg-card-hover)]"
                    style="border-color:var(--border-color)">
@@ -246,6 +247,7 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
                     <polyline points="9 18 15 12 9 6"/>
                   </svg>
                 </a>
+                }
 
                 <a [routerLink]="['/players']" [queryParams]="playersQueryParams()"
                    class="flex items-center gap-3 p-4 rounded-xl border transition-colors hover:bg-[var(--bg-card-hover)]"
@@ -397,9 +399,12 @@ export class UserDetailComponent implements OnInit, OnDestroy {
   readonly isProScoutCtx = computed(() => !this.isObserverCtx() && (this.routeIsProScout || this.user()?.role === 'proScout'));
   readonly isCoachCtx = computed(() => !this.isObserverCtx() && !this.isProScoutCtx() && this.user()?.role === 'coach');
 
+  // الـproScout مالكه على createdBy مش coach، فعدسته ?proScout= (بتتحول لـcreatedBy في الباكإند)
   playersQueryParams() {
     const id = this.user()!._id;
-    return this.isObserverCtx() ? { observer: id } : { coach: id };
+    if (this.isObserverCtx()) return { observer: id };
+    if (this.isProScoutCtx()) return { proScout: id };
+    return { coach: id };
   }
 
   dashboardLink() {
