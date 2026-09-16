@@ -52,9 +52,10 @@ export interface Player {
   // Omitted by the API for observers — they aren't allowed to see the player's coach
   coach?: User | string;
   observers?: (User | string)[];
-  // specs/010-professional-lens-creator — populated to { _id, name } only for admins on
-  // GET /players (Professional League lens); absent for every other role and endpoint.
-  createdBy?: { _id?: string; name: string } | string;
+  // Populated to { _id, name, role } only for admins (GET /players and /players/:id);
+  // a bare id or absent for every other role. role tells a scout (observer/proScout)
+  // apart from an admin who merely created the record.
+  createdBy?: { _id?: string; name: string; role?: 'admin' | 'coach' | 'observer' | 'proScout' } | string;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,6 +72,10 @@ export interface PlayerFilters {
   status?: PlayerStatus | '';
   coach?: string;
   observer?: string;
+  // admin lens — players owned by this proScout (server maps it to createdBy)
+  proScout?: string;
+  // 'true' — only players the observer follows but isn't the scout of
+  followed?: string;
   team?: string;
   // Stage 4c — admin lens for professional-league players (specs/006-admin-professional-lens).
   // Sent as the string 'true'/'false', matched against server-side query casting.

@@ -593,32 +593,31 @@ describe('PlayerListComponent — Edit/Delete controls per role (observer-matche
   });
 });
 
-// specs/010-professional-lens-creator — creatorName() mirrors coachName()'s
-// three-way guard (populated object / bare string / absent) for the new
-// admin-only createdBy field. T010, T019.
-describe('PlayerListComponent — creatorName()', () => {
-  it('returns the name when createdBy is a populated { _id, name } object (T010)', async () => {
+// الكشاف — مالك اللاعب باسم واحد: كوتش، أو createdBy أوبزيرفر/proScout، أو أول
+// أوبزيرفر في لاعب قديم أنشأه الأدمن. createdBy كـid خام أو غايب = مفيش اسم.
+describe('PlayerListComponent — scoutName()', () => {
+  it('uses the coach when there is one', async () => {
     const comp = await setup('admin');
-    const player = { createdBy: { _id: 'u9', name: 'Scout Alpha' } } as Player;
-    expect(comp.creatorName(player)).toBe('Scout Alpha');
+    expect(comp.scoutName({ coach: { _id: 'c1', name: 'Coach A' } } as unknown as Player)).toBe('Coach A');
   });
 
-  it('returns an empty string when createdBy is a bare id string (T019)', async () => {
+  it('uses createdBy when it is a proScout or an observer', async () => {
     const comp = await setup('admin');
-    const player = { createdBy: '507f1f77bcf86cd799439099' } as Player;
-    expect(comp.creatorName(player)).toBe('');
+    expect(comp.scoutName({ createdBy: { _id: 'u9', name: 'Scout Alpha', role: 'proScout' } } as unknown as Player)).toBe('Scout Alpha');
+    expect(comp.scoutName({ createdBy: { _id: 'o1', name: 'Obs One', role: 'observer' } } as unknown as Player)).toBe('Obs One');
   });
 
-  it('returns an empty string when createdBy is null (T019)', async () => {
+  it('uses the first observer for a legacy admin-created player', async () => {
     const comp = await setup('admin');
-    const player = { createdBy: null } as unknown as Player;
-    expect(comp.creatorName(player)).toBe('');
+    const player = { createdBy: { _id: 'a1', name: 'Admin', role: 'admin' }, observers: [{ _id: 'o1', name: 'Obs One' }] };
+    expect(comp.scoutName(player as unknown as Player)).toBe('Obs One');
   });
 
-  it('returns an empty string when createdBy is absent (T019)', async () => {
+  it('returns an empty string when createdBy is a bare id, null or absent', async () => {
     const comp = await setup('admin');
-    const player = {} as Player;
-    expect(comp.creatorName(player)).toBe('');
+    expect(comp.scoutName({ createdBy: '507f1f77bcf86cd799439099' } as Player)).toBe('');
+    expect(comp.scoutName({ createdBy: null } as unknown as Player)).toBe('');
+    expect(comp.scoutName({} as Player)).toBe('');
   });
 });
 
@@ -631,9 +630,10 @@ describe('PlayerListComponent — isOrphaned()', () => {
     expect(comp.isOrphaned({ coach: undefined, observers: [] } as unknown as Player)).toBeTrue();
   });
 
-  it('is false when the player has observers', async () => {
+  it('is false when the player has an observer scout', async () => {
     const comp = await setup('admin');
-    expect(comp.isOrphaned({ coach: undefined, observers: ['o1'] } as unknown as Player)).toBeFalse();
+    const player = { coach: undefined, createdBy: { _id: 'o1', name: 'Obs', role: 'observer' }, observers: [{ _id: 'o1', name: 'Obs' }] };
+    expect(comp.isOrphaned(player as unknown as Player)).toBeFalse();
   });
 
   it('is false for a professional player', async () => {

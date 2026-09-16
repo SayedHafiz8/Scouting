@@ -12,6 +12,8 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { RadarChartComponent } from '../../../shared/components/radar-chart/radar-chart.component';
 
+type AuthorRole = 'coach' | 'observer' | 'proScout';
+
 @Component({
     selector: 'app-report-list',
     imports: [RouterLink, DatePipe, FormsModule, TranslatePipe, SkeletonLoaderComponent, EmptyStateComponent, ConfirmDialogComponent, RadarChartComponent],
@@ -59,8 +61,8 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
         <!-- Author role — standalone chip row above the filter card (like the player status chips) -->
         @if (auth.isAdmin() && !loading()) {
           <div class="flex flex-wrap gap-2.5" role="group" [attr.aria-label]="'REPORTS.FILTER.AUTHOR_ROLE' | translate">
-            <button type="button" class="status-chip status-chip-coach" [class.status-chip-on]="authorRoleFilter() !== 'observer'"
-                    [attr.aria-pressed]="authorRoleFilter() !== 'observer'" (click)="toggleAuthorRole('coach')">
+            <button type="button" class="status-chip status-chip-coach" [class.status-chip-on]="coachChipOn()"
+                    [attr.aria-pressed]="coachChipOn()" (click)="toggleAuthorRole('coach')">
               <span class="chip-dot" style="background:#3b82f6"></span>
               {{ 'NAV.COACHES' | translate }}
               <span class="chip-badge">{{ authorCounts().coach }}</span>
@@ -70,6 +72,12 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
               <span class="chip-dot" style="background:#a855f7"></span>
               {{ 'NAV.OBSERVERS' | translate }}
               <span class="chip-badge">{{ authorCounts().observer }}</span>
+            </button>
+            <button type="button" class="status-chip status-chip-proscout" [class.status-chip-on]="authorRoleFilter() === 'proScout'"
+                    [attr.aria-pressed]="authorRoleFilter() === 'proScout'" (click)="toggleAuthorRole('proScout')">
+              <span class="chip-dot" style="background:#38bdf8"></span>
+              {{ 'NAV.PROSCOUTS' | translate }}
+              <span class="chip-badge">{{ authorCounts().proScout }}</span>
             </button>
           </div>
         }
@@ -338,9 +346,12 @@ export class ReportListComponent implements OnInit {
   readonly filterSort      = signal<'default' | 'asc' | 'desc'>('default');
   // Admin-only — server-side filter: coach's reports vs observer's reports.
   // الافتراضي "coach" فعليًا (مش مجرد شكل) عشان الشيب اللي شكله معلّم يطابق الفلترة الحقيقية من أول تحميل
-  readonly authorRoleFilter = signal<'' | 'coach' | 'observer'>('coach');
-  // عدد ريبورتات الكوتشات/الأوبزيرفرز على اللاعب ده — بيبان كبادچ على كل شيب بغض النظر عن الفلتر الحالي
-  readonly authorCounts = signal<{ coach: number; observer: number }>({ coach: 0, observer: 0 });
+  readonly authorRoleFilter = signal<'' | AuthorRole>('coach');
+  // عدد ريبورتات الكوتشات/الأوبزيرفرز/البروسكاوت على اللاعب ده — بيبان كبادچ على كل شيب بغض النظر عن الفلتر الحالي
+  readonly authorCounts = signal<Record<AuthorRole, number>>({ coach: 0, observer: 0, proScout: 0 });
+  // شيب الكوتش بيفضل معلّم طول ما مفيش فلتر على رول تاني (الافتراضي)
+  readonly coachChipOn = computed(() => this.authorRoleFilter() === 'coach' || this.authorRoleFilter() === '');
+  private autoPickRole = true;
 
   readonly filteredReports = computed(() => {
     let list = [...this.reports()];
@@ -371,8 +382,9 @@ export class ReportListComponent implements OnInit {
   ngOnInit(): void {
     // لو داخلين من صفحة أوبزيرفر معين (?authorRole=observer من صفحة اللاعبين) نفتح على طول على فلتر الأوبزيرفر
     const queryAuthorRole = this.route.snapshot.queryParamMap.get('authorRole');
-    if (queryAuthorRole === 'observer' || queryAuthorRole === 'coach') {
+    if (queryAuthorRole === 'observer' || queryAuthorRole === 'coach' || queryAuthorRole === 'proScout') {
       this.authorRoleFilter.set(queryAuthorRole);
+      this.autoPickRole = false;
     }
     this.load();
   }
@@ -383,8 +395,20 @@ export class ReportListComponent implements OnInit {
     if (this.auth.isAdmin() && this.authorRoleFilter()) params['authorRole'] = this.authorRoleFilter();
     this.reportService.getAll(this.playerId, params).subscribe({
       next: res => {
+        const counts = (res as any).authorCounts as Record<AuthorRole, number> | undefined;
+        if (counts) this.authorCounts.set(counts);
+        // أول تحميل بس: لو الافتراضي (كوتش) مفيهوش تقارير، افتح على أول رول عنده —
+        // لاعب البروسكاوت مثلاً مالوش تقارير كوتش خالص فكان بيبان فاضي.
+        if (counts && this.autoPickRole) {
+          this.autoPickRole = false;
+          const fallback = (['observer', 'proScout'] as const).find(r => counts[r] > 0);
+          if (this.authorRoleFilter() === 'coach' && counts.coach === 0 && fallback) {
+            this.authorRoleFilter.set(fallback);
+            this.load();
+            return;
+          }
+        }
         this.reports.set((res.data as any)?.documents ?? []);
-        if ((res as any).authorCounts) this.authorCounts.set((res as any).authorCounts);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
@@ -393,7 +417,7 @@ export class ReportListComponent implements OnInit {
 
   // الضغط على أيقونة يفلتر فعليًا على الريبورتس الخاصة بيها بس؛ الضغط عليها تانى يرجع لعرض الكل
   // الكوتش بيفضل شكله معلّم افتراضيًا طول ما الفلتر مش على الاوبزيرفر (شرط العرض في الـ template)
-  toggleAuthorRole(value: 'coach' | 'observer'): void {
+  toggleAuthorRole(value: AuthorRole): void {
     this.authorRoleFilter.set(this.authorRoleFilter() === value ? '' : value);
     this.load();
   }

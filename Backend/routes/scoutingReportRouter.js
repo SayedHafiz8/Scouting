@@ -88,6 +88,12 @@
  *                   Admin only. Id of an observer already assigned to this player
  *                   (in its `observers` array) — the report is authored as that
  *                   observer instead of the admin.
+ *               assignedProScout:
+ *                 type: string
+ *                 description: >
+ *                   Admin only. Id of the proScout who owns this player (its
+ *                   `createdBy`) — the report is authored as that proScout instead
+ *                   of the admin. Mutually exclusive with assignedObserver.
  *     responses:
  *       201:
  *         description: Report created — overallRating auto-calculated as average of 12 metrics

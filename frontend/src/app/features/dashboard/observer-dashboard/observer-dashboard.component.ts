@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
@@ -8,6 +8,7 @@ import { UserService } from '../../users/services/user.service';
 import { ObserverDashboard } from '../../../core/models/dashboard.model';
 import { User } from '../../../core/models/user.model';
 import { StatCardComponent } from '../components/stat-card/stat-card.component';
+import { SelectionRateGaugeComponent } from '../components/selection-rate-gauge/selection-rate-gauge.component';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
 import { ObserverEvaluationService } from '../../observer-evaluations/services/observer-evaluation.service';
 import { ObserverEvaluation, MONTH_KEYS, overallBand } from '../../../core/models/observer-evaluation.model';
@@ -15,7 +16,7 @@ import { ToastService } from '../../../core/services/toast.service';
 
 @Component({
     selector: 'app-observer-dashboard',
-    imports: [StatCardComponent, SkeletonLoaderComponent, RouterLink, TranslatePipe],
+    imports: [StatCardComponent, SelectionRateGaugeComponent, SkeletonLoaderComponent, RouterLink, TranslatePipe],
     template: `
     <div class="max-w-5xl mx-auto space-y-6">
 
@@ -45,15 +46,57 @@ import { ToastService } from '../../../core/services/toast.service';
           <app-skeleton-loader type="stat" [count]="4" />
         </div>
       } @else if (data()) {
+        <!-- Players this observer is the scout of -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <app-stat-card
-            [label]="'DASHBOARD.PLAYERS_OBSERVED' | translate"
+            [label]="'DASHBOARD.TOTAL_PLAYERS' | translate"
             [value]="data()!.totalPlayersObserved"
+            iconBg="rgba(34,197,94,0.18)"
+            iconColor="#22c55e"
+            iconName="players"
+            link="/players"
+            [queryParams]="playersParams()"
+          />
+          <app-stat-card
+            [label]="'DASHBOARD.SELECTED' | translate"
+            [value]="data()!.selectedPlayers"
+            iconBg="rgba(16,185,129,0.18)"
+            iconColor="#10b981"
+            iconName="selected"
+            link="/players"
+            [queryParams]="selectedParams()"
+          />
+          <app-stat-card
+            [label]="'DASHBOARD.PENDING' | translate"
+            [value]="data()!.pendingPlayers"
+            iconBg="rgba(245,158,11,0.18)"
+            iconColor="#f59e0b"
+            iconName="pending"
+            link="/players"
+            [queryParams]="pendingParams()"
+          />
+          <app-stat-card
+            [label]="'DASHBOARD.REJECTED' | translate"
+            [value]="data()!.rejectedPlayers"
+            iconBg="rgba(244,63,94,0.18)"
+            iconColor="#f43f5e"
+            iconName="rejected"
+            link="/players"
+            [queryParams]="rejectedParams()"
+          />
+        </div>
+
+        <!-- Secondary row: 2×2 cards beside the selection-rate gauge -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:col-span-2">
+          <app-stat-card
+            [label]="'DASHBOARD.FOLLOWED_PLAYERS' | translate"
+            [value]="data()!.followedPlayers"
             iconBg="rgba(99,102,241,0.18)"
             iconColor="#818cf8"
-            iconName="players"
-            [link]="'/players'"
-            [queryParams]="observerId() ? {observer: observerId()!} : {}"
+            iconName="observed"
+            link="/players"
+            [queryParams]="followedParams()"
           />
           <app-stat-card
             [label]="'DASHBOARD.TOTAL_MATCHES' | translate"
@@ -78,6 +121,9 @@ import { ToastService } from '../../../core/services/toast.service';
             iconColor="#22c55e"
             iconName="media"
           />
+        </div>
+
+          <app-selection-rate-gauge [rate]="selectionRate()" class="block h-full [&>div]:h-full [&>div]:justify-center" />
         </div>
       }
 
@@ -114,6 +160,24 @@ export class ObserverDashboardComponent implements OnInit {
   readonly observer = signal<User | null>(null);
   readonly observerId = signal<string | null>(null);
   readonly latestEval = signal<ObserverEvaluation | null>(null);
+
+  // الأدمن بيشوف داشبورد متابع معيّن — الروابط بتفلتر على المتابع ده
+  readonly playersParams = computed<Record<string, string>>(() => {
+    const id = this.observerId();
+    const params: Record<string, string> = {};
+    if (id) params['observer'] = id;
+    return params;
+  });
+  readonly followedParams = computed(() => ({ ...this.playersParams(), followed: 'true' }));
+  readonly selectedParams = computed(() => ({ ...this.playersParams(), status: 'selected' }));
+  readonly pendingParams = computed(() => ({ ...this.playersParams(), status: 'pending' }));
+  readonly rejectedParams = computed(() => ({ ...this.playersParams(), status: 'rejected' }));
+
+  readonly selectionRate = computed(() => {
+    const d = this.data();
+    if (!d || !d.totalPlayers) return 0;
+    return Math.round((d.selectedPlayers / d.totalPlayers) * 100);
+  });
 
   constructor() {
     this.socketService.getObserverUpdates()

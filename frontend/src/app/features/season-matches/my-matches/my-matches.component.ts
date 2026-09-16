@@ -466,7 +466,7 @@ export class MyMatchesComponent implements OnInit {
     if (this.selectedLeague() === 'premier' && !this.auth.isProScout()) {
       this.loading.set(true);
     } else {
-      this.load();
+      this.loadAtNextMatchPage();
     }
     this.loadAllSeasons();
     // perf audit 2026-09-04 — loadObservedRows() كانت بتتنادى هنا من غير أي شرط،
@@ -487,7 +487,7 @@ export class MyMatchesComponent implements OnInit {
     this.expandedMatchId.set(null);
     this.resultMatchId.set(null);
     this.page.set(1);
-    this.load();
+    this.loadAtNextMatchPage();
   }
 
   selectAgeGroupTab(ag: AgeGroup): void {
@@ -497,7 +497,7 @@ export class MyMatchesComponent implements OnInit {
     this.expandedMatchId.set(null);
     this.resultMatchId.set(null);
     this.page.set(1);
-    this.load();
+    this.loadAtNextMatchPage();
   }
 
   isAgeGroupTabActive(ag: AgeGroup): boolean {
@@ -508,7 +508,7 @@ export class MyMatchesComponent implements OnInit {
   // لو النتايج بقت أقل من عدد صفحات الفلتر السابق (نفس قاعدة age-group-detail.component.ts)
   onSeasonFilterChange(): void {
     this.page.set(1);
-    this.load();
+    this.loadAtNextMatchPage();
   }
 
   changePage(page: number): void {
@@ -530,11 +530,10 @@ export class MyMatchesComponent implements OnInit {
   onAttendingOnlyChange(value: boolean): void {
     this.attendingOnly.set(value);
     this.page.set(1);
-    this.load();
+    this.loadAtNextMatchPage();
   }
 
-  load(): void {
-    this.loading.set(true);
+  private buildFilters(): SeasonMatchFilters {
     const filters: SeasonMatchFilters = {
       league: this.selectedLeague(),
       season: this.seasonFilter || undefined,
@@ -548,13 +547,54 @@ export class MyMatchesComponent implements OnInit {
     if (this.attendingOnly() && !this.auth.isAdmin()) {
       filters.attendees = this.currentUserId;
     }
-    this.seasonMatchService.getAll(filters).subscribe({
+    return filters;
+  }
+
+  load(): void {
+    this.loading.set(true);
+    this.seasonMatchService.getAll(this.buildFilters()).subscribe({
       next: (res) => {
-        this.matches.set(res.data?.documents ?? []);
+        const documents = res.data?.documents ?? [];
+        const numberOfPages = res.pagination?.numberOfPages ?? 1;
+        // حارس لحساب صفحة "الماتش الجاي" تحت: لو الفلتر الحالي مالوش ماتشات جاية
+        // خالص، الحساب ممكن يطلع صفحة بعد آخر صفحة — نرجّع لآخر صفحة فيها بيانات
+        // بدل ما نعرض جدول فاضي. بينزل رقم الصفحة دايماً، فمفيش لوب.
+        if (documents.length === 0 && numberOfPages >= 1 && this.page() > numberOfPages) {
+          this.page.set(numberOfPages);
+          this.load();
+          return;
+        }
+        this.matches.set(documents);
         this.pagination.set(res.pagination ?? null);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
+    });
+  }
+
+  // الجدول مرتب بالتاريخ تصاعدياً، يعني أول صفحة هي أقدم الماتشات — والكشاف/المتابع
+  // داخل عشان يشوف الماتش الجاي. بنحسب الصفحة اللي فيه فيها ونفتح عليها على طول.
+  //
+  // الطلب ده بيعدّ الماتشات اللي فاتت بس (matchDate[lt] = بداية النهاردة، فماتش
+  // النهاردة بيتحسب جاي): مع limit=1 عدد الصفحات = عدد المستندات بالظبط، وده
+  // ترتيب أول ماتش جاي في القايمة كلها. طلب صغير واحد بدل جلب الجدول كله.
+  private loadAtNextMatchPage(): void {
+    this.loading.set(true);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    this.seasonMatchService.getAll({
+      ...this.buildFilters(),
+      page: 1,
+      limit: 1,
+      'matchDate[lt]': todayStart.toISOString(),
+    }).subscribe({
+      next: (res) => {
+        const pastCount = res.pagination?.numberOfPages ?? 0;
+        this.page.set(Math.floor(pastCount / MyMatchesComponent.PAGE_SIZE) + 1);
+        this.load();
+      },
+      error: () => this.load(),
     });
   }
 
@@ -584,7 +624,7 @@ export class MyMatchesComponent implements OnInit {
       if (this.selectedLeague() === 'premier' && !this.selectedAgeGroupId()) {
         const first = tabs[0];
         if (first) this.selectedAgeGroupId.set(first._id);
-        this.load();
+        this.loadAtNextMatchPage();
       }
     });
   }

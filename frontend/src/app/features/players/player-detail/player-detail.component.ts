@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, computed, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink, RouterOutlet, RouterLinkActive } from '@angular/router';
 import { DatePipe, TitleCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -212,7 +212,7 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                 </div>
               </div>
 
-              @if (auth.isAdmin() && coachName()) {
+              @if (auth.isAdmin() && scout()) {
                 <div class="flex items-center gap-3">
                   <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                        style="background:rgba(99,102,241,0.12)">
@@ -221,10 +221,10 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                     </svg>
                   </div>
                   <div>
-                    <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">Coach</p>
-                    <a [routerLink]="['/users', coachId()]"
+                    <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">{{ 'PLAYERS.DETAIL.SCOUT' | translate }}</p>
+                    <a [routerLink]="['/users', scout()!.id]"
                        class="text-sm font-semibold transition-colors hover:underline" style="color:#818cf8">
-                      {{ coachName() }}
+                      {{ scout()!.name }}
                     </a>
                   </div>
                 </div>
@@ -243,7 +243,7 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                   </div>
                   <div class="min-w-0">
                     <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">
-                      {{ 'PLAYERS.DETAIL.COACH' | translate }}
+                      {{ 'PLAYERS.DETAIL.SCOUT' | translate }}
                     </p>
                     <p class="text-sm font-semibold" style="color:#f59e0b">{{ 'PLAYERS.NO_COACH' | translate }}</p>
                     <p class="text-xs mt-1" style="color:var(--text-muted)">{{ 'PLAYERS.DETAIL.NO_COACH_HINT' | translate }}</p>
@@ -251,38 +251,8 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                 </div>
               }
 
-              <!-- specs/010-professional-lens-creator — اللاعب المحترف مالوش كوتش؛
-                   مالكه الفعلي هو البروسكاوت اللي أنشأه (createdBy، فرع سكوب
-                   { team: null, createdBy }). بيتعرض مكان الكوتش، للأدمن بس. -->
-              @if (isProfessionalOwned()) {
-                <div class="flex items-center gap-3">
-                  <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                       style="background:rgba(56,189,248,0.12)">
-                    <svg class="w-4 h-4" fill="none" stroke="#38bdf8" stroke-width="2" viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
-                    </svg>
-                  </div>
-                  <div class="min-w-0">
-                    <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">
-                      {{ 'PLAYERS.DETAIL.PROSCOUT' | translate }}
-                    </p>
-                    @if (creatorId()) {
-                      <a [routerLink]="['/users', creatorId()]"
-                         class="text-sm font-semibold transition-colors hover:underline" style="color:#38bdf8">
-                        {{ creatorName() }}
-                      </a>
-                    } @else {
-                      <p class="text-sm font-semibold" style="color:var(--text-primary)">{{ creatorName() || '—' }}</p>
-                    }
-                  </div>
-                </div>
-              }
-
-              <!-- اللاعب اللي الأدمن أسنده لأوبزيرفر عند الإنشاء — مالكه الأوبزيرفر
-                   بالفعل، فبيتعرض هنا مكان الكوتش زيه زي البروسكاوت فوق. isProfessionalOwned()
-                   بيرجع false لو ليه أوبزيرفر (تعيين ملكية صريح بياخد أولوية على
-                   createdBy)، فالفرعين متبادلين مش متداخلين. -->
-              @if (auth.isAdmin() && hasObservers()) {
+              <!-- المتابعين — أوبزيرفرز اتضافوا بعد الإنشاء من "تحت المتابعة"، منفصلين عن الكشاف فوق -->
+              @if (auth.isAdmin() && followerNames()) {
                 <div class="flex items-start gap-3">
                   <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                        style="background:rgba(139,92,246,0.12)">
@@ -294,7 +264,7 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                     <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">
                       {{ 'PLAYERS.DETAIL.OBSERVED_BY' | translate }}
                     </p>
-                    <p class="text-sm font-semibold" style="color:var(--text-primary)">{{ assignedObserverNames() || '—' }}</p>
+                    <p class="text-sm font-semibold" style="color:var(--text-primary)">{{ followerNames() }}</p>
                   </div>
                 </div>
               }
@@ -504,13 +474,13 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                     @if (observersPanelOpen()) {
                       @if (loadingObservers()) {
                         <p class="text-xs px-3 pb-3" style="color:var(--text-muted)">{{ 'COMMON.LOADING' | translate }}</p>
-                      } @else if (observers().length === 0) {
+                      } @else if (followerOptions().length === 0) {
                         <p class="text-xs px-3 pb-3" style="color:var(--text-muted)">{{ 'PLAYERS.DETAIL.NO_OBSERVERS' | translate }}</p>
                       } @else {
                         <!-- Selectable list — one row per observer, divider between rows -->
                         <ul class="max-h-52 overflow-y-auto" role="listbox" [attr.aria-multiselectable]="true"
                             style="border-top:1px solid rgba(139,92,246,0.15)">
-                          @for (o of observers(); track o._id; let last = $last) {
+                          @for (o of followerOptions(); track o._id; let last = $last) {
                             <li role="option" [attr.aria-selected]="isObserverSelected(o._id)">
                               <button type="button"
                                       class="observer-row w-full flex items-center gap-2.5 px-3 text-left transition-colors"
@@ -552,13 +522,13 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                 }
 
                 <!-- Currently assigned observers badge -->
-                @if (player()!.status === 'observed' && assignedObserverNames()) {
+                @if (player()!.status === 'observed' && followerNames()) {
                   <div class="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
                        style="background:rgba(139,92,246,0.10);color:#a78bfa;border:1px solid rgba(139,92,246,0.22)">
                     <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                     </svg>
-                    <span>{{ 'PLAYERS.DETAIL.OBSERVED_BY' | translate }}: <span class="font-semibold">{{ assignedObserverNames() }}</span></span>
+                    <span>{{ 'PLAYERS.DETAIL.OBSERVED_BY' | translate }}: <span class="font-semibold">{{ followerNames() }}</span></span>
                   </div>
                 }
                 <button class="btn btn-sm w-full font-semibold"
@@ -741,6 +711,32 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
   // The picker list stays collapsed until opened, and collapses back once the selection is saved
   // (keeps the sidebar compact when there are many observers).
   readonly observers = signal<User[]>([]);
+
+  // الكشاف — مالك اللاعب باسم واحد للكل: الكوتش، أو createdBy لما يكون أوبزيرفر/proScout،
+  // أو (بيانات قبل التفرقة) أول أوبزيرفر في لاعب أنشأه الأدمن. نفس قاعدة resolveScout في الباكإند.
+  readonly scout = computed<{ id: string; name: string } | null>(() => {
+    const p = this.player();
+    if (!p) return null;
+    const names = new Map(this.observers().map(o => [o._id, o.name]));
+    const ref = (u: { _id?: string; name?: string } | string | undefined): { id: string; name: string } | null => {
+      if (!u) return null;
+      if (typeof u === 'string') return { id: u, name: names.get(u) ?? '' };
+      if (!u._id) return null;
+      return { id: u._id, name: u.name || (names.get(u._id) ?? '') };
+    };
+    if (p.coach) return ref(p.coach);
+    const creator = p.createdBy;
+    if (!creator || typeof creator === 'string') return null;
+    if (creator.role === 'observer' || creator.role === 'proScout') return ref(creator);
+    if (creator.role === 'admin') return ref(p.observers?.[0]);
+    return null;
+  });
+
+  // اختيارات "المتابعين" في لوحة تحت المتابعة — الكشاف مش منهم
+  readonly followerOptions = computed(() => {
+    const scoutId = this.scout()?.id;
+    return this.observers().filter(o => o._id !== scoutId);
+  });
   readonly loadingObservers = signal(false);
   readonly selectedObservers = signal<Set<string>>(new Set());
   readonly observersPanelOpen = signal(false);
@@ -799,7 +795,7 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
         const p = res.data?.document ?? null;
         this.player.set(p);
         this.draftStatus = p?.status ?? 'pending';
-        this.selectedObservers.set(new Set(this.observerIds(p)));
+        this.selectedObservers.set(new Set(this.followerIds(p)));
         this.loading.set(false);
         if (p?.position) this.playerContext.set(p.position);
         if (this.auth.isAdmin()) this.loadObservers();
@@ -991,9 +987,11 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
       next: res => {
         const updated = res.data?.document;
         if (updated) {
-          this.player.set(updated);
+          // رد /status مش بيعمل populate لـcoach/createdBy — بندمج الحالة والأوبزيرفرز
+          // بس عشان الكشاف (scout) يفضل محسوب صح من البيانات اللي اتحملت أول مرة.
+          this.player.update(prev => prev ? { ...prev, status: updated.status, observers: updated.observers } : updated);
           this.draftStatus = updated.status;
-          this.selectedObservers.set(new Set(this.observerIds(updated)));
+          this.selectedObservers.set(new Set(this.followerIds(this.player())));
         }
         this.observersPanelOpen.set(false);
         this.toastService.success(this.translate.instant('PLAYERS.DETAIL.STATUS_UPDATED'));
@@ -1005,13 +1003,19 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
     return (p?.observers ?? []).map(o => (typeof o === 'object' ? (o as any)._id : o));
   }
 
-  assignedObserverNames(): string {
-    const observers = this.player()?.observers ?? [];
-    if (!observers.length) return '';
+  private followerIds(p: Player | null): string[] {
+    const scoutId = this.scout()?.id;
+    return this.observerIds(p).filter(id => id !== scoutId);
+  }
+
+  // أسماء المتابعين (كل الأوبزيرفرز ما عدا الكشاف)
+  followerNames(): string {
+    const scoutId = this.scout()?.id;
     const byId = new Map(this.observers().map(o => [o._id, o.name]));
-    return observers
-      .map(o => (typeof o === 'object' ? (o as any).name ?? '' : byId.get(o) ?? ''))
-      .filter(Boolean)
+    return (this.player()?.observers ?? [])
+      .map(o => (typeof o === 'object' ? { id: o._id, name: o.name } : { id: o, name: byId.get(o) ?? '' }))
+      .filter(o => o.id !== scoutId && o.name)
+      .map(o => o.name)
       .join(', ');
   }
 
@@ -1065,30 +1069,6 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
     return typeof coach === 'object' ? (coach as any)._id ?? '' : (coach as string);
   }
 
-  // specs/010-professional-lens-creator — البروسكاوت المسؤول عن اللاعب (createdBy).
-  // بيتعمله populate للأدمن بس على GET /players/:id؛ لغيره بيفضل id نص أو غايب،
-  // فنفس حارس coachName() بالظبط: اسم يظهر يعني أدمن + محترف فعلاً.
-  creatorName(): string {
-    const createdBy = this.player()?.createdBy;
-    if (!createdBy || typeof createdBy === 'string') return '';
-    return createdBy.name ?? '';
-  }
-
-  creatorId(): string {
-    const createdBy = this.player()?.createdBy;
-    if (!createdBy || typeof createdBy === 'string') return '';
-    return createdBy._id ?? '';
-  }
-
-  // اللاعب المحترف مالوش كوتش بحكم التصميم ومالكه البروسكاوت اللي أنشأه —
-  // فبنعرض اسمه مكان الكوتش بدل ما نوصف اللاعب إنه "بدون كوتش". لو ليه أوبزيرفر
-  // معيَّن كمان (الأدمن ممكن يعمل الاتنين)، الأوبزيرفر هو المالك الفعلي —
-  // تعيين ملكية صريح بياخد أولوية على "مين اللي أنشأ السجل".
-  isProfessionalOwned(): boolean {
-    return this.auth.isAdmin() && !!this.player() && !this.player()!.coach
-      && !!this.player()!.isProfessional && !this.hasObservers();
-  }
-
   hasObservers(): boolean {
     const obs = this.player()?.observers;
     return Array.isArray(obs) && obs.length > 0;
@@ -1110,8 +1090,7 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
   // اللاعب المحترف واللاعب المسنَد لأوبزيرفر مستثنيين: مالهمش كوتش بحكم التصميم
   // مش لأنه اتمسح، وليهم مالك فعلي (البروسكاوت / الأوبزيرفر).
   isOrphaned(): boolean {
-    return this.auth.isAdmin() && !!this.player() && !this.player()!.coach
-      && !this.player()!.isProfessional && !this.hasObservers();
+    return this.auth.isAdmin() && !!this.player() && !this.scout() && !this.player()!.isProfessional;
   }
 
   playerFields() {
@@ -1128,19 +1107,17 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
       fields.push({ label: this.translate.instant('PLAYERS.FORM.CONTRACT'), value: contract });
     }
     if (this.auth.isAdmin()) {
-      // مين المسؤول عن اللاعب، بالترتيب: كوتش فعلي ← بروسكاوت (لاعب محترف) ←
-      // أوبزيرفر (أسنده الأدمن عند الإنشاء) ← "بدون كوتش" (لاعب يتيم فعلاً).
+      // الكشاف (مالك اللاعب) باسم واحد للكل، والمتابعين في صف منفصل. "بدون كشاف"
       // بيتقال صراحةً بدل شرطة مبهمة تخلط بين "مفيش مالك" و"البيانات ناقصة".
-      const coachName = this.coachName();
-      fields.unshift(
-        coachName
-          ? { label: this.translate.instant('PLAYERS.DETAIL.COACH'), value: coachName }
-          : this.isProfessionalOwned()
-          ? { label: this.translate.instant('PLAYERS.DETAIL.PROSCOUT'), value: this.creatorName() || '—' }
-          : this.hasObservers()
-          ? { label: this.translate.instant('PLAYERS.DETAIL.OBSERVED_BY'), value: this.assignedObserverNames() || '—' }
-          : { label: this.translate.instant('PLAYERS.DETAIL.COACH'), value: this.translate.instant('PLAYERS.NO_COACH') },
-      );
+      const scout = this.scout();
+      fields.unshift({
+        label: this.translate.instant('PLAYERS.DETAIL.SCOUT'),
+        value: scout?.name || this.translate.instant('PLAYERS.NO_COACH'),
+      });
+      const followers = this.followerNames();
+      if (followers) {
+        fields.push({ label: this.translate.instant('PLAYERS.DETAIL.OBSERVED_BY'), value: followers });
+      }
     }
     return fields;
   }

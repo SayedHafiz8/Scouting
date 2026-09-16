@@ -35,6 +35,17 @@
  *           type: boolean
  *         description: Admin-facing lens for professional-league players (Stage 4c). Available to every role but narrows only within that role's existing scope — it grants no new access.
  *       - in: query
+ *         name: proScout
+ *         schema:
+ *           type: string
+ *         description: Admin only — players owned by this proScout (matched against createdBy). Dropped for every other role.
+ *       - in: query
+ *         name: followed
+ *         schema:
+ *           type: string
+ *           enum: ["true"]
+ *         description: Only players the observer follows but is not the scout of. Applies to the observer themself, or to an admin together with ?observer=id; ignored otherwise.
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer
@@ -115,7 +126,12 @@
  *               observers:
  *                 type: array
  *                 items: { type: string }
- *                 description: Admin only. Ids of existing active users whose role is `observer`.
+ *                 maxItems: 1
+ *                 description: >
+ *                   Admin only. At most one id — the observer who becomes the player's scout
+ *                   (stored as createdBy). A player has exactly one scout: send only one of
+ *                   coach, observers or proScout. Followers are added later via
+ *                   PATCH /players/{id}/status or /observers; the scout is always kept.
  *               proScout:
  *                 type: string
  *                 description: >

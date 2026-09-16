@@ -1185,6 +1185,8 @@ export interface paths {
                         notes?: string;
                         /** @description Admin only. Id of an observer already assigned to this player (in its `observers` array) — the report is authored as that observer instead of the admin. */
                         assignedObserver?: string;
+                        /** @description Admin only. Id of the proScout who owns this player (its `createdBy`) — the report is authored as that proScout instead of the admin. Mutually exclusive with assignedObserver. */
+                        assignedProScout?: string;
                     };
                 };
             };
@@ -1388,6 +1390,10 @@ export interface paths {
                     ageGroup?: string;
                     /** @description Admin-facing lens for professional-league players (Stage 4c). Available to every role but narrows only within that role's existing scope — it grants no new access. */
                     isProfessional?: boolean;
+                    /** @description Admin only — players owned by this proScout (matched against createdBy). Dropped for every other role. */
+                    proScout?: string;
+                    /** @description Only players the observer follows but is not the scout of. Applies to the observer themself, or to an admin together with ?observer=id; ignored otherwise. */
+                    followed?: "true";
                     page?: number;
                     limit?: number;
                     sort?: string;
@@ -1447,7 +1453,7 @@ export interface paths {
                         notes?: string;
                         /** @description Admin only. Id of an existing active user whose role is `coach`. */
                         coach?: string;
-                        /** @description Admin only. Ids of existing active users whose role is `observer`. */
+                        /** @description Admin only. At most one id — the observer who becomes the player's scout (stored as createdBy). A player has exactly one scout: send only one of coach, observers or proScout. Followers are added later via PATCH /players/{id}/status or /observers; the scout is always kept. */
                         observers?: string[];
                         /** @description Admin only. Id of an existing active user whose role is `proScout` — sets `createdBy` to this id, the axis proScout scope is keyed on. */
                         proScout?: string;
@@ -4033,7 +4039,7 @@ export interface components {
             isFreeAgent: boolean;
             coach?: string | components["schemas"]["User"];
             observers?: (string | components["schemas"]["User"])[];
-            /** @description specs/010-professional-lens-creator — the user who created (and, for professional players, owns) this player. Populated to { _id, name } only for admins, on GET /players and GET /players/:id; a bare id (or absent) for every other role. */
+            /** @description specs/010-professional-lens-creator — the user who created (and, for professional players, owns) this player. Populated only for admins — { _id, name } on GET /players, { _id, name, role } on GET /players/:id; a bare id (or absent) for every other role. Admins can list one proScout's players with GET /players?proScout=<id> (matched against createdBy). */
             createdBy?: string | components["schemas"]["User"];
             /** Format: date-time */
             createdAt?: string;
@@ -4153,6 +4159,8 @@ export interface components {
             selectedPlayers?: number;
         };
         AdminDashboard: components["schemas"]["CoachDashboard"] & {
+            /** @description Players whose status is observed (admin only — coach/proScout dashboards fold these into pendingPlayers) */
+            observedPlayers?: number;
             totalMedia?: number;
             totalCoaches?: number;
             totalObservers?: number;
@@ -4161,7 +4169,17 @@ export interface components {
             topCoaches?: components["schemas"]["TopCoach"][];
         };
         ObserverDashboard: {
+            /** @description Every player the observer is on (scouted + followed) */
             totalPlayersObserved?: number;
+            /** @description Players this observer is the scout of */
+            totalPlayers?: number;
+            selectedPlayers?: number;
+            /** @description Scouted players pending or observed */
+            pendingPlayers?: number;
+            rejectedPlayers?: number;
+            selectionRate?: number;
+            /** @description Players the observer follows but is not the scout of */
+            followedPlayers?: number;
             totalReports?: number;
             totalMedia?: number;
             totalMatches?: number;

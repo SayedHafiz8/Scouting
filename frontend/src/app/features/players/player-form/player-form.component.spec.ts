@@ -276,20 +276,19 @@ describe('PlayerFormComponent — admin "assign to" block (admin-assign-players-
     expect(payload.proScout).toBeUndefined();
   });
 
-  it('sends observers as an array on submit when the observer tab is selected', async () => {
+  it('sends the single scout observer as a one-item array when the observer tab is selected', async () => {
     const comp = await setup('admin');
     comp.form.patchValue({
       name: 'Ahmed Ali', dateOfBirth: '2012-01-01', position: 'CM', preferredFoot: 'right',
       nationality: 'Egyptian', city: 'Cairo', address: '1 Test St', phoneNumber: '01012345678',
     });
     comp.selectAssignRole('observer');
-    comp.toggleAssignObserver('x1');
-    comp.toggleAssignObserver('x2');
+    comp.assignObserverId.set('x1');
 
     comp.submit();
 
     const payload = createSpy.calls.mostRecent().args[0];
-    expect(payload.observers).toEqual(jasmine.arrayContaining(['x1', 'x2']));
+    expect(payload.observers).toEqual(['x1']);
     expect(payload.coach).toBeUndefined();
   });
 

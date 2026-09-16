@@ -344,7 +344,9 @@ describe('proScout dashboard — G-7: negative permission and sibling-dashboard 
     });
     expect(observerRes.status).toBe(200);
     expect(observerRes.body.data).toEqual({
-      totalPlayersObserved: 0, totalReports: 0, totalMedia: 0, totalMatches: 0,
+      totalPlayersObserved: 0, totalPlayers: 0, selectedPlayers: 0, pendingPlayers: 0,
+      rejectedPlayers: 0, followedPlayers: 0, selectionRate: 0,
+      totalReports: 0, totalMedia: 0, totalMatches: 0,
     });
     expect(adminRes.status).toBe(200);
     expect(adminRes.body.data).toHaveProperty('totalPlayers');

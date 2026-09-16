@@ -185,6 +185,7 @@
     "PROFILE": "Profile",
     "OBSERVED": "Observed",
     "OBSERVERS": "Observers",
+    "PROSCOUTS": "Pro Scouts",
     "PROFESSIONAL_LEAGUE": "Professional League",
     "MY_MATCHES": "My Matches"
   },
@@ -264,6 +265,7 @@
     "OBSERVER_SUBTITLE": "Overview of your observing activity",
     "VIEWING_OBSERVER": "Viewing a specific observer",
     "PLAYERS_OBSERVED": "Players Observed",
+    "FOLLOWED_PLAYERS": "Players Followed",
     "TOTAL_MATCHES": "Matches Attended",
     "VIEW_PLAYERS": "View All Players",
     "MANAGE_COACHES": "Manage Coaches",
@@ -272,6 +274,7 @@
     "SELECTED": "Selected",
     "PENDING": "Pending",
     "REJECTED": "Rejected",
+    "OBSERVED": "Under Observation",
     "REPORTS": "Scouting Reports",
     "MEDIA": "Media Files",
     "ACTIVE_COACHES": "Active Coaches",
@@ -385,6 +388,7 @@
       "ASSIGN_NO_COACHES": "No coaches available",
       "ASSIGN_NO_OBSERVERS": "No observers available",
       "ASSIGN_PROSCOUT_PH": "Choose a proScout",
+      "ASSIGN_OBSERVER_PH": "Choose an observer",
       "ASSIGN_NO_PROSCOUTS": "No proScouts available"
     },
     "CELEBRATE": {
@@ -399,6 +403,7 @@
       "NOTES": "Notes",
       "COACH": "Coach",
       "PROSCOUT": "Pro Scout",
+      "SCOUT": "Scout",
       "CHANGE_STATUS": "Change Status",
       "EDIT": "Edit Player",
       "DELETE": "Delete Player",
@@ -426,7 +431,7 @@
       "NO_PROSCOUTS": "No proScouts available",
       "PROSCOUT_UPDATED": "proScout assigned successfully"
     },
-    "NO_COACH": "No coach assigned",
+    "NO_COACH": "No scout assigned",
     "PROFESSIONAL_LEAGUE": "Professional league",
     "ALL_TEAMS": "All teams",
     "CREATED_BY": "Added by",
