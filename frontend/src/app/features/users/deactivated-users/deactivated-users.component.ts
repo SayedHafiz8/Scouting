@@ -1,5 +1,5 @@
-import { Component, inject, signal, OnInit, computed } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslateService, TranslatePipe } from '@ngx-translate/core';
 import { UserService } from '../services/user.service';
 import { ToastService } from '../../../core/services/toast.service';
@@ -8,8 +8,50 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ImageLightboxComponent } from '../../../shared/components/image-lightbox/image-lightbox.component';
 
+type DeactivatableRole = 'coach' | 'observer' | 'proScout';
+
+// صفحة واحدة لكل الرولات (كوتش/متابع/بروسكاوت) بدل صفحة للكوتشيز بس: الدور بييجي
+// من ?role= والرجوع بيروح للقايمة اللي جيت منها. السيرفر بيرجّع الكوتشيز لو الدور
+// مابعتش، فاللينك القديم /users/deactivated فضل شغال زي ما هو.
+const BACK_ROUTE: Record<DeactivatableRole, string> = {
+  coach: '/users',
+  observer: '/observers',
+  proScout: '/professional-league',
+};
+
+// نفس مفاتيح الترجمة وألوان الشارة المستخدمة في فورم المستخدم وصفحته، عشان
+// الدور يتقري بنفس الشكل في كل مكان.
+const ROLE_LABEL_KEY: Record<string, string> = {
+  coach: 'COACHES.FORM.COACH',
+  admin: 'COACHES.FORM.ADMIN',
+  observer: 'COACHES.FORM.OBSERVER',
+  proScout: 'COACHES.FORM.PRO_SCOUT',
+};
+
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  coach: 'bg-green-100 text-green-700',
+  admin: 'bg-purple-100 text-purple-700',
+  observer: 'bg-indigo-100 text-indigo-700',
+  proScout: 'bg-pink-100 text-pink-700',
+};
+
+// صف جاهز للعرض — كل القيم بتتحسب مرة واحدة عند التحميل، مش جوه الـ@for
+// (CLAUDE.md: ممنوع استدعاء دوال جوه لوب القايمة).
+interface DeactivatedRow {
+  id: string;
+  name: string;
+  email: string;
+  profileImg?: string;
+  initial: string;
+  roleLabelKey: string;
+  roleBadgeClass: string;
+  deactivatedLabel: string;
+  daysLeft: number | null;
+  urgencyClass: string;
+}
+
 @Component({
-    selector: 'app-deactivated-coaches',
+    selector: 'app-deactivated-users',
     imports: [RouterLink, SkeletonLoaderComponent, ConfirmDialogComponent, ImageLightboxComponent, TranslatePipe],
     template: `
     <div class="max-w-4xl mx-auto space-y-5">
@@ -22,7 +64,7 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
             {{ 'DEACTIVATED.SUBTITLE' | translate }}
           </p>
         </div>
-        <a routerLink="/users" class="btn btn-secondary btn-sm">
+        <a [routerLink]="backRoute()" class="btn btn-secondary btn-sm">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
@@ -34,7 +76,7 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
         <div class="card overflow-hidden">
           <app-skeleton-loader type="table-row" [count]="5" />
         </div>
-      } @else if (coaches().length === 0) {
+      } @else if (users().length === 0) {
         <div class="card p-12 flex flex-col items-center gap-3 text-center">
           <div class="w-14 h-14 rounded-2xl flex items-center justify-center"
                style="background:rgba(34,197,94,0.1)">
@@ -50,47 +92,51 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
           <table class="w-full text-sm">
             <thead style="background:var(--bg-secondary)">
               <tr class="border-b" style="border-color:var(--border-color)">
-                <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'DEACTIVATED.COL_COACH' | translate }}</th>
+                <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'DEACTIVATED.COL_USER' | translate }}</th>
                 <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide hidden md:table-cell" style="color:var(--text-muted)">{{ 'DEACTIVATED.COL_DATE' | translate }}</th>
                 <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'DEACTIVATED.COL_DAYS' | translate }}</th>
                 <th class="px-5 py-3 text-right text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted)">{{ 'DEACTIVATED.COL_ACTIONS' | translate }}</th>
               </tr>
             </thead>
             <tbody>
-              @for (coach of coaches(); track coach._id) {
+              @for (row of rows(); track row.id) {
                 <tr class="border-b last:border-0 transition-colors hover:bg-[var(--bg-card-hover)]"
                     style="border-color:var(--border-subtle)">
 
-                  <!-- Coach info -->
+                  <!-- User info + role -->
                   <td class="px-5 py-3.5">
                     <div class="flex items-center gap-3">
                       <div class="w-9 h-9 rounded-full overflow-hidden flex-shrink-0"
-                           [class]="coach.profileImg ? '' : 'flex items-center justify-center text-white text-sm font-bold bg-danger-500'">
-                        @if (coach.profileImg) {
-                          <img [src]="coach.profileImg" [alt]="coach.name" class="w-full h-full object-cover" style="cursor:zoom-in"
-                               (click)="openAvatar(coach.profileImg, coach.name)" />
+                           [class]="row.profileImg ? '' : 'flex items-center justify-center text-white text-sm font-bold bg-danger-500'">
+                        @if (row.profileImg) {
+                          <img [src]="row.profileImg" [alt]="row.name" class="w-full h-full object-cover" style="cursor:zoom-in"
+                               (click)="openAvatar(row.profileImg, row.name)" />
                         } @else {
-                          {{ coach.name[0]?.toUpperCase() }}
+                          {{ row.initial }}
                         }
                       </div>
-                      <div>
-                        <p class="font-medium" style="color:var(--text-primary)">{{ coach.name }}</p>
-                        <p class="text-xs" style="color:var(--text-muted)">{{ coach.email }}</p>
+                      <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <p class="font-medium" style="color:var(--text-primary)">{{ row.name }}</p>
+                          <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold" [class]="row.roleBadgeClass">
+                            {{ row.roleLabelKey | translate }}
+                          </span>
+                        </div>
+                        <p class="text-xs truncate" style="color:var(--text-muted)">{{ row.email }}</p>
                       </div>
                     </div>
                   </td>
 
                   <!-- Deactivated date -->
                   <td class="px-5 py-3.5 hidden md:table-cell text-sm" style="color:var(--text-secondary)">
-                    {{ formatDate(coach.deactivatedAt) }}
+                    {{ row.deactivatedLabel }}
                   </td>
 
                   <!-- Days left badge -->
                   <td class="px-5 py-3.5">
-                    @if (daysLeft(coach.deactivatedAt) !== null) {
-                      <span class="px-2.5 py-1 rounded-full text-xs font-semibold"
-                            [class]="urgencyClass(coach.deactivatedAt)">
-                        {{ 'DEACTIVATED.DAYS_LEFT' | translate:{days: daysLeft(coach.deactivatedAt)} }}
+                    @if (row.daysLeft !== null) {
+                      <span class="px-2.5 py-1 rounded-full text-xs font-semibold" [class]="row.urgencyClass">
+                        {{ 'DEACTIVATED.DAYS_LEFT' | translate:{days: row.daysLeft} }}
                       </span>
                     } @else {
                       <span class="text-xs" style="color:var(--text-muted)">—</span>
@@ -100,15 +146,15 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
                   <!-- Actions -->
                   <td class="px-5 py-3.5">
                     <div class="flex items-center justify-end gap-2">
-                      <button class="btn btn-primary btn-sm" (click)="doRestore(coach)">
+                      <button class="btn btn-primary btn-sm" (click)="doRestore(row)">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.2"/>
                         </svg>
                         {{ 'DEACTIVATED.RESTORE' | translate }}
                       </button>
                       <button class="btn btn-ghost btn-icon btn-sm text-danger-500"
-                              title="Delete permanently"
-                              (click)="confirmPermanentDelete(coach)">
+                              [title]="'COMMON.DELETE' | translate"
+                              (click)="confirmPermanentDelete(row)">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <polyline points="3 6 5 6 21 6"/>
                           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
@@ -138,26 +184,51 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
     <app-image-lightbox [src]="lightboxSrc()" [alt]="lightboxAlt()" (closed)="closeLightbox()" />
   `
 })
-export class DeactivatedCoachesComponent implements OnInit {
+export class DeactivatedUsersComponent implements OnInit {
   private readonly userService = inject(UserService);
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
+  private readonly route = inject(ActivatedRoute);
 
-  readonly coaches = signal<User[]>([]);
+  readonly users = signal<User[]>([]);
   readonly loading = signal(true);
-  readonly deleteTarget = signal<User | null>(null);
+  readonly deleteTarget = signal<DeactivatedRow | null>(null);
   readonly lightboxSrc = signal<string | null>(null);
   readonly lightboxAlt = signal('');
+  readonly role = signal<DeactivatableRole>('coach');
+
+  readonly rows = computed<DeactivatedRow[]>(() =>
+    this.users().map(u => ({
+      id: u._id,
+      name: u.name,
+      email: u.email,
+      profileImg: u.profileImg,
+      initial: u.name[0]?.toUpperCase() ?? '',
+      roleLabelKey: ROLE_LABEL_KEY[u.role] ?? '',
+      roleBadgeClass: ROLE_BADGE_CLASS[u.role] ?? 'bg-green-100 text-green-700',
+      deactivatedLabel: this.formatDate(u.deactivatedAt),
+      daysLeft: this.daysLeft(u.deactivatedAt),
+      urgencyClass: this.urgencyClass(u.deactivatedAt),
+    })),
+  );
 
   ngOnInit(): void {
+    const param = this.route.snapshot.queryParamMap.get('role');
+    if (param === 'observer' || param === 'proScout' || param === 'coach') {
+      this.role.set(param);
+    }
     this.load();
+  }
+
+  backRoute(): string {
+    return BACK_ROUTE[this.role()];
   }
 
   load(): void {
     this.loading.set(true);
-    this.userService.getDeactivated().subscribe({
+    this.userService.getDeactivated(this.role()).subscribe({
       next: res => {
-        this.coaches.set(res.data?.documents ?? []);
+        this.users.set(res.data?.documents ?? []);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
@@ -192,23 +263,23 @@ export class DeactivatedCoachesComponent implements OnInit {
     this.lightboxSrc.set(null);
   }
 
-  doRestore(coach: User): void {
-    this.userService.restore(coach._id).subscribe(() => {
+  doRestore(row: DeactivatedRow): void {
+    this.userService.restore(row.id).subscribe(() => {
       this.toast.success(this.translate.instant('DEACTIVATED.RESTORE'));
-      this.coaches.update(list => list.filter(c => c._id !== coach._id));
+      this.users.update(list => list.filter(u => u._id !== row.id));
     });
   }
 
-  confirmPermanentDelete(coach: User): void {
-    this.deleteTarget.set(coach);
+  confirmPermanentDelete(row: DeactivatedRow): void {
+    this.deleteTarget.set(row);
   }
 
   doPermanentDelete(): void {
-    const coach = this.deleteTarget();
-    if (!coach) return;
-    this.userService.forceDelete(coach._id).subscribe(() => {
+    const row = this.deleteTarget();
+    if (!row) return;
+    this.userService.forceDelete(row.id).subscribe(() => {
       this.toast.success(this.translate.instant('COMMON.DELETE'));
-      this.coaches.update(list => list.filter(c => c._id !== coach._id));
+      this.users.update(list => list.filter(u => u._id !== row.id));
       this.deleteTarget.set(null);
     });
   }

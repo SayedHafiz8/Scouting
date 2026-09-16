@@ -99,11 +99,15 @@ interface MediaRow {
                 {{ ag.birthYear }}
               </button>
             }
-            <button type="button" (click)="selectLeague('professional')"
-                    class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                    [class]="selectedLeague() === 'professional' ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
-              {{ 'SEASON_MATCHES.LEAGUE_PROFESSIONAL' | translate }}
-            </button>
+            <!-- الكوتش مالوش دعوة بدوري المحترفين أصلاً (ماتشاته كلها فئات سنية)،
+                 فالتاب مخفي عنه بدل ما يفتح جدول مالهوش علاقة بشغله. -->
+            @if (!auth.isCoach()) {
+              <button type="button" (click)="selectLeague('professional')"
+                      class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                      [class]="selectedLeague() === 'professional' ? 'bg-primary-500 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'">
+                {{ 'SEASON_MATCHES.LEAGUE_PROFESSIONAL' | translate }}
+              </button>
+            }
           </div>
         }
         @if (!auth.isAdmin()) {

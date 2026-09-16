@@ -99,6 +99,14 @@
  *   get:
  *     summary: List deactivated (soft-deleted) users (admin only)
  *     tags: [Users]
+ *     parameters:
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *           enum: [coach, observer, proScout]
+ *           default: coach
+ *         description: Which role to list. Defaults to coach; any other value is rejected with 400.
  *     responses:
  *       200:
  *         description: List of deactivated users

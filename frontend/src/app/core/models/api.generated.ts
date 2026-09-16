@@ -108,7 +108,10 @@ export interface paths {
         /** List deactivated (soft-deleted) users (admin only) */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Which role to list. Defaults to coach; any other value is rejected with 400. */
+                    role?: "coach" | "observer" | "proScout";
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -4028,15 +4031,11 @@ export interface components {
              */
             isProfessional: boolean;
             /**
-             * Format: date-time
-             * @description End of the player's contract with their club — stored as UTC midnight on the first day of the contract's final month (client sends YYYY-MM-01 from a month/year picker). null when there is no contract or the player is a free agent. Remaining time (years/months) is a client-side display concern.
+             * @description How the player is registered with their club: 'contract' (signed contract) or 'form' (registration form only). null when it has not been recorded yet. Replaces the former contractEndDate/isFreeAgent pair; players saved before the change have this derived from those legacy fields on read.
+             * @default null
+             * @enum {string|null}
              */
-            contractEndDate?: string | null;
-            /**
-             * @description The player currently has no club contract. Mutually exclusive with contractEndDate (the server nulls the date when this is true).
-             * @default false
-             */
-            isFreeAgent: boolean;
+            registrationType: "contract" | "form" | null;
             coach?: string | components["schemas"]["User"];
             observers?: (string | components["schemas"]["User"])[];
             /** @description specs/010-professional-lens-creator — the user who created (and, for professional players, owns) this player. Populated only for admins — { _id, name } on GET /players, { _id, name, role } on GET /players/:id; a bare id (or absent) for every other role. Admins can list one proScout's players with GET /players?proScout=<id> (matched against createdBy). */

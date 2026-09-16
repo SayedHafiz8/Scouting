@@ -115,8 +115,7 @@ const options = {
             },
             ageGroup:  { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/AgeGroup" }] },
             isProfessional: { type: "boolean", default: false, description: "Stage 4b — an adult professional-league player. Server-set only (locked from the client); professional players carry no ageGroup and are owned by their creating proScout (createdBy), not a coach." },
-            contractEndDate: { type: "string", format: "date-time", nullable: true, description: "End of the player's contract with their club — stored as UTC midnight on the first day of the contract's final month (client sends YYYY-MM-01 from a month/year picker). null when there is no contract or the player is a free agent. Remaining time (years/months) is a client-side display concern." },
-            isFreeAgent: { type: "boolean", default: false, description: "The player currently has no club contract. Mutually exclusive with contractEndDate (the server nulls the date when this is true)." },
+            registrationType: { type: "string", enum: ["contract", "form"], nullable: true, default: null, description: "How the player is registered with their club: 'contract' (signed contract) or 'form' (registration form only). null when it has not been recorded yet. Replaces the former contractEndDate/isFreeAgent pair; players saved before the change have this derived from those legacy fields on read." },
             coach:     { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/User" }] },
             observers: {
               type: "array",

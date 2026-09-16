@@ -14,7 +14,7 @@ import { SocketService } from '../../../core/services/socket.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { Player, PlayerStatus, PLAYER_POSITIONS } from '../../../core/models/player.model';
 import { PlayerContextService } from '../../../core/services/player-context.service';
-import { contractLabel } from '../contract.util';
+import { registrationLabel } from '../registration.util';
 import { BreadcrumbContextService } from '../../../core/services/breadcrumb-context.service';
 import { StatusBadgeComponent } from '../../../shared/components/status-badge/status-badge.component';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
@@ -1102,9 +1102,9 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
       { label: this.translate.instant('PLAYERS.DETAIL.ADDRESS'), value: p.address },
       { label: this.translate.instant('PLAYERS.DETAIL.NOTES'), value: p.notes || '—' },
     ];
-    const contract = contractLabel(p, this.translate);
-    if (contract) {
-      fields.push({ label: this.translate.instant('PLAYERS.FORM.CONTRACT'), value: contract });
+    const registration = registrationLabel(p, this.translate);
+    if (registration) {
+      fields.push({ label: this.translate.instant('PLAYERS.REGISTRATION.LABEL'), value: registration });
     }
     if (this.auth.isAdmin()) {
       // الكشاف (مالك اللاعب) باسم واحد للكل، والمتابعين في صف منفصل. "بدون كشاف"
