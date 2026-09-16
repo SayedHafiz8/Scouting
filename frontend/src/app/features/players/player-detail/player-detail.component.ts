@@ -1119,6 +1119,13 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
         fields.push({ label: this.translate.instant('PLAYERS.DETAIL.OBSERVED_BY'), value: followers });
       }
     }
+    // تاريخ إضافة اللاعب للنظام — آخر صف، بنفس تنسيق التواريخ في باقي الشاشات.
+    fields.push({
+      label: this.translate.instant('PLAYERS.DETAIL.CREATED_AT'),
+      value: p.createdAt
+        ? new Date(p.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+        : '—',
+    });
     return fields;
   }
 }
