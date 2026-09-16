@@ -58,12 +58,20 @@ function currentSeason(): string {
             <h2 class="text-base font-bold" style="color:var(--text-primary)">{{ 'PROFESSIONAL_LEAGUE.PROSCOUTS_SECTION' | translate }}</h2>
             <p class="text-xs mt-0.5" style="color:var(--text-muted)">{{ 'PROSCOUTS.SUBTITLE' | translate }}</p>
           </div>
-          <a routerLink="/professional-league/pro-scouts/new" [queryParams]="{ role: 'proScout' }" class="btn btn-secondary btn-sm">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            {{ 'PROSCOUTS.ADD' | translate }}
-          </a>
+          <div class="flex items-center gap-2">
+            <a routerLink="/users/deactivated" [queryParams]="{ role: 'proScout' }" class="btn btn-ghost btn-sm">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+              </svg>
+              {{ 'DEACTIVATED.TAB' | translate }}
+            </a>
+            <a routerLink="/professional-league/pro-scouts/new" [queryParams]="{ role: 'proScout' }" class="btn btn-secondary btn-sm">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              {{ 'PROSCOUTS.ADD' | translate }}
+            </a>
+          </div>
         </div>
 
         @if (proScoutsLoading()) {

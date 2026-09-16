@@ -148,15 +148,24 @@ const playerSchema = new mongoose.Schema({
     // انتهاء العقد (العميل بيبعت "YYYY-MM-01" من دروبداون شهر/سنة). العقد بيفضل
     // ساري لحد آخر الشهر ده. null = مفيش عقد مسجّل، أو اللاعب حر (isFreeAgent).
     // الحساب المتبقّي (سنين/شهور) عرض بس، بيتعمل في الفرونت.
+    // ⚠️ legacy — الحقلين دول اتبدلوا بـregistrationType تحت. باقيين في المخطط
+    // عشان المستندات القديمة اللي لسه مخزّنة فيهم قيم يتقرا منها النوع الجديد في
+    // الـtoJSON transform (تاريخ عقد = بعقد، لاعب حر = استمارة). مش بيتبعتوا
+    // للعميل ولا بيتقبلوا منه — التحقق شايلهم من payload الإنشاء والتعديل.
     contractEndDate: {
         type: Date,
         default: null,
     },
-    // اللاعب حاليًا بلا عقد (free agent). متبادل الاستبعاد مع contractEndDate —
-    // لو true بنصفّر التاريخ في الـpre hooks تحت.
     isFreeAgent: {
         type: Boolean,
         default: false,
+    },
+    // تسجيل اللاعب مع ناديه: "contract" = بعقد، "form" = استمارة بس ولا غير.
+    // null = لسه مش محدد (الاختيار اختياري وقت التسجيل).
+    registrationType: {
+        type: String,
+        enum: ["contract", "form", null],
+        default: null,
     },
     // §11 — كلمات البحث المطبّعة (lowercase) المشتقة من name + city.
     //
@@ -220,11 +229,6 @@ export const buildSearchTokens = (...values) => {
 
 
 
-
-playerSchema.pre('save', function () {
-    // اللاعب الحر مالوش عقد — نضمن الاتساق بدل ما نسيب الاتنين متبعوتين.
-    if (this.isFreeAgent) this.contractEndDate = null;
-});
 
 playerSchema.pre('save', async function () {
     const birthYear = getBirthYear(this.dateOfBirth);
@@ -364,12 +368,6 @@ playerSchema.pre('findOneAndUpdate', async function () {
         else update[field] = value;
     };
 
-    // اللاعب الحر مالوش عقد — نفس المنطق في pre('save'). لو التعديل بيحوّله لحر،
-    // نصفّر contractEndDate حتى لو العميل مابعتش القيمة دي.
-    if (incoming.isFreeAgent === true) {
-        setDerived('contractEndDate', null);
-    }
-
     if (incoming.dateOfBirth) {
 
         const birthYear = getBirthYear(incoming.dateOfBirth);
@@ -430,6 +428,14 @@ playerSchema.pre('findOneAndUpdate', async function () {
 playerSchema.set("toJSON", {
     transform: (doc, ret) => {
         if (ret.profileImg) ret.profileImg = resolveImageUrl(ret.profileImg);
+        // اللاعبين اللي اتسجلوا قبل تحويل الحقل لـ"بعقد/استمارة" بيتشتق نوعهم من
+        // الحقول القديمة بدل ما يتطلب تعديل يدوي لكل لاعب: تاريخ عقد = بعقد،
+        // لاعب حر = استمارة، وأي حاجة غير كده بتفضل null لحد ما حد يحددها.
+        if (!ret.registrationType) {
+            ret.registrationType = ret.contractEndDate ? "contract" : (ret.isFreeAgent ? "form" : null);
+        }
+        delete ret.contractEndDate;
+        delete ret.isFreeAgent;
         return ret;
     },
 });

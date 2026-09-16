@@ -44,11 +44,9 @@ export interface Player {
   // Stage 4b — adult professional-league player. Server-set; such players have no
   // ageGroup and no coach, and are owned by their creating proScout (createdBy).
   isProfessional?: boolean;
-  // End of the player's club contract — UTC midnight on the 1st of the contract's
-  // final month. null when there's no contract or the player is a free agent.
-  contractEndDate?: string | null;
-  // The player currently has no club contract. Mutually exclusive with contractEndDate.
-  isFreeAgent?: boolean;
+  // How the player is registered with their club: a signed contract, or a
+  // registration form only. null when nobody has recorded it yet.
+  registrationType?: 'contract' | 'form' | null;
   // Omitted by the API for observers — they aren't allowed to see the player's coach
   coach?: User | string;
   observers?: (User | string)[];

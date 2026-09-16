@@ -8,7 +8,7 @@ import { TitleCasePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { environment } from '../../../../environments/environment';
-import { contractLabel } from '../contract.util';
+import { registrationLabel } from '../registration.util';
 import { PlayerService } from '../services/player.service';
 import { ScoutingReportService } from '../../scouting-reports/services/scouting-report.service';
 import { TeamService } from '../../teams/services/team.service';
@@ -468,8 +468,8 @@ const SEARCH_DEBOUNCE_MS = 300;
                         <span class="truncate">{{ 'PLAYERS.NO_COACH' | translate }}</span>
                       </p>
                     }
-                    <!-- Club contract — precomputed label ("1y 2m left" / "Free agent" / "Contract expired") -->
-                    @if (contractLabels()[player._id]; as contract) {
+                    <!-- تسجيل اللاعب — نص مجهّز مسبقاً ("بعقد" / "استمارة") -->
+                    @if (registrationLabels()[player._id]; as contract) {
                       <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
                         <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
@@ -686,9 +686,9 @@ export class PlayerListComponent implements OnInit {
   private readonly translate = inject(TranslateService);
 
   readonly players = signal<Player[]>([]);
-  // Localized "X left on contract" / "Free agent" / "Contract expired" per
-  // player, precomputed on load (never a function call inside the card @for).
-  readonly contractLabels = signal<Record<string, string>>({});
+  // "بعقد" / "استمارة" مترجمة لكل لاعب، بتتحسب مرة عند التحميل (مفيش استدعاء
+  // دالة جوه الـ@for بتاع الكروت).
+  readonly registrationLabels = signal<Record<string, string>>({});
   readonly loading = signal(true);
   readonly total = signal(0);
   readonly lightboxSrc = signal<string | null>(null);
@@ -1001,9 +1001,9 @@ export class PlayerListComponent implements OnInit {
         tap(res => {
           const docs = res.data?.documents ?? [];
           this.players.set(docs);
-          this.contractLabels.set(
+          this.registrationLabels.set(
             Object.fromEntries(
-              docs.map(p => [p._id, contractLabel(p, this.translate)]).filter(([, v]) => v),
+              docs.map(p => [p._id, registrationLabel(p, this.translate)]).filter(([, v]) => v),
             ) as Record<string, string>,
           );
           this.total.set(res.count ?? 0);

@@ -269,16 +269,15 @@
             "default": false,
             "description": "Stage 4b — an adult professional-league player. Server-set only (locked from the client); professional players carry no ageGroup and are owned by their creating proScout (createdBy), not a coach."
           },
-          "contractEndDate": {
+          "registrationType": {
             "type": "string",
-            "format": "date-time",
+            "enum": [
+              "contract",
+              "form"
+            ],
             "nullable": true,
-            "description": "End of the player's contract with their club — stored as UTC midnight on the first day of the contract's final month (client sends YYYY-MM-01 from a month/year picker). null when there is no contract or the player is a free agent. Remaining time (years/months) is a client-side display concern."
-          },
-          "isFreeAgent": {
-            "type": "boolean",
-            "default": false,
-            "description": "The player currently has no club contract. Mutually exclusive with contractEndDate (the server nulls the date when this is true)."
+            "default": null,
+            "description": "How the player is registered with their club: 'contract' (signed contract) or 'form' (registration form only). null when it has not been recorded yet. Replaces the former contractEndDate/isFreeAgent pair; players saved before the change have this derived from those legacy fields on read."
           },
           "coach": {
             "oneOf": [
@@ -1237,6 +1236,22 @@
         "summary": "List deactivated (soft-deleted) users (admin only)",
         "tags": [
           "Users"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "role",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "coach",
+                "observer",
+                "proScout"
+              ],
+              "default": "coach"
+            },
+            "description": "Which role to list. Defaults to coach; any other value is rejected with 400."
+          }
         ],
         "responses": {
           "200": {

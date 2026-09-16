@@ -169,22 +169,14 @@ export const createValidate = [
     }),
     check('position').notEmpty().withMessage("Enter the position of the player"),
 
-    // تاريخ انتهاء العقد + اللاعب الحر. الاتنين اختياريين ومتبادلي الاستبعاد:
-    // العميل بيبعت "YYYY-MM-01" (من دروبداون شهر/سنة) أو isFreeAgent=true، مش
-    // الاتنين. الموديل بيصفّر التاريخ لو حر برضه (حزام وحمّالة).
-    check('contractEndDate')
+    // تسجيل اللاعب مع ناديه: بعقد أو استمارة بس. اختياري — الكشاف ممكن ميعرفهاش
+    // وقت التسجيل ويحددها بعدين. بدّل contractEndDate/isFreeAgent القدام، واللي
+    // بقوا legacy في المخطط ومش بيتقبلوا من العميل خالص.
+    check('registrationType')
         .optional({ nullable: true })
-        .isISO8601().withMessage('Invalid contract end date'),
-    check('isFreeAgent')
-        .optional()
-        .isBoolean().withMessage('isFreeAgent must be a boolean')
-        .toBoolean(),
-    body().custom((_, { req }) => {
-        if (req.body.isFreeAgent === true && req.body.contractEndDate) {
-            throw new Error('A free agent cannot also have a contract end date');
-        }
-        return true;
-    }),
+        .isIn(['contract', 'form']).withMessage('registrationType must be either contract or form'),
+    lockField("contractEndDate"),
+    lockField("isFreeAgent"),
 
     // الملكية والإشراف والفئة العمرية قرارات سيرفر/أدمن — مش بتتبعت من العميل:
     // coach بيتحط من التوكن (setUserIdToBody/req.user._id)، ageGroup بيتشتق من
@@ -254,19 +246,11 @@ export const updateValidate = [
         }
         return true;
     }),
-    check('contractEndDate')
+    check('registrationType')
         .optional({ nullable: true })
-        .isISO8601().withMessage('Invalid contract end date'),
-    check('isFreeAgent')
-        .optional()
-        .isBoolean().withMessage('isFreeAgent must be a boolean')
-        .toBoolean(),
-    body().custom((_, { req }) => {
-        if (req.body.isFreeAgent === true && req.body.contractEndDate) {
-            throw new Error('A free agent cannot also have a contract end date');
-        }
-        return true;
-    }),
+        .isIn(['contract', 'form']).withMessage('registrationType must be either contract or form'),
+    lockField("contractEndDate"),
+    lockField("isFreeAgent"),
     // الملكية والإشراف والفئة العمرية قرارات سيرفر/أدمن — مش بتتعدّل من هنا:
     // الأدمن بيغيّرهم من /players/:id/status و/players/:id/observers بس (B4/mass-assignment fix).
     lockField("status"),

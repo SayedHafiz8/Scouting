@@ -269,15 +269,24 @@ export const restore = asyncHandler(async (req, res, next) => {
 // @route   GET api/v1/users/deactivated
 // @access  admin
 export const getDeactivated = asyncHandler(async (req, res, next) => {
-    const coaches = await User.find({ active: false, role: ROLES.COACH })
+    // ?role= — الكوتش هو الافتراضي عشان الشاشة القديمة تفضل شغالة زي ما هي من غير
+    // البارام. وايت ليست صريحة: أي قيمة تانية بترجع 400 بدل ما تتحط في الاستعلام
+    // كما جت من العميل (الأدمن هو الوحيد اللي بيوصل هنا أصلاً، وده دفاع تاني).
+    const ALLOWED_ROLES = [ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT];
+    const role = req.query.role ?? ROLES.COACH;
+    if (!ALLOWED_ROLES.includes(role)) {
+        return next(new AppError(`role must be one of: ${ALLOWED_ROLES.join(", ")}`, 400));
+    }
+
+    const users = await User.find({ active: false, role })
         .setOptions({ bypassFilter: true })
-        .select("name email phoneNumber profileImg deactivatedAt")
+        .select("name email phoneNumber profileImg role deactivatedAt")
         .sort({ deactivatedAt: 1 });
 
     res.status(200).json({
         status: "success",
-        count: coaches.length,
-        data: { documents: coaches },
+        count: users.length,
+        data: { documents: users },
     });
 });
 

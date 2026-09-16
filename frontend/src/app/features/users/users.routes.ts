@@ -6,8 +6,9 @@ export const userRoutes: Routes = [
     loadComponent: () => import('./user-list/user-list.component').then(m => m.UserListComponent),
   },
   {
+    // ?role=coach|observer|proScout — نفس الصفحة بتخدم التلاتة
     path: 'deactivated',
-    loadComponent: () => import('./deactivated-coaches/deactivated-coaches.component').then(m => m.DeactivatedCoachesComponent),
+    loadComponent: () => import('./deactivated-users/deactivated-users.component').then(m => m.DeactivatedUsersComponent),
   },
   {
     path: 'new',

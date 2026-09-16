@@ -43,8 +43,12 @@ export class UserService {
     return this.http.patch<void>(`${this.base}/${id}/changePassword`, { password });
   }
 
-  getDeactivated() {
-    return this.http.get<{ status: string; count: number; data: { documents: User[] } }>(`${this.base}/deactivated`);
+  // role اختياري — السيرفر بيرجّع الكوتشيز لو مابعتوش
+  getDeactivated(role?: 'coach' | 'observer' | 'proScout') {
+    return this.http.get<{ status: string; count: number; data: { documents: User[] } }>(
+      `${this.base}/deactivated`,
+      { params: this.qb.build(role ? { role } : {}) },
+    );
   }
 
   uploadProfileImg(id: string, file: File) {
