@@ -173,10 +173,12 @@ describe('US1 — query params cannot widen the scope (FR-004)', () => {
     expect(res.body.count).toBe(2);
     const names = res.body.data.documents.map((d) => d.name);
     expect(names).not.toContain('A Premier');        // العزل: الـpremier برّه النطاق
-    expect(names).toEqual(['B Player', 'A Player']); // _id تصاعدي = ترتيب الإدخال
+    // الترتيب الافتراضي بقى -createdAt (الأحدث أولاً): 'A Player' اتدخل آخر واحد
+    // فبيظهر الأول، عكس ترتيب الإدخال القديم.
+    expect(names).toEqual(['A Player', 'B Player']);
 
     const ids = res.body.data.documents.map((d) => d._id);
-    expect(ids).toEqual([...ids].sort());
+    expect(ids).toEqual([...ids].sort().reverse());  // _id تنازلي = الأحدث أولاً
   });
 });
 
@@ -506,11 +508,19 @@ describe('US3 — PATCH /players/:id (FR-009, FR-013)', () => {
 // FR-010, FR-011, FR-011a, FR-012 + research R2, R3, R6
 // ═══════════════════════════════════════════════════════════════════════════
 describe('US4 — scouting reports (FR-010, FR-011a)', () => {
-  const createReportAs = (playerId, token) =>
-    request(app)
+  // طلب مالك 2026-09 — matchType: training اتلغى. المسار المكافئ (تقرير من غير
+  // مباراة في الجدول) بقى: الفئة اللي لعب معاها + اسم المنافس.
+  const createReportAs = async (playerId, token) => {
+    const p = await Player.findById(playerId).select('ageGroup');
+    return request(app)
       .post(`/api/v1/players/${playerId}/reports`)
       .set(...auth(token))
-      .send({ ...reportPayload(), matchType: 'training' });
+      .send({
+        ...reportPayload(),
+        playedWithAgeGroup: p.ageGroup.toString(),
+        awayTeamName: 'Opponent FC',
+      });
+  };
 
   it('creates a report on an in-scope player, authored by the proScout', async () => {
     const player = await inScopePlayer();

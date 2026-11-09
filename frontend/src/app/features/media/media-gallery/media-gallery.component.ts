@@ -1,4 +1,5 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, DestroyRef, OnInit, OnDestroy } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
@@ -276,6 +277,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly destroyRef = inject(DestroyRef);
   readonly auth = inject(AuthService);
 
   readonly media = signal<PlayerMedia[]>([]);
@@ -331,14 +333,19 @@ export class MediaGalleryComponent implements OnInit, OnDestroy {
   }
 
   private fetchMedia(onDone?: () => void): void {
-    this.mediaService.getAll(this.playerId, { sort: '-createdAt' }).subscribe({
-      next: res => {
-        this.media.set((res.data as any)?.documents ?? []);
-        onDone?.();
-        this.schedulePollIfNeeded();
-      },
-      error: () => onDone?.(),
-    });
+    // ⚠️ takeUntilDestroyed لازم هنا: من غيره لو فيه طلب طاير وقت الخروج، الرد
+    // بيوصل بعد التدمير وبينده schedulePollIfNeeded() اللي بيعمل مؤقّت **جديد**
+    // على كومبوننت متدمَّر — فالبوللينج كان بيفضل كل 5 ثواني لباقي عمر التبويبة.
+    this.mediaService.getAll(this.playerId, { sort: '-createdAt' })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: res => {
+          this.media.set((res.data as any)?.documents ?? []);
+          onDone?.();
+          this.schedulePollIfNeeded();
+        },
+        error: () => onDone?.(),
+      });
   }
 
   private schedulePollIfNeeded(): void {

@@ -45,8 +45,7 @@ export async function resolveVideoUploadGate(playerId, userRole, userId) {
         status: "completed",
         "result.homeScore": { $ne: null },
         "result.awayScore": { $ne: null },
-    })
-        .setOptions({ skipPopulate: true })
+    })
         .sort({ matchDate: -1 }); // الأحدث الأول — لو فيه ماتشين واقعين في النافذة بيترابط بالأحدث
 
     return match ? { mode: "gated", seasonMatch: match._id } : { mode: "freeform" };

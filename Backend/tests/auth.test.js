@@ -169,6 +169,48 @@ describe('POST /api/v1/auth/refreshToken', () => {
 
     expect(res.status).toBe(401);
   });
+
+  // التوكن مخزَّن مهشَّم: أي نسخة من قاعدة البيانات كانت بتدّي جلسات صالحة
+  // 7 أيام جاهزة للاستخدام فورًا.
+  it('stores the refresh token hashed, never raw', async () => {
+    const { cookie, user } = await createCoach();
+    const raw = cookie[0].split('refreshToken=')[1].split(';')[0];
+
+    const stored = await User.findById(user._id).select('+refreshToken');
+    expect(stored.refreshToken).not.toBe(raw);
+    expect(stored.refreshToken).toBe(crypto.createHash('sha256').update(raw).digest('hex'));
+  });
+
+  // ⚠️ كشف إعادة الاستخدام. التدوير كان شغال، لكن التوكن القديم كان بيرجّع 401
+  // وخلاص — فمهاجم سرق الكوكي وجدّد قبل الضحية كان بيفضل ماسك جلسة بتتدوّر
+  // 7 أيام والنظام ساكت. دلوقتي ظهور التوكن القديم = دليل على نسختين شغالين،
+  // فالعائلة كلها بتتلغي والاتنين بيتقفلوا برّه.
+  it('⚠️ reusing a rotated refresh token revokes the whole family', async () => {
+    const { cookie, user } = await createCoach();
+
+    // التدوير الأول ينجح
+    const first = await request(app)
+      .post('/api/v1/auth/refreshToken')
+      .set('Cookie', cookie);
+    expect(first.status).toBe(200);
+
+    const rotatedCookie = first.headers['set-cookie'].filter(c => c.startsWith('refreshToken='));
+
+    // إعادة استخدام التوكن القديم → 401
+    const replay = await request(app)
+      .post('/api/v1/auth/refreshToken')
+      .set('Cookie', cookie);
+    expect(replay.status).toBe(401);
+
+    // ...والتوكن المدوَّر (اللي المهاجم كان ماسكه) بقى ميت كمان
+    const afterRevoke = await request(app)
+      .post('/api/v1/auth/refreshToken')
+      .set('Cookie', rotatedCookie);
+    expect(afterRevoke.status).toBe(401);
+
+    const stored = await User.findById(user._id).select('+refreshToken');
+    expect(stored.refreshToken).toBeFalsy();
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -226,7 +268,7 @@ describe('POST /api/v1/auth/verifyResetCode', () => {
 
     const res = await request(app)
       .post('/api/v1/auth/verifyResetCode')
-      .send({ resetCode });
+      .send({ email: 'verify@test.com', resetCode });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('success');
@@ -246,7 +288,7 @@ describe('POST /api/v1/auth/verifyResetCode', () => {
 
     const res = await request(app)
       .post('/api/v1/auth/verifyResetCode')
-      .send({ resetCode: '111111' });
+      .send({ email: 'verify2@test.com', resetCode: '111111' });
 
     expect(res.status).toBe(400);
   });
@@ -254,7 +296,7 @@ describe('POST /api/v1/auth/verifyResetCode', () => {
   it('rejects a non-numeric reset code', async () => {
     const res = await request(app)
       .post('/api/v1/auth/verifyResetCode')
-      .send({ resetCode: 'abcdef' });
+      .send({ email: 'verify2@test.com', resetCode: 'abcdef' });
 
     expect(res.status).toBe(400);
   });
@@ -274,7 +316,58 @@ describe('POST /api/v1/auth/verifyResetCode', () => {
 
     const res = await request(app)
       .post('/api/v1/auth/verifyResetCode')
-      .send({ resetCode });
+      .send({ email: 'verify3@test.com', resetCode });
+
+    expect(res.status).toBe(400);
+  });
+
+  // email مطلوب: من غيره كان البحث عالمي والمهاجم يرشّ أي كود مفتوح.
+  it('rejects a verify attempt with no email', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/verifyResetCode')
+      .send({ resetCode: '123456' });
+
+    expect(res.status).toBe(400);
+  });
+
+  // ⚠️ العقد: الكود مش مربوط بحساب تاني — كود صالح لحساب مابيعديش على حساب تاني.
+  it('⚠️ a code valid for one account does not verify another account', async () => {
+    const resetCode = '246810';
+    const hashed = crypto.createHash('sha256').update(resetCode).digest('hex');
+    await User.create({
+      name: 'A', email: 'owner@test.com', password: TEST_PASSWORD, role: 'coach',
+      passwordResetCode: hashed, passwordResetExpires: Date.now() + 10 * 60 * 1000,
+    });
+    await User.create({
+      name: 'B', email: 'victim@test.com', password: TEST_PASSWORD, role: 'coach',
+    });
+
+    const res = await request(app)
+      .post('/api/v1/auth/verifyResetCode')
+      .send({ email: 'victim@test.com', resetCode });
+
+    expect(res.status).toBe(400);
+  });
+
+  // ⚠️ العقد: الرش على حساب واحد بيموت بعد 5 محاولات غلط — الكود بيتلغي خالص.
+  it('⚠️ voids the code after 5 wrong attempts on one account', async () => {
+    const resetCode = '135790';
+    const hashed = crypto.createHash('sha256').update(resetCode).digest('hex');
+    await User.create({
+      name: 'Coach', email: 'spray@test.com', password: TEST_PASSWORD, role: 'coach',
+      passwordResetCode: hashed, passwordResetExpires: Date.now() + 10 * 60 * 1000,
+    });
+
+    for (let i = 0; i < 5; i++) {
+      await request(app)
+        .post('/api/v1/auth/verifyResetCode')
+        .send({ email: 'spray@test.com', resetCode: '000000' });
+    }
+
+    // الكود الصح بقى ميّت كمان بعد ما العدّاد وصل الحد
+    const res = await request(app)
+      .post('/api/v1/auth/verifyResetCode')
+      .send({ email: 'spray@test.com', resetCode });
 
     expect(res.status).toBe(400);
   });
@@ -482,6 +575,29 @@ describe('PATCH /api/v1/auth/changeMyPassword', () => {
       .send({ currentPassword: TEST_PASSWORD, password: 'NewPass9999', confirmPassword: 'Different9999' });
 
     expect(res.status).toBe(400);
+  });
+
+  // ⚠️ الفورماتر الافتراضي في express-validator بيحط المدخل الخام في `value`،
+  // فرد الـ400 كان بيرجّع الباسورد الجديد نصًا صريحًا لما المستخدم يغلط في
+  // الباسورد الحالي — فبيروح لسجل شبكة المتصفح وأي أداة تتبّع أخطاء وأي بروكسي
+  // بيسجّل أجسام الردود. التست بيفحص الجسم كله كنص عشان يمسك أي حقل يرجّعه،
+  // مش بس `value`.
+  it('⚠️ never echoes the submitted password back in the error body', async () => {
+    const { token } = await createCoach();
+    const intendedNewPassword = 'SuperSecret12345';
+
+    const res = await request(app)
+      .patch('/api/v1/auth/changeMyPassword')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        currentPassword: 'TheWrongCurrentPassword1',
+        password: intendedNewPassword,
+        confirmPassword: intendedNewPassword,
+      });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).not.toContain(intendedNewPassword);
+    expect(JSON.stringify(res.body)).not.toContain('TheWrongCurrentPassword1');
   });
 });
 

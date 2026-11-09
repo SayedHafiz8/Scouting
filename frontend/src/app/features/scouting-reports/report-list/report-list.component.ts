@@ -1,4 +1,5 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, DestroyRef, ChangeDetectionStrategy, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -6,6 +7,7 @@ import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ScoutingReportService } from '../services/scouting-report.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { PlayerContextService } from '../../../core/services/player-context.service';
+import { translationTick } from '../../../core/services/translation-tick';
 import { ScoutingReport, ReportStatistics } from '../../../core/models/scouting-report.model';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
@@ -14,8 +16,61 @@ import { RadarChartComponent } from '../../../shared/components/radar-chart/rada
 
 type AuthorRole = 'coach' | 'observer' | 'proScout';
 
+/** صف جاهز للعرض — كل قيمة محسوبة مرة واحدة عند تغيّر البيانات، مش كل دورة تغيير */
+interface ReportRow {
+    id: string;
+    overallRating: number;
+    ratingStyle: string;
+    matchDate: string;
+    isTraining: boolean;
+    hasSides: boolean;
+    homeLabel: string;
+    awayLabel: string;
+    coachName: string;
+    showAuthor: boolean;
+    canEdit: boolean;
+    notes: string | undefined;
+}
+
+const SKILL_META: { key: keyof ReportStatistics; labelKey: string; color: string }[] = [
+    { key: 'turning', labelKey: 'REPORTS.FORM.TURNING', color: '#22c55e' },
+    { key: 'dribbling', labelKey: 'REPORTS.FORM.DRIBBLING', color: '#22c55e' },
+    { key: 'tackling', labelKey: 'REPORTS.FORM.TACKLING', color: '#22c55e' },
+    { key: 'twoFooted', labelKey: 'REPORTS.FORM.TWO_FOOTED', color: '#22c55e' },
+    { key: 'longPassing', labelKey: 'REPORTS.FORM.LONG_PASSING', color: '#22c55e' },
+    { key: 'shortPassing', labelKey: 'REPORTS.FORM.SHORT_PASSING', color: '#22c55e' },
+    { key: 'heading', labelKey: 'REPORTS.FORM.HEADING', color: '#22c55e' },
+    { key: 'shortSprints', labelKey: 'REPORTS.FORM.SHORT_SPRINTS', color: '#38bdf8' },
+    { key: 'longSprints', labelKey: 'REPORTS.FORM.LONG_SPRINTS', color: '#38bdf8' },
+    { key: 'agility', labelKey: 'REPORTS.FORM.AGILITY', color: '#38bdf8' },
+    { key: 'aerialDuels', labelKey: 'REPORTS.FORM.AERIAL_DUELS', color: '#38bdf8' },
+    { key: 'groundDuels', labelKey: 'REPORTS.FORM.GROUND_DUELS', color: '#38bdf8' },
+    { key: 'vision', labelKey: 'REPORTS.FORM.VISION', color: '#8b5cf6' },
+    { key: 'personality', labelKey: 'REPORTS.FORM.PERSONALITY', color: '#8b5cf6' },
+    { key: 'movement', labelKey: 'REPORTS.FORM.MOVEMENT', color: '#8b5cf6' },
+];
+
+const CATEGORY_FIELDS: Record<'technical' | 'physical' | 'mental', (keyof ReportStatistics)[]> = {
+    technical: ['turning', 'dribbling', 'tackling', 'twoFooted', 'longPassing', 'shortPassing', 'heading'],
+    physical: ['shortSprints', 'longSprints', 'agility', 'aerialDuels', 'groundDuels'],
+    mental: ['vision', 'personality', 'movement'],
+};
+
+const ratingColorOf = (rating: number | null | undefined): string =>
+    rating == null ? 'var(--text-muted)' : rating >= 8 ? '#22c55e' : rating >= 5 ? '#f59e0b' : '#f43f5e';
+
+const ratingStyleOf = (rating: number): string => {
+    const color = ratingColorOf(rating);
+    return `background:${color}20; color:${color}`;
+};
+
+/** فريق مسجل (ref) بياخد اسمه، والاسم الحر بيتقري من الحقل التاني في reportRows */
+const teamLabel = (team: ScoutingReport['homeTeam']): string =>
+    !team ? '' : typeof team === 'string' ? team : team.name;
+
 @Component({
     selector: 'app-report-list',
+    changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [RouterLink, DatePipe, FormsModule, TranslatePipe, SkeletonLoaderComponent, EmptyStateComponent, ConfirmDialogComponent, RadarChartComponent],
     styles: [`
       .overall-ring {
@@ -161,44 +216,46 @@ type AuthorRole = 'coach' | 'observer' | 'proScout';
           </div>
         } @else {
           <div class="space-y-3">
-            @for (report of filteredReports(); track report._id) {
+            <!-- ⚠️ كل حاجة معروضة هنا **محسوبة مسبقًا** في reportRows() — ممنوع
+                 نداء دالة جوه @for: بيتنفّذ لكل صف في كل دورة تغيير (CLAUDE.md) -->
+            @for (row of reportRows(); track row.id) {
               <div class="card p-4 hover:shadow-card-md transition-shadow">
                 <div class="flex items-start justify-between gap-3">
                   <div class="flex items-center gap-3">
                     <!-- Overall rating circle -->
                     <div class="w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0"
-                         [style]="ratingStyle(report.overallRating)">
-                      {{ report.overallRating }}
+                         [style]="row.ratingStyle">
+                      {{ row.overallRating }}
                     </div>
                     <div>
-                      @if (report.matchType === 'training') {
+                      @if (row.isTraining) {
                         <p class="font-semibold text-sm" style="color:var(--text-primary)">
                           {{ 'REPORTS.FORM.TRAINING' | translate }}
                         </p>
-                        <p class="text-xs mt-0.5" style="color:var(--text-muted)">{{ report.matchDate | date:'mediumDate' }}</p>
-                      } @else if (sideLabel(report, 'home') || sideLabel(report, 'away')) {
+                        <p class="text-xs mt-0.5" style="color:var(--text-muted)">{{ row.matchDate | date:'mediumDate' }}</p>
+                      } @else if (row.hasSides) {
                         <p class="font-semibold text-sm" style="color:var(--text-primary)">
-                          {{ sideLabel(report, 'home') }} <span style="color:var(--text-muted);font-weight:500">vs</span> {{ sideLabel(report, 'away') }}
+                          {{ row.homeLabel }} <span style="color:var(--text-muted);font-weight:500">vs</span> {{ row.awayLabel }}
                         </p>
-                        <p class="text-xs mt-0.5" style="color:var(--text-muted)">{{ report.matchDate | date:'mediumDate' }}</p>
+                        <p class="text-xs mt-0.5" style="color:var(--text-muted)">{{ row.matchDate | date:'mediumDate' }}</p>
                       } @else {
                         <p class="font-semibold text-sm" style="color:var(--text-primary)">
-                          {{ report.matchDate | date:'mediumDate' }}
+                          {{ row.matchDate | date:'mediumDate' }}
                         </p>
                       }
-                      @if (auth.isAdmin() && coachName(report)) {
+                      @if (row.showAuthor) {
                         <p class="text-xs mt-0.5 flex items-center gap-1" style="color:var(--text-muted)">
                           <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                           </svg>
-                          {{ coachName(report) }}
+                          {{ row.coachName }}
                         </p>
                       }
                     </div>
                   </div>
 
                   <div class="flex items-center gap-2">
-                    <a [routerLink]="[report._id]" class="btn btn-ghost btn-icon btn-sm" title="View">
+                    <a [routerLink]="[row.id]" class="btn btn-ghost btn-icon btn-sm" title="View">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                       </svg>
@@ -209,16 +266,16 @@ type AuthorRole = 'coach' | 'observer' | 'proScout';
                          بس لو هو كاتب التقرير ده فعلاً (isAuthoredByMe) — يطابق
                          denyAdminEditingOthersReport على السيرفر بالظبط، عشان
                          الزرار مايوعدش بحاجة السيرفر هيرفضها. -->
-                    @if (auth.isCoach() || auth.isObserver() || auth.isProScout() || (auth.isAdmin() && isAuthoredByMe(report))) {
-                      <a [routerLink]="[report._id]" class="btn btn-ghost btn-icon btn-sm" title="Edit">
+                    @if (row.canEdit) {
+                      <a [routerLink]="[row.id]" class="btn btn-ghost btn-icon btn-sm" title="Edit">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                         </svg>
                       </a>
                     }
-                    @if (auth.isAdmin()) {
-                      <button class="btn btn-ghost btn-icon btn-sm text-danger-500" (click)="deleteTarget.set(report)">
+                    @if (isAdmin()) {
+                      <button class="btn btn-ghost btn-icon btn-sm text-danger-500" (click)="deleteTarget.set({ _id: row.id })">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
                         </svg>
@@ -227,9 +284,9 @@ type AuthorRole = 'coach' | 'observer' | 'proScout';
                   </div>
                 </div>
 
-                @if (report.notes) {
+                @if (row.notes) {
                   <p class="text-xs mt-3 pt-3 border-t" style="border-color:var(--border-subtle); color:var(--text-secondary)">
-                    {{ report.notes }}
+                    {{ row.notes }}
                   </p>
                 }
               </div>
@@ -260,28 +317,28 @@ type AuthorRole = 'coach' | 'observer' | 'proScout';
               <div>
                 <div class="flex justify-between items-center mb-1">
                   <span class="text-[11px] font-semibold" style="color:#22c55e">{{ 'REPORTS.FORM.TECHNICAL' | translate }}</span>
-                  <span class="text-[11px] font-bold tabular-nums" style="color:#22c55e">{{ categoryAverage('technical') }}</span>
+                  <span class="text-[11px] font-bold tabular-nums" style="color:#22c55e">{{ categoryAverages().technical.text }}</span>
                 </div>
                 <div class="h-1 rounded-full" style="background:rgba(34,197,94,0.12)">
-                  <div class="cat-bar-fill" style="background:#22c55e" [style.width]="(categoryAverageNum('technical') * 10) + '%'"></div>
+                  <div class="cat-bar-fill" style="background:#22c55e" [style.width.%]="categoryAverages().technical.num * 10"></div>
                 </div>
               </div>
               <div>
                 <div class="flex justify-between items-center mb-1">
                   <span class="text-[11px] font-semibold" style="color:#38bdf8">{{ 'REPORTS.FORM.PHYSICAL' | translate }}</span>
-                  <span class="text-[11px] font-bold tabular-nums" style="color:#38bdf8">{{ categoryAverage('physical') }}</span>
+                  <span class="text-[11px] font-bold tabular-nums" style="color:#38bdf8">{{ categoryAverages().physical.text }}</span>
                 </div>
                 <div class="h-1 rounded-full" style="background:rgba(56,189,248,0.12)">
-                  <div class="cat-bar-fill" style="background:#38bdf8" [style.width]="(categoryAverageNum('physical') * 10) + '%'"></div>
+                  <div class="cat-bar-fill" style="background:#38bdf8" [style.width.%]="categoryAverages().physical.num * 10"></div>
                 </div>
               </div>
               <div>
                 <div class="flex justify-between items-center mb-1">
                   <span class="text-[11px] font-semibold" style="color:#8b5cf6">{{ 'REPORTS.FORM.MENTAL' | translate }}</span>
-                  <span class="text-[11px] font-bold tabular-nums" style="color:#8b5cf6">{{ categoryAverage('mental') }}</span>
+                  <span class="text-[11px] font-bold tabular-nums" style="color:#8b5cf6">{{ categoryAverages().mental.text }}</span>
                 </div>
                 <div class="h-1 rounded-full" style="background:rgba(139,92,246,0.12)">
-                  <div class="cat-bar-fill" style="background:#8b5cf6" [style.width]="(categoryAverageNum('mental') * 10) + '%'"></div>
+                  <div class="cat-bar-fill" style="background:#8b5cf6" [style.width.%]="categoryAverages().mental.num * 10"></div>
                 </div>
               </div>
             </div>
@@ -298,7 +355,7 @@ type AuthorRole = 'coach' | 'observer' | 'proScout';
               @for (skill of skillAverages(); track skill.key) {
                 <div class="flex items-center justify-between gap-1.5">
                   <span class="text-[11px] truncate" style="color:var(--text-secondary)">{{ skill.label }}</span>
-                  <span class="text-[11px] font-bold tabular-nums flex-shrink-0" [style.color]="skill.color">{{ skill.value.toFixed(1) }}</span>
+                  <span class="text-[11px] font-bold tabular-nums flex-shrink-0" [style.color]="skill.color">{{ skill.value }}</span>
                 </div>
               }
             </div>
@@ -327,11 +384,13 @@ export class ReportListComponent implements OnInit {
   private readonly reportService = inject(ScoutingReportService);
   private readonly translate = inject(TranslateService);
   private readonly playerContext = inject(PlayerContextService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly i18nTick = translationTick();
   readonly auth = inject(AuthService);
 
   readonly reports = signal<ScoutingReport[]>([]);
   readonly loading = signal(true);
-  readonly deleteTarget = signal<ScoutingReport | null>(null);
+  readonly deleteTarget = signal<{ _id: string } | null>(null);
 
   // متوسط تقارير اللاعب — التقييم الكلي + متوسط كل مهارة، بيظهر فوق الليستة.
   // بيتحط من PlayerDetailComponent (نفس الريكوست بالظبط)، مش من ريكوست منفصل هنا —
@@ -372,6 +431,78 @@ export class ReportListComponent implements OnInit {
     !!this.filterDateFrom() || !!this.filterDateTo() || this.filterSort() !== 'default'
   );
 
+  readonly isAdmin = computed(() => this.auth.isAdmin());
+
+  // صلاحية التعديل مش بتتغير من تقرير لتقرير إلا للأدمن (لازم يكون هو الكاتب)
+  private readonly canEditAny = computed(() =>
+    this.auth.isCoach() || this.auth.isObserver() || this.auth.isProScout()
+  );
+
+  readonly reportRows = computed<ReportRow[]>(() => {
+    const isAdmin = this.isAdmin();
+    const canEditAny = this.canEditAny();
+    const myId = this.auth.currentUser()?._id;
+    return this.filteredReports().map(r => {
+      const homeLabel = teamLabel(r.homeTeam) || r.homeTeamName || '';
+      const awayLabel = teamLabel(r.awayTeam) || r.awayTeamName || '';
+      const authorId = typeof r.coach === 'object' ? (r.coach as any)?._id : r.coach;
+      const coachName = typeof r.coach === 'object' ? (r.coach as any)?.name ?? '' : '';
+      return {
+        id: r._id,
+        overallRating: r.overallRating,
+        ratingStyle: ratingStyleOf(r.overallRating),
+        matchDate: r.matchDate,
+        isTraining: r.matchType === 'training',
+        hasSides: !!(homeLabel || awayLabel),
+        homeLabel,
+        awayLabel,
+        coachName,
+        showAuthor: isAdmin && !!coachName,
+        canEdit: canEditAny || (isAdmin && !!authorId && authorId === myId),
+        notes: r.notes,
+      };
+    });
+  });
+
+  // ── مشتقات كارد الإحصائيات ────────────────────────────────────────────────
+  readonly overallRingStyle = computed(() => {
+    const color = ratingColorOf(this.statistics()?.overallRating);
+    return `border-color:${color}; color:${color}`;
+  });
+
+  readonly radarData = computed<Record<string, number>>(() => {
+    const s = this.statistics();
+    if (!s) return {};
+    // ⚠️ مرجع جديد هنا = إعادة حساب هندسة الرادار كلها. الـcomputed بتخلي
+    // المرجع ثابت طول ما الإحصائيات ما اتغيرتش.
+    const out: Record<string, number> = {};
+    for (const sk of SKILL_META) out[sk.key] = (s[sk.key] as number) ?? 0;
+    return out;
+  });
+
+  readonly categoryAverages = computed<Record<'technical' | 'physical' | 'mental', { num: number; text: string }>>(() => {
+    const s = this.statistics();
+    const of = (cat: 'technical' | 'physical' | 'mental') => {
+      if (!s) return { num: 0, text: '—' };
+      const values = CATEGORY_FIELDS[cat].map(f => s[f] as number).filter(v => v != null);
+      const num = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+      return { num, text: num.toFixed(1) };
+    };
+    return { technical: of('technical'), physical: of('physical'), mental: of('mental') };
+  });
+
+  // متوسط كل مهارة من الـ 15 لوحدها (مش بس متوسط الفئة) — بتتحط تحت الـ radar chart
+  readonly skillAverages = computed(() => {
+    const s = this.statistics();
+    if (!s) return [];
+    this.i18nTick();   // الترجمة جوه computed محتاجة اعتماد صريح على تغيّر اللغة
+    return SKILL_META.map(sk => ({
+      key: sk.key as string,
+      label: this.translate.instant(sk.labelKey) as string,
+      value: ((s[sk.key] as number) ?? 0).toFixed(1),
+      color: sk.color,
+    }));
+  });
 
   private get playerId(): string {
     return this.route.snapshot.pathFromRoot
@@ -391,28 +522,38 @@ export class ReportListComponent implements OnInit {
 
   load(): void {
     this.loading.set(true);
+    this.fetch();
+  }
+
+  // ⚠️ كانت بتنده load() من جوه subscribe بتاعتها — استدعاء ذاتي جوه تدفّق شغّال،
+  // وكل مرة بتعمل loading.set(true) تاني فالسكيليتون بيرجع بعد ما البيانات وصلت.
+  // بقت دالة داخلية بتتندَه مرة واحدة على الأكتر كمان، وحارس autoPickRole
+  // بيتقفل **قبل** الطلب التاني فمفيش احتمال حلقة.
+  private fetch(): void {
     const params: Record<string, unknown> = { sort: '-matchDate' };
     if (this.auth.isAdmin() && this.authorRoleFilter()) params['authorRole'] = this.authorRoleFilter();
-    this.reportService.getAll(this.playerId, params).subscribe({
-      next: res => {
-        const counts = (res as any).authorCounts as Record<AuthorRole, number> | undefined;
-        if (counts) this.authorCounts.set(counts);
-        // أول تحميل بس: لو الافتراضي (كوتش) مفيهوش تقارير، افتح على أول رول عنده —
-        // لاعب البروسكاوت مثلاً مالوش تقارير كوتش خالص فكان بيبان فاضي.
-        if (counts && this.autoPickRole) {
-          this.autoPickRole = false;
-          const fallback = (['observer', 'proScout'] as const).find(r => counts[r] > 0);
-          if (this.authorRoleFilter() === 'coach' && counts.coach === 0 && fallback) {
-            this.authorRoleFilter.set(fallback);
-            this.load();
-            return;
+    this.reportService.getAll(this.playerId, params)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: res => {
+          const counts = (res as any).authorCounts as Record<AuthorRole, number> | undefined;
+          if (counts) this.authorCounts.set(counts);
+          // أول تحميل بس: لو الافتراضي (كوتش) مفيهوش تقارير، افتح على أول رول عنده —
+          // لاعب البروسكاوت مثلاً مالوش تقارير كوتش خالص فكان بيبان فاضي.
+          if (counts && this.autoPickRole) {
+            this.autoPickRole = false;
+            const fallback = (['observer', 'proScout'] as const).find(r => counts[r] > 0);
+            if (this.authorRoleFilter() === 'coach' && counts.coach === 0 && fallback) {
+              this.authorRoleFilter.set(fallback);
+              this.fetch();   // السكيليتون مستمر — مفيش رجوع للحالة الفاضية بينهم
+              return;
+            }
           }
-        }
-        this.reports.set((res.data as any)?.documents ?? []);
-        this.loading.set(false);
-      },
-      error: () => this.loading.set(false),
-    });
+          this.reports.set((res.data as any)?.documents ?? []);
+          this.loading.set(false);
+        },
+        error: () => this.loading.set(false),
+      });
   }
 
   // الضغط على أيقونة يفلتر فعليًا على الريبورتس الخاصة بيها بس؛ الضغط عليها تانى يرجع لعرض الكل
@@ -436,108 +577,12 @@ export class ReportListComponent implements OnInit {
   doDelete(): void {
     const r = this.deleteTarget();
     if (!r) return;
-    this.reportService.delete(this.playerId, r._id).subscribe(() => {
-      this.deleteTarget.set(null);
-      this.load();
-    });
-  }
-
-  coachName(report: ScoutingReport): string {
-    if (!report.coach) return '';
-    return typeof report.coach === 'object' ? (report.coach as any).name ?? '' : '';
-  }
-
-  // admin-assign-players-reports-media — denyAdminEditingOthersReport rejects
-  // an admin PATCHing a report it didn't author (checkReportOwnership's admin
-  // short-circuit means it can still READ any report — this only gates Edit).
-  isAuthoredByMe(report: ScoutingReport): boolean {
-    const authorId = typeof report.coach === 'object' ? (report.coach as any)?._id : report.coach;
-    return !!authorId && authorId === this.auth.currentUser()?._id;
-  }
-
-  teamName(team: ScoutingReport['homeTeam']): string {
-    if (!team) return '';
-    return typeof team === 'string' ? team : team.name;
-  }
-
-  // فريق مسجل (ref) أو اسم حر (homeTeamName/awayTeamName) — أيهما موجود
-  sideLabel(report: ScoutingReport, side: 'home' | 'away'): string {
-    const team = side === 'home' ? report.homeTeam : report.awayTeam;
-    const name = side === 'home' ? report.homeTeamName : report.awayTeamName;
-    return this.teamName(team) || name || '';
-  }
-
-  ratingStyle(rating: number): string {
-    const color = rating >= 8 ? '#22c55e' : rating >= 5 ? '#f59e0b' : '#f43f5e';
-    return `background:${color}20; color:${color}`;
-  }
-
-  private ratingColor(rating: number | null | undefined): string {
-    if (rating == null) return 'var(--text-muted)';
-    return rating >= 8 ? '#22c55e' : rating >= 5 ? '#f59e0b' : '#f43f5e';
-  }
-
-  overallRingStyle(): string {
-    const color = this.ratingColor(this.statistics()?.overallRating);
-    return `border-color:${color}; color:${color}`;
-  }
-
-  radarData(): Record<string, number> {
-    const s = this.statistics();
-    if (!s) return {};
-    return {
-      turning: s.turning ?? 0, dribbling: s.dribbling ?? 0, tackling: s.tackling ?? 0, twoFooted: s.twoFooted ?? 0,
-      longPassing: s.longPassing ?? 0, shortPassing: s.shortPassing ?? 0, heading: s.heading ?? 0,
-      shortSprints: s.shortSprints ?? 0, longSprints: s.longSprints ?? 0, agility: s.agility ?? 0, aerialDuels: s.aerialDuels ?? 0, groundDuels: s.groundDuels ?? 0,
-      vision: s.vision ?? 0, personality: s.personality ?? 0, movement: s.movement ?? 0,
-    };
-  }
-
-  private categoryFields(category: 'technical' | 'physical' | 'mental'): (keyof ReportStatistics)[] {
-    if (category === 'technical') return ['turning', 'dribbling', 'tackling', 'twoFooted', 'longPassing', 'shortPassing', 'heading'];
-    if (category === 'physical') return ['shortSprints', 'longSprints', 'agility', 'aerialDuels', 'groundDuels'];
-    return ['vision', 'personality', 'movement'];
-  }
-
-  categoryAverageNum(category: 'technical' | 'physical' | 'mental'): number {
-    const s = this.statistics();
-    if (!s) return 0;
-    const values = this.categoryFields(category).map(f => s[f] as number).filter(v => v != null);
-    if (!values.length) return 0;
-    return values.reduce((a, b) => a + b, 0) / values.length;
-  }
-
-  categoryAverage(category: 'technical' | 'physical' | 'mental'): string {
-    return this.statistics() ? this.categoryAverageNum(category).toFixed(1) : '—';
-  }
-
-  // متوسط كل مهارة من الـ 15 لوحدها (مش بس متوسط الفئة) — بتتحط تحت الـ radar chart
-  skillAverages(): { key: string; label: string; value: number; color: string }[] {
-    const s = this.statistics();
-    if (!s) return [];
-    const skills: { key: keyof ReportStatistics; labelKey: string; color: string }[] = [
-      { key: 'turning', labelKey: 'REPORTS.FORM.TURNING', color: '#22c55e' },
-      { key: 'dribbling', labelKey: 'REPORTS.FORM.DRIBBLING', color: '#22c55e' },
-      { key: 'tackling', labelKey: 'REPORTS.FORM.TACKLING', color: '#22c55e' },
-      { key: 'twoFooted', labelKey: 'REPORTS.FORM.TWO_FOOTED', color: '#22c55e' },
-      { key: 'longPassing', labelKey: 'REPORTS.FORM.LONG_PASSING', color: '#22c55e' },
-      { key: 'shortPassing', labelKey: 'REPORTS.FORM.SHORT_PASSING', color: '#22c55e' },
-      { key: 'heading', labelKey: 'REPORTS.FORM.HEADING', color: '#22c55e' },
-      { key: 'shortSprints', labelKey: 'REPORTS.FORM.SHORT_SPRINTS', color: '#38bdf8' },
-      { key: 'longSprints', labelKey: 'REPORTS.FORM.LONG_SPRINTS', color: '#38bdf8' },
-      { key: 'agility', labelKey: 'REPORTS.FORM.AGILITY', color: '#38bdf8' },
-      { key: 'aerialDuels', labelKey: 'REPORTS.FORM.AERIAL_DUELS', color: '#38bdf8' },
-      { key: 'groundDuels', labelKey: 'REPORTS.FORM.GROUND_DUELS', color: '#38bdf8' },
-      { key: 'vision', labelKey: 'REPORTS.FORM.VISION', color: '#8b5cf6' },
-      { key: 'personality', labelKey: 'REPORTS.FORM.PERSONALITY', color: '#8b5cf6' },
-      { key: 'movement', labelKey: 'REPORTS.FORM.MOVEMENT', color: '#8b5cf6' },
-    ];
-    return skills.map(sk => ({
-      key: sk.key,
-      label: this.translate.instant(sk.labelKey),
-      value: (s[sk.key] as number) ?? 0,
-      color: sk.color,
-    }));
+    this.reportService.delete(this.playerId, r._id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        this.deleteTarget.set(null);
+        this.load();
+      });
   }
 
 }

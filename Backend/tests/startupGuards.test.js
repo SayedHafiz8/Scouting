@@ -6,11 +6,34 @@
 // (5 حذف + 7 إنشاء في تانية، بلا --apply)، وبيجدول كرونين بيمسحوا داتا نهائياً.
 //
 // التستات دي بتقفل القرار نفسه — مين مسموح يوصل لأنهي قاعدة — مش شكل الرسالة.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import { assertDbTarget } from "../config/database.js";
 
 const OVERRIDE = "i-understand-this-writes-to-production";
+
+// ⚠️ الحارس ده بياخد قيمه الافتراضية من process.env، والتستات كانت بتمرر
+// `dbTarget: undefined` عشان تحاكي "الإعلان الغايب" — لكن التمرير بـundefined
+// بيفعّل الافتراضي بالظبط، فالتست كان بيقرا config.env بتاع المطوّر بدل ما
+// يحاكي الحالة. النتيجة: خمس تستات على حارس أمان كانت نتيجتها بتتقلب حسب
+// إعدادات الجهاز — وعلى جهاز فيه DB_TARGET=production مع التجاوز مفعّل، كانت
+// بتفشل كلها. بنعزل البيئة هنا عشان التستات تقيس الحارس نفسه لا أكتر.
+let savedTarget;
+let savedOverride;
+
+beforeEach(() => {
+    savedTarget = process.env.DB_TARGET;
+    savedOverride = process.env.ALLOW_DEV_AGAINST_PROD;
+    delete process.env.DB_TARGET;
+    delete process.env.ALLOW_DEV_AGAINST_PROD;
+});
+
+afterEach(() => {
+    if (savedTarget === undefined) delete process.env.DB_TARGET;
+    else process.env.DB_TARGET = savedTarget;
+    if (savedOverride === undefined) delete process.env.ALLOW_DEV_AGAINST_PROD;
+    else process.env.ALLOW_DEV_AGAINST_PROD = savedOverride;
+});
 
 describe("assertDbTarget — الهدف معلن مش مستنتَج", () => {
     it("بيقبل التطابق الطبيعي: production/production", () => {
@@ -18,9 +41,29 @@ describe("assertDbTarget — الهدف معلن مش مستنتَج", () => {
             .toEqual({ target: "production", overridden: false });
     });
 
-    it.each(["local", "staging"])("بيقبل development على %s", (dbTarget) => {
-        expect(assertDbTarget({ nodeEnv: "development", dbTarget }))
-            .toEqual({ target: dbTarget, overridden: false });
+    it("بيقبل development على local", () => {
+        expect(assertDbTarget({ nodeEnv: "development", dbTarget: "local" }))
+            .toEqual({ target: "local", overridden: false });
+    });
+
+    // ⚠️ staging كانت مقبولة مع development قبل كده — بس /api-docs وستاك تريس
+    // الأخطاء وحدود الـrate limiting كلهم معلّقين على NODE_ENV==='production'
+    // بالظبط، مش على DB_TARGET. يعني قاعدة staging (بيانات حقيقية) كانت بتشتغل
+    // من غير أي من الحمايات دي. الفحص الجديد بيوسّع نفس منطق production
+    // الموثّق فوق ليشمل أي قاعدة بيانات حقيقية، مش production بس.
+    it("⚠️ بيرفض development على قاعدة staging كمان — مش production بس", () => {
+        expect(() => assertDbTarget({ nodeEnv: "development", dbTarget: "staging" }))
+            .toThrow(/Refusing to start: NODE_ENV='development' with DB_TARGET='staging'/);
+    });
+
+    it("⚠️ بيرفض test على قاعدة staging برضه", () => {
+        expect(() => assertDbTarget({ nodeEnv: "test", dbTarget: "staging" }))
+            .toThrow(/Refusing to start/);
+    });
+
+    it("الجملة الصريحة بتسمح بمرور staging مع development وبتترفع كـoverridden", () => {
+        expect(assertDbTarget({ nodeEnv: "development", dbTarget: "staging", override: OVERRIDE }))
+            .toEqual({ target: "staging", overridden: true });
     });
 
     // ── الحالة اللي الحادثة بتاعتها حصلت فعلاً ────────────────────────────

@@ -1,6 +1,6 @@
 import asyncHandler from "express-async-handler";
 
-import SeasonMatch from "../models/seasonMatchModel.js";
+import SeasonMatch, { populateMatchDisplay } from "../models/seasonMatchModel.js";
 import Player from "../models/playedModel.js";
 import AppError from "../utils/appError.js";
 import { creating, updating, deleteOne } from "../services/services.js";
@@ -122,6 +122,9 @@ export const getAll = asyncHandler(async (req, res, next) => {
     const countFilter = features.query.getFilter();
     features.sort(SEASON_MATCH_SORT_FIELDS).limitFields().applyPagination();
 
+    // الـpopulate بقى صريح هنا بدل الهوك التلقائي (شوف seasonMatchModel)
+    populateMatchDisplay(features.query);
+
     const [documentCount, documents] = await Promise.all([
         SeasonMatch.countDocuments(countFilter),
         features.query,
@@ -148,7 +151,9 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
     const reportsMatch = isAdmin ? undefined : { coach: req.user._id };
     const mediaMatch = isAdmin ? undefined : { uploadedBy: req.user._id };
 
-    const document = await SeasonMatch.findById(req.params.id)
+    // populateMatchDisplay بيضيف ageGroup/homeTeam/awayTeam/attendees اللي كان
+    // الهوك بيوفّرهم قبل كده — والـpopulate التحت (reports/media/audit) صريح أصلاً
+    const document = await populateMatchDisplay(SeasonMatch.findById(req.params.id))
         .populate({
             path: "reports",
             match: reportsMatch,
@@ -175,7 +180,11 @@ export const getSpecific = asyncHandler(async (req, res, next) => {
     }
 
     // §7 — sign media URLs on read; strip internal storage keys
-    const out = document.toObject();
+    // toJSON مش toObject: toObject بيتخطّى تحويلات الأمان في الموديلات (CLAUDE.md
+    // بيقول ضيف الحقول الحسّاسة للـtoJSON transform). النهاردة آمن لأن كل populate
+    // عنده select ضيّق، بس لو حد وسّع select أو ضاف حقل حسّاس للـtoJSON، toObject
+    // كان هيتخطّاه. decorateMedia بيشيل مفاتيح التخزين يدويًا بعد كده زي ما هو.
+    const out = document.toJSON();
     out.media = (out.media || []).map((m) => decorateMedia(m, req.user.role));
 
     res.status(200).json({
@@ -198,7 +207,7 @@ export const updateMatchStatus = asyncHandler(async (req, res, next) => {
     // بأيام، عشان النتيجة تتسجل وهي لسه فريش من الحاضرين فعلاً، مش بأثر رجعي. الأدمن مستثنى
     // (تصحيح/إدارة، مش الكشاف/الأوبزيرفر اللي المفروض حاضر المباراة فعليًا).
     if (status === "completed" && req.user.role !== ROLES.ADMIN) {
-        const match = await SeasonMatch.findById(req.params.id).select("matchDate").setOptions({ skipPopulate: true });
+        const match = await SeasonMatch.findById(req.params.id).select("matchDate");
         if (!match) {
             return next(new AppError(`No document for this Id: ${req.params.id}`, 404));
         }
@@ -214,10 +223,14 @@ export const updateMatchStatus = asyncHandler(async (req, res, next) => {
     const update = { status, updatedBy: req.user._id };
     if (result) update.result = result;
 
-    const document = await SeasonMatch.findByIdAndUpdate(req.params.id, update, {
-        returnDocument: "after",
-        runValidators: true,
-    });
+    // populate صريح: الرد بيرجع للفرونت اللي بيستبدل صف القايمة بالمستند ده،
+    // والصف بيعرض أسماء الفرق والحاضرين — كان الهوك بيوفّرهم قبل ما يتشال.
+    const document = await populateMatchDisplay(
+        SeasonMatch.findByIdAndUpdate(req.params.id, update, {
+            returnDocument: "after",
+            runValidators: true,
+        })
+    );
 
     if (!document) {
         return next(new AppError(`No document for this Id: ${req.params.id}`, 404));
@@ -240,7 +253,7 @@ const isBeforeMatchDay = (matchDate) => {
 // @route   POST api/v1/seasonMatches/:id/attend
 // @access  private - coach/observer
 export const attendMatch = asyncHandler(async (req, res, next) => {
-    const match = await SeasonMatch.findById(req.params.id).setOptions({ skipPopulate: true });
+    const match = await SeasonMatch.findById(req.params.id);
     if (!match) {
         return next(new AppError(`No document for this Id: ${req.params.id}`, 404));
     }
@@ -251,10 +264,12 @@ export const attendMatch = asyncHandler(async (req, res, next) => {
         return next(new AppError("Attendance can only be registered before the match day", 400));
     }
 
-    const document = await SeasonMatch.findByIdAndUpdate(
-        req.params.id,
-        { $addToSet: { attendees: req.user._id } },
-        { returnDocument: "after" }
+    const document = await populateMatchDisplay(
+        SeasonMatch.findByIdAndUpdate(
+            req.params.id,
+            { $addToSet: { attendees: req.user._id } },
+            { returnDocument: "after" }
+        )
     );
 
     res.status(200).json({ status: "success", data: { document } });
@@ -264,7 +279,7 @@ export const attendMatch = asyncHandler(async (req, res, next) => {
 // @route   DELETE api/v1/seasonMatches/:id/attend
 // @access  private - coach/observer
 export const unattendMatch = asyncHandler(async (req, res, next) => {
-    const match = await SeasonMatch.findById(req.params.id).setOptions({ skipPopulate: true });
+    const match = await SeasonMatch.findById(req.params.id);
     if (!match) {
         return next(new AppError(`No document for this Id: ${req.params.id}`, 404));
     }
@@ -272,10 +287,12 @@ export const unattendMatch = asyncHandler(async (req, res, next) => {
         return next(new AppError("Attendance can only be cancelled before the match day", 400));
     }
 
-    const document = await SeasonMatch.findByIdAndUpdate(
-        req.params.id,
-        { $pull: { attendees: req.user._id } },
-        { returnDocument: "after" }
+    const document = await populateMatchDisplay(
+        SeasonMatch.findByIdAndUpdate(
+            req.params.id,
+            { $pull: { attendees: req.user._id } },
+            { returnDocument: "after" }
+        )
     );
 
     res.status(200).json({ status: "success", data: { document } });

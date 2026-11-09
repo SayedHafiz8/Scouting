@@ -52,14 +52,20 @@ const seasonMatchBelongsToPlayerAgeGroup = body("seasonMatch")
     .isMongoId()
     .withMessage("Invalid seasonMatch id")
     .custom(async (val, { req }) => {
-        const match = await SeasonMatch.findById(val).setOptions({ skipPopulate: true });
+        const match = await SeasonMatch.findById(val);
         if (!match) {
             throw new Error(`No season match for this id: ${val}`);
         }
 
+        // اللاعب لعب مع فئة تانية والتقرير اترتبط بمباراة الفئة دي —
+        // resolveMatchTypeFields تحقق منها بالفعل (نفس الفئة + نفس النادي +
+        // النافذة الزمنية). مقارنتها بفئة اللاعب هنا كانت هترفض الحالة دي بالظبط.
+        if (req.body.playedWithAgeGroup) return true;
+
         const playerId = req.params.playerId;
         if (playerId) {
-            const player = await Player.findById(playerId).select("ageGroup");
+            // perf — نفس مستند checkPlayerOwnership لو الحارس اشتغل قبله على الراوت
+            const player = req.playerDoc ?? (await Player.findById(playerId).select("ageGroup"));
             // audit fix B1 — نفس الحراسة المطبَّقة في seasonMatchValidation.js
             // (teamBelongsToMatchAgeGroup) لنفس سبب Stage 13/C-4 بالظبط: لاعب محترف
             // (isProfessional) أو مباراة دوري محترفين مالهمش ageGroup خالص —
@@ -76,44 +82,39 @@ const seasonMatchBelongsToPlayerAgeGroup = body("seasonMatch")
         return true;
     });
 
-// حسب matchType بيختلف المطلوب:
-// - official: لازم seasonMatch (بيتحدد تلقائي في الكنترولر لو الفريق متسجل) أو homeTeam/awayTeam
-//   (ref أو اسم حر) لو اللاعب مش تابع لفريق متسجل
-// - friendly: لازم فريق منافس بس (ref أو اسم حر) — فريق اللاعب بيتحط تلقائي لو متسجل
-// - training: مفيش فرق مطلوبة خالص
-// ملاحظة: قيد "التقرير يوم المباراة بس لو فريق اللاعب متسجل ونوعه official" بيتفرض في
-// الكنترولر (resolveMatchTypeFields في scoutingReportController.js) قبل الـ validators دي —
-// بيدور على مباراة النهارده بتاعت فريق اللاعب وبيحط seasonMatch في الـ body تلقائي، فبيقفل
-// ثغرة رفع تقرير رسمي لمباراة خلصت من كذا يوم.
-const teamFieldsRequiredByMatchType = body().custom(async (_, { req }) => {
-    const matchType = req.body.matchType || "official";
-    if (matchType === "training") return true;
+// طلب مالك 2026-09 — "التدريب" و"المباراة الودية" اتلغوا. فضل مسارين بس:
+// - التقرير مربوط بمباراة من الجدول (seasonMatch) → الفرق والتاريخ بيتاخدوا منها.
+// - مفيش مباراة → الكشاف بيحدد الفئة العمرية اللي اللاعب لعب معاها النهاردة
+//   (playedWithAgeGroup، ممكن تكون غير فئته هو) + الفريق المنافس: اختيار من فرق
+//   الفئة دي لو ليها فرق مسجلة، أو اسم حر لو مالهاش.
+// فريق اللاعب نفسه بيتحط تلقائي كـhomeTeam في الكنترولر لو متسجل، وغير كده لازم يتكتب.
+const teamFieldsRequired = body().custom(async (_, { req }) => {
+    if (req.body.seasonMatch) return true;
 
     const hasHome = req.body.homeTeam || req.body.homeTeamName;
     const hasAway = req.body.awayTeam || req.body.awayTeamName;
 
-    if (matchType === "friendly") {
-        if (!hasAway) {
-            throw new Error("You must provide the opposing team (pick it or type its name) for a friendly match");
-        }
-        if (!hasHome) {
-            const player = await Player.findById(req.params.playerId).select("team");
-            if (!player?.team) {
-                throw new Error("You must provide your player's team (pick it or type its name) for a friendly match");
-            }
-        }
-        return true;
+    if (!hasAway) {
+        throw new Error("You must provide the opposing team (pick it or type its name)");
     }
-
-    // official
-    if (!req.body.seasonMatch && !(hasHome && hasAway)) {
-        throw new Error("homeTeam and awayTeam are required unless a seasonMatch is provided");
+    if (!hasHome) {
+        // فريق اللاعب بيتحط من السيرفر في resolveMatchTypeFields لو متسجل، فالفرع
+        // ده بيتوصله بس لو اللاعب مالوش فريق أصلاً — ساعتها الاسم لازم يتكتب.
+        // perf — نفس مستند checkPlayerOwnership (team ضمن الـselect بتاعه)
+        const player =
+            req.playerDoc ?? (await Player.findById(req.params.playerId).select("team"));
+        if (!player?.team) {
+            throw new Error("You must provide your player's team (pick it or type its name)");
+        }
     }
     return true;
 });
 
-// homeTeam/awayTeam بقوا Team ObjectId refs — لازم يكونوا موجودين وتابعين لنفس فئة اللاعب العمرية
-const teamBelongsToPlayerAgeGroup = (fieldName) =>
+// homeTeam/awayTeam بقوا Team ObjectId refs — لازم يكونوا موجودين وتابعين لفئة
+// عمرية معينة. طلب مالك 2026-09: لاعب بيلعب مع فئة أكبر منه، فالمنافس (awayTeam)
+// بيتقاس على الفئة اللي لعب معاها (playedWithAgeGroup)، أما فريق اللاعب نفسه
+// (homeTeam) فبيفضل متقاس على فئة اللاعب هو.
+const teamBelongsToReportAgeGroup = (fieldName) =>
     body(fieldName)
         .optional()
         .isMongoId()
@@ -124,16 +125,39 @@ const teamBelongsToPlayerAgeGroup = (fieldName) =>
                 throw new Error(`No team for this id: ${val}`);
             }
 
+            // ⚠️ الفئة المرجعية مختلفة للطرفين، وده جوهر الفيتشر:
+            // فريق اللاعب نفسه (homeTeam، اللي resolveMatchTypeFields بيحطه من
+            // player.team) تابع **لفئة اللاعب هو** حتى لما يلعب مع فئة أكبر.
+            // اللي بيتقارن بالفئة اللي لعب معاها هو **المنافس وحده**.
+            // من غير التفرقة دي، سيناريو الطلب نفسه كان بيترفض: لاعب فريقه تحت 13
+            // لعب مع تحت 15 → homeTeam فئته 13 ≠ playedWithAgeGroup 15 → 400.
+            let referenceAgeGroup =
+                (fieldName === "awayTeam" ? req.body.playedWithAgeGroup : null) || null;
             const playerId = req.params.playerId;
-            if (playerId) {
-                const player = await Player.findById(playerId).select("ageGroup");
-                // audit fix B1 — نفس الحراسة فوق بالظبط: لاعب محترف أو فريق دوري
-                // محترفين (team.ageGroup === undefined، teamModel.js pre-save hook)
-                // مالهمش ageGroup، فمقارنة .toString() كانت بترمي TypeError بدل ما
-                // ترفض أو تعدّي بقرار واضح.
-                if (player?.ageGroup && team.ageGroup && player.ageGroup.toString() !== team.ageGroup.toString()) {
-                    throw new Error(`${fieldName} must belong to the player's age group`);
+            if (!referenceAgeGroup && playerId) {
+                // perf — الشين ده بيتنده مرتين في نفس الطلب (homeTeam وawayTeam).
+                // checkPlayerOwnership قبله جاب اللاعب بـageGroup ضمن الـselect،
+                // فبنعيد استخدامه؛ وغير كده بنجيبه مرة واحدة ونخزّنها على الطلب.
+                if (req.playerDoc) {
+                    referenceAgeGroup = req.playerDoc.ageGroup ?? null;
+                } else {
+                    if (req._reportRefAgeGroup === undefined) {
+                        const player = await Player.findById(playerId).select("ageGroup");
+                        req._reportRefAgeGroup = player?.ageGroup ?? null;
+                    }
+                    referenceAgeGroup = req._reportRefAgeGroup;
                 }
+            }
+            // audit fix B1 — نفس الحراسة فوق بالظبط: لاعب محترف أو فريق دوري
+            // محترفين (team.ageGroup === undefined، teamModel.js pre-save hook)
+            // مالهمش ageGroup، فمقارنة .toString() كانت بترمي TypeError بدل ما
+            // ترفض أو تعدّي بقرار واضح.
+            if (referenceAgeGroup && team.ageGroup && referenceAgeGroup.toString() !== team.ageGroup.toString()) {
+                throw new Error(
+                    fieldName === "awayTeam" && req.body.playedWithAgeGroup
+                        ? "awayTeam must belong to the age group the player played with"
+                        : `${fieldName} must belong to the player's age group`
+                );
             }
             return true;
         });
@@ -146,17 +170,22 @@ export const createValidate = [
     // matchDate بيتحدد من السيرفر (تاريخ الإنشاء، أو تاريخ المباراة لو متربط بـ seasonMatch) — ممنوع من العميل
     lockField("matchDate"),
 
-    body("matchType").optional().isIn(["official", "friendly", "training"]).withMessage("Invalid matchType"),
+    // طلب مالك 2026-09 — "friendly"/"training" ماعادش بيتقبلوا من العميل (باقيين
+    // في المخطط للتقارير القديمة بس). كل تقرير جديد official.
+    body("matchType").optional().isIn(["official"]).withMessage("Invalid matchType"),
+
+    // الفئة العمرية اللي اللاعب لعب معاها لما مايكونش فيه مباراة من الجدول
+    body("playedWithAgeGroup").optional({ nullable: true }).isMongoId().withMessage("Invalid playedWithAgeGroup id"),
 
     seasonMatchBelongsToPlayerAgeGroup,
 
     // لو التقرير متربط بـ seasonMatch، homeTeam/awayTeam بيتحددوا تلقائي من المباراة (مش لازم تتبعتوا)
-    teamBelongsToPlayerAgeGroup("homeTeam"),
-    teamBelongsToPlayerAgeGroup("awayTeam"),
+    teamBelongsToReportAgeGroup("homeTeam"),
+    teamBelongsToReportAgeGroup("awayTeam"),
     body("homeTeamName").optional().trim().isLength({ max: 100 }).withMessage("homeTeamName must be less than 100 characters"),
     body("awayTeamName").optional().trim().isLength({ max: 100 }).withMessage("awayTeamName must be less than 100 characters"),
 
-    teamFieldsRequiredByMatchType,
+    teamFieldsRequired,
 
     ...technicalFields.map((field) => requiredRating(`technical.${field}`)),
     ...physicalFields.map((field) => requiredRating(`physical.${field}`)),
@@ -190,8 +219,10 @@ export const updateValidate = [
 
     seasonMatchBelongsToPlayerAgeGroup,
 
-    teamBelongsToPlayerAgeGroup("homeTeam"),
-    teamBelongsToPlayerAgeGroup("awayTeam"),
+    body("playedWithAgeGroup").optional({ nullable: true }).isMongoId().withMessage("Invalid playedWithAgeGroup id"),
+
+    teamBelongsToReportAgeGroup("homeTeam"),
+    teamBelongsToReportAgeGroup("awayTeam"),
     body("homeTeamName").optional().trim().isLength({ max: 100 }).withMessage("homeTeamName must be less than 100 characters"),
     body("awayTeamName").optional().trim().isLength({ max: 100 }).withMessage("awayTeamName must be less than 100 characters"),
 

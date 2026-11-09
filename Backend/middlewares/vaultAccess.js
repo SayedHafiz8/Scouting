@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import asyncHandler from "express-async-handler";
 import AppError from "../utils/appError.js";
+import { TOKEN_TYPES } from "../constants/security.js";
 
 // بيتأكد إن فيه vault token صالح اتبعت في X-Vault-Token — لازم يبقى نفس الأدمن
 // اللي عمل verifyVaultPassword، ومتخصص بس لفتح صور البطاقة الشخصية (مش access token عادي)
@@ -17,7 +18,9 @@ export const requireVaultToken = asyncHandler(async (req, res, next) => {
         return next(new AppError("Vault session expired, please unlock again", 403));
     }
 
-    if (!decoded.vault || decoded.userId !== req.user._id.toString()) {
+    // الاتجاه ده كان مقفول صح من الأول (access token مش بيعدّي كـvault token)؛
+    // فحص `typ` مضاف عشان الفصل يبقى متماثل في الاتجاهين.
+    if (decoded.typ !== TOKEN_TYPES.VAULT || !decoded.vault || decoded.userId !== req.user._id.toString()) {
         return next(new AppError("Invalid vault token", 403));
     }
 

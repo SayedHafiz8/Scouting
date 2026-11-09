@@ -5,11 +5,13 @@ import Player from "../models/playedModel.js";
 import User from "../models/userModel.js";
 import ScoutingReport from "../models/scoutingReportModel.js";
 import SeasonMatch from "../models/seasonMatchModel.js";
+import AgeGroup from "../models/ageGroupModel.js";
+import Team from "../models/teamModel.js";
 import ApiFeature from "../utils/apiFeatures.js";
 import { deleteOne, gettingSpecific, updating } from "../services/services.js";
 import { emitCoachDashboardUpdate, emitObserverDashboardUpdate } from "./dashboardController.js";
 import AppError from "../utils/appError.js";
-import { utcDayRange } from "../utils/time.js";
+import { utcDayRange, utcRecentDaysRange } from "../utils/time.js";
 import { ROLES } from "../constants/roles.js";
 import { playerScopeFor } from "../services/scope.js";
 
@@ -52,31 +54,120 @@ export const setPlayerToBody = (req, res, next) => {
 //   متسجل في أي فريق، مفيش جدول مباريات نربطه بيه أصلاً، فالإدخال اليدوي (ref أو اسم حر)
 //   بيفضل زي ما هو من غير قيد على التاريخ.
 export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
-    const matchType = req.body.matchType || "official";
-    const player = await Player.findById(req.params.playerId).select("team");
+    // ⚠️ كان هنا `req.body.matchType = "official"` — والميدلوير ده بيشتغل **قبل**
+    // createValidate على الراوت، فالإسناد ده كان بيمسح قيمة العميل قبل ما التحقق
+    // يشوفها: `isIn(["official"])` في scoutingValidation كان كود ميت، وتقرير
+    // matchType=friendly كان بيتقبل بـ201 وبيتخزّن official في صمت.
+    // دلوقتي القيمة بتوصل للتحقق زي ما هي فبترفض بـ400، والقيمة الافتراضية لما
+    // العميل مايبعتش حاجة جاية من المخطط نفسه (default: "official").
+    // perf — checkPlayerOwnership قبله على نفس الراوت جاب المستند ده بالفعل
+    // (team وisProfessional ضمن الـselect بتاعه). الـfallback باقي لأن الدالة دي
+    // متندهة في تستات من غير الحارس.
+    const player =
+        req.playerDoc ??
+        (await Player.findById(req.params.playerId).select("team isProfessional"));
 
+    // الكشاف قال صراحةً إن اللاعب لعب مع فئة عمرية معينة النهاردة (ممكن تكون غير
+    // فئته هو — لاعب 2011 بيلعب مع 2010). بيتقدّم على البحث عن ماتش النهاردة تحت
+    // عن قصد: لو قال لعب مع فئة تانية، مينفعش نربط تقريره غصب بماتش فريقه الأصلي.
+    //
+    // مفيش مضيف وضيف في المسار ده (طلب مالك 2026-09): فريق اللاعب هو الطرف
+    // الأول دايماً وبيتحط من السيرفر — أي homeTeam/homeTeamName جاي من العميل
+    // بيتشال، فمش ممكن يتسجّل تقرير بفريق مش فريق اللاعب. اللي العميل بيبعته هو
+    // المنافس بس: إما ref لفريق من نفس الفئة اللي لعب معاها (التحقق بيفرض ده في
+    // teamBelongsToReportAgeGroup) أو اسم حر لو الفئة مالهاش فرق مسجلة.
+    //
     // .optional() في express-validator بيتخطى الفيلد بس لو undefined خالص (مش null) —
     // فبنستخدم delete هنا مش null، عشان ميقعش في isMongoId()/الطول بتاع الفيلدات دي
-    if (matchType === "training") {
-        delete req.body.homeTeam;
-        delete req.body.homeTeamName;
-        delete req.body.awayTeam;
-        delete req.body.awayTeamName;
-        delete req.body.seasonMatch;
-        return next();
-    }
+    if (req.body.playedWithAgeGroup) {
+        // exists() بيرجع {_id} بس من الـindex بدل المستند كامل — الفحص هنا وجود لا أكتر
+        const group = await AgeGroup.exists({ _id: req.body.playedWithAgeGroup });
+        if (!group) {
+            return next(new AppError(`No age group for this id: ${req.body.playedWithAgeGroup}`, 404));
+        }
 
-    if (matchType === "friendly") {
+        // لاعب مواليد 2009 بيلعب مع فئة 2007 بتاعة **نفس النادي**: الفئة دي ليها
+        // جدول مباريات حقيقي، فالتقرير المفروض يترتبط بالمباراة نفسها مش باسم
+        // منافس مكتوب. لو العميل بعت المباراة، بنقبلها بدل الإدخال اليدوي —
+        // وresolveSeasonMatchToBody بعد كده بياخد منها الفرق وmatchDate الحقيقي.
+        //
+        // الحراسة هنا لازمة لأن المباراة دي **برّه** فئة اللاعب، يعني القاعدة
+        // القديمة ("مباراة فريقه هو") مابتنطبقش عليها. البديل تلات شروط:
+        //   1) المباراة من نفس الفئة اللي قال إنه لعب معاها.
+        //   2) طرف فيها فريق من **نفس نادي** اللاعب (المقارنة بـclubName — ده
+        //      الرابط الوحيد بين الأهلي 2009 والأهلي 2007، فرقين مختلفين تماماً).
+        //   3) اتلعبت فعلاً وجوه نافذة زمنية: النهاردة أو امبارح لغير
+        //      الـproScout/الأدمن، وأي مباراة فاتت ليهم (نفس الرخصة الموجودة تحت).
+        if (req.body.seasonMatch) {
+            if (!player?.team) {
+                return next(new AppError("This player has no registered team to match a fixture against", 400));
+            }
+
+            const chosen = await SeasonMatch.findById(req.body.seasonMatch);
+            if (!chosen) {
+                return next(new AppError("Season match not found", 404));
+            }
+
+            if (chosen.ageGroup?.toString() !== req.body.playedWithAgeGroup.toString()) {
+                return next(new AppError("That match does not belong to the age group you selected", 400));
+            }
+
+            // استعلام واحد للتلات فرق (فريق اللاعب + طرفي المباراة) بدل تلاتة
+            const teams = await Team.find({
+                _id: { $in: [player.team, chosen.homeTeam, chosen.awayTeam] },
+            }).select("clubName");
+            const playerClub = teams.find((t) => t._id.equals(player.team))?.clubName;
+            const sameClub =
+                playerClub &&
+                teams.some((t) => !t._id.equals(player.team) && t.clubName === playerClub);
+
+            if (!sameClub) {
+                return next(new AppError("That match does not involve a team from this player's club", 400));
+            }
+
+            const unrestricted =
+                req.user.role === ROLES.PRO_SCOUT || req.user.role === ROLES.ADMIN;
+            const { start, end } = unrestricted
+                ? { start: null, end: utcDayRange(new Date()).end }
+                : utcRecentDaysRange(1);
+
+            if (chosen.matchDate >= end) {
+                return next(new AppError("You cannot report on a match that has not been played yet", 400));
+            }
+            if (start && chosen.matchDate < start) {
+                return next(new AppError("That match is too old — you can only report on today's or yesterday's match", 400));
+            }
+
+            delete req.body.homeTeam;
+            delete req.body.homeTeamName;
+            delete req.body.awayTeam;
+            delete req.body.awayTeamName;
+            return next();
+        }
+
         if (player?.team) {
             req.body.homeTeam = player.team.toString();
             delete req.body.homeTeamName;
         }
-        delete req.body.seasonMatch;
         return next();
     }
 
     // official
     if (!player?.team) return next();
+
+    // اللاعب المحترف مالوش فئة عمرية يختارها (playedModel بيتخطى اشتقاق ageGroup
+    // للمحترفين)، فالمسار اليدوي بتاعه هو المنافس وحده من غير playedWithAgeGroup.
+    // من غير الفرع ده كان بيقع في بحث ماتش النهاردة تحت ويترفض بـ400 رغم إن
+    // الكشاف حدد المنافس صح — وهي الحالة اللي كانت متغطّاة بـ"ودية" قبل ما تتلغي.
+    // فريق اللاعب هو الطرف الأول دايماً، زي فرع الفئة العمرية بالظبط.
+    // شرط !seasonMatch مقصود: لو اختار مباراة من الجدول، الفرع اللي تحت هو اللي
+    // بيتولاها (وبياخد منها matchDate الحقيقي) — الاختيار اليدوي مابيتقدّمش عليها.
+    if (player.isProfessional && !req.body.seasonMatch && (req.body.awayTeam || req.body.awayTeamName)) {
+        req.body.homeTeam = player.team.toString();
+        delete req.body.homeTeamName;
+        delete req.body.seasonMatch;
+        return next();
+    }
 
     // الـproScout مش مقيّد بيوم المباراة: بيكتب تقاريره وقت ما يقدر، مش لازم
     // في نفس يوم اللعب. القيد ده كان محسوس بشكل خاص عليه لأن مباريات دوري
@@ -93,8 +184,15 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
     // admin-assign-players-reports-media — الأدمن كمان مش مقيّد بيوم المباراة، لنفس
     // سبب الـproScout بالظبط: بيكتب تقارير وقت ما يقدر (على نفسه أو بالنيابة عن
     // أوبزيرفر معيَّن)، مش لازم في يوم اللعب. "مايتغيرش" هنا نفسها بالظبط.
-    if ((req.user.role === ROLES.PRO_SCOUT || req.user.role === ROLES.ADMIN) && req.body.seasonMatch) {
-        const chosen = await SeasonMatch.findById(req.body.seasonMatch).setOptions({ skipPopulate: true });
+    //
+    // طلب مالك 2026-09 — الفرع ده بقى مفتوح لكل الرولات، مش للـproScout/الأدمن بس.
+    // السبب إن الفورم ماعادش فيه قايمة اختيار للناشئ: بيلاقي مباراة فريقه في
+    // الجدول (النهاردة أو امبارح) وبيبعتها **صريحة**. من غير كده كان الطلب
+    // هيعدّي على البحث التلقائي تحت — اللي بيدوّر على النهاردة بس — فمباراة
+    // امبارح كانت هتترفض بـ400 رغم إنها مباراة فريقه فعلاً.
+    // الفرق بين الرولات بقى في **النافذة الزمنية** مش في الحق نفسه.
+    if (req.body.seasonMatch) {
+        const chosen = await SeasonMatch.findById(req.body.seasonMatch);
 
         if (!chosen) {
             return next(new AppError("Season match not found", 404));
@@ -109,12 +207,22 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
             return next(new AppError("That match does not involve this player's team", 400));
         }
 
-        // القيد الوحيد اللي فضل على التوقيت: مباراة لسه ماتلعبتش. تقرير على
-        // مباراة في المستقبل مالوش معنى — مفيش حاجة اتشافت عشان تتقيّم. المقارنة
-        // بنهاية يوم المباراة بالـUTC عشان ماتش النهاردة (متخزّن منتصف ليل UTC)
-        // يفضل مسموح طول اليوم.
+        // مباراة لسه ماتلعبتش مرفوضة لكل الرولات — مفيش حاجة اتشافت عشان تتقيّم.
+        // المقارنة بنهاية يوم المباراة بالـUTC عشان ماتش النهاردة (متخزّن منتصف
+        // ليل UTC) يفضل مسموح طول اليوم.
         if (chosen.matchDate >= utcDayRange(new Date()).end) {
             return next(new AppError("You cannot report on a match that has not been played yet", 400));
+        }
+
+        // الكوتش/الأوبزيرفر: النهاردة أو امبارح بس — نفس النافذة اللي الفورم
+        // بيدوّر بيها. الـproScout والأدمن مش مقيّدين بيوم المباراة (رخصة قائمة:
+        // مباريات المحترفين متباعدة، والأدمن بيكتب بالنيابة وقت ما يقدر).
+        const unrestricted =
+            req.user.role === ROLES.PRO_SCOUT || req.user.role === ROLES.ADMIN;
+        if (!unrestricted && chosen.matchDate < utcRecentDaysRange(1).start) {
+            return next(
+                new AppError("That match is too old — you can only report on today's or yesterday's match", 400)
+            );
         }
 
         delete req.body.homeTeam;
@@ -132,10 +240,10 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
     const todaysMatch = await SeasonMatch.findOne({
         $or: [{ homeTeam: player.team }, { awayTeam: player.team }],
         matchDate: { $gte: dayStart, $lt: dayEnd },
-    }).setOptions({ skipPopulate: true });
+    });
 
     if (!todaysMatch) {
-        return next(new AppError("You can only submit an official match report on a day your team has a scheduled match — use 'friendly' or 'training' instead", 400));
+        return next(new AppError("No scheduled match for this player's team today — choose the age group he played with and the opposing team", 400));
     }
 
     req.body.seasonMatch = todaysMatch._id.toString();
@@ -150,7 +258,7 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
 export const resolveSeasonMatchToBody = asyncHandler(async (req, res, next) => {
     if (!req.body.seasonMatch) return next();
 
-    const match = await SeasonMatch.findById(req.body.seasonMatch).setOptions({ skipPopulate: true });
+    const match = await SeasonMatch.findById(req.body.seasonMatch);
 
     if (!match) {
         return next(new AppError("Season match not found", 404));
@@ -178,7 +286,9 @@ export const create = asyncHandler(async (req, res, next) => {
         // لازم يبقى أوبزيرفر معيَّن فعلاً على اللاعب ده — من غير الفحص ده التقرير
         // بيتسجل بمؤلف هيترفض بعد كده بـ403 من checkPlayerOwnership/checkReportOwnership
         // على نفس اللاعب (بيانات ميتة، مالهاش صاحب يقدر يوصلها).
-        const player = await Player.findById(req.params.playerId).select("observers");
+        // perf — نفس مستند checkPlayerOwnership (observers ضمن الـselect بتاعه)
+        const player =
+            req.playerDoc ?? (await Player.findById(req.params.playerId).select("observers"));
         const isAssigned = (player?.observers ?? []).some(
             (o) => o.toString() === req.body.assignedObserver.toString()
         );
@@ -201,7 +311,9 @@ export const create = asyncHandler(async (req, res, next) => {
         if (req.body.assignedObserver) {
             return next(new AppError("Choose either an observer or a proScout, not both", 400));
         }
-        const player = await Player.findById(req.params.playerId).select("createdBy");
+        // perf — نفس مستند checkPlayerOwnership (createdBy ضمن الـselect بتاعه)
+        const player =
+            req.playerDoc ?? (await Player.findById(req.params.playerId).select("createdBy"));
         if (player?.createdBy?.toString() !== req.body.assignedProScout.toString()) {
             return next(new AppError("The selected proScout does not own this player", 400));
         }

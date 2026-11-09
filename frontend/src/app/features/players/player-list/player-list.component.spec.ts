@@ -166,11 +166,11 @@ describe('PlayerListComponent — orphaned players filter behaviour', () => {
 
   it('clears the keyword on toggle (it lives outside the URL, so no navigation would clear it on its own)', async () => {
     const comp = await setup('admin');
-    comp.keyword = 'mo salah';
+    comp.keyword.set('mo salah');
 
     comp.toggleOrphaned();
 
-    expect(comp.keyword).toBe('');
+    expect(comp.keyword()).toBe('');
   });
 
   it('sends coach=none to the API when the param is active', async () => {
@@ -255,11 +255,11 @@ describe('PlayerListComponent — professional league filter behaviour (FR-013, 
 
   it('clears the keyword on toggle', async () => {
     const comp = await setup('admin');
-    comp.keyword = 'mo salah';
+    comp.keyword.set('mo salah');
 
     comp.toggleProfessional();
 
-    expect(comp.keyword).toBe('');
+    expect(comp.keyword()).toBe('');
   });
 
   it('sends isProfessional=true to the API when the param is active', async () => {
@@ -302,7 +302,7 @@ describe('PlayerListComponent — professional league filter behaviour (FR-013, 
 describe('PlayerListComponent — professional lens composes with search (US2, FR-004)', () => {
   it('typing a keyword while the lens is active still carries isProfessional=true', async () => {
     const comp = await setup('admin', { isProfessional: 'true' });
-    comp.keyword = 'salah';
+    comp.keyword.set('salah');
 
     comp.resetAndLoad();
 
@@ -313,13 +313,13 @@ describe('PlayerListComponent — professional lens composes with search (US2, F
 
   it('deactivating the lens with a keyword set does not leave a stale isProfessional param behind', async () => {
     const comp = await setup('admin', { isProfessional: 'true' });
-    comp.keyword = 'salah';
+    comp.keyword.set('salah');
 
     comp.toggleProfessional();
 
     const [, extras] = navigateSpy.calls.mostRecent().args;
     expect(extras.queryParams).toEqual({});
-    expect(comp.keyword).toBe('');
+    expect(comp.keyword()).toBe('');
   });
 });
 
@@ -664,7 +664,7 @@ describe('PlayerListComponent — search debounce and race protection (P6)', () 
     getAllSpy.calls.reset();
 
     for (const value of ['p', 'pl', 'pla', 'play', 'playe', 'player']) {
-      comp.keyword = value;
+      comp.keyword.set(value);
       comp.onKeywordChange(value);
       tick(120); // نفس إيقاع الكتابة الطبيعي — أقصر من نافذة التأخير
     }
@@ -692,12 +692,12 @@ describe('PlayerListComponent — search debounce and race protection (P6)', () 
     const fast = new Subject<any>();
     getAllSpy.and.returnValues(slow.asObservable(), fast.asObservable());
 
-    comp.keyword = 'moh';
+    comp.keyword.set('moh');
     comp.onKeywordChange('moh');
     tick(300);
     expect(getAllSpy).toHaveBeenCalledTimes(1);
 
-    comp.keyword = 'mohamed';
+    comp.keyword.set('mohamed');
     comp.onKeywordChange('mohamed');
     tick(300);
     expect(getAllSpy).toHaveBeenCalledTimes(2);
@@ -717,13 +717,13 @@ describe('PlayerListComponent — search debounce and race protection (P6)', () 
 
   it('clearing the box searches once, with an empty keyword', fakeAsync(async () => {
     const comp = await setup('admin');
-    comp.keyword = 'player';
+    comp.keyword.set('player');
     comp.onKeywordChange('player');
     tick(300);
     getAllSpy.calls.reset();
 
     comp.clearKeyword();
-    expect(comp.keyword).toBe('');
+    expect(comp.keyword()).toBe('');
     tick(300);
 
     expect(getAllSpy).toHaveBeenCalledTimes(1);
@@ -736,7 +736,7 @@ describe('PlayerListComponent — search debounce and race protection (P6)', () 
     const comp = await setup('admin');
     getAllSpy.calls.reset();
 
-    comp.positionFilter = 'CM';
+    comp.positionFilter.set('CM');
     comp.resetAndLoad();
 
     expect(getAllSpy).toHaveBeenCalledTimes(1);

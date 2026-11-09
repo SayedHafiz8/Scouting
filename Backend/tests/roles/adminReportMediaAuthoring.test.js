@@ -267,8 +267,10 @@ describe('Admin authors and assigns reports', () => {
 
             const p = await Player.findById(player._id).select('ageGroup');
             const teamIds = await defaultTeamIds(p.ageGroup);
-            const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-            const pastMatch = await setupPlayerMatchDay(player._id, teamIds, yesterday);
+            // طلب مالك 2026-09 — نافذة الكوتش بقت "النهاردة أو امبارح"، فمباراة
+            // امبارح ماعادتش تثبت القاعدة. بنستخدم مباراة أقدم من النافذة.
+            const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const pastMatch = await setupPlayerMatchDay(player._id, teamIds, lastWeek);
 
             const res = await request(app)
                 .post(`/api/v1/players/${player._id}/reports`)

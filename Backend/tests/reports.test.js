@@ -507,10 +507,14 @@ describe('Report linked to a SeasonMatch', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 //  matchType: training / friendly / free-text team names
 // ══════════════════════════════════════════════════════════════════════════════
-describe('Report matchType (training / friendly) and free-text teams', () => {
+// طلب مالك 2026-09 — "التدريب" و"المباراة الودية" اتلغوا من الواجهة والتحقق.
+// اللي حلّ محلهم: لما مايكونش فيه مباراة في الجدول، الكشاف بيحدد الفئة العمرية
+// اللي اللاعب لعب معاها (ممكن تكون غير فئته) + الفريق المنافس. القيمتين القدام
+// لسه في الـenum عشان التقارير القديمة تفضل تتقري، بس مش بيتقبلوا من العميل.
+describe('Report age-group path (replaces training / friendly) and free-text teams', () => {
   beforeEach(seedAgeGroups);
 
-  it('training report needs no team info at all, even when the team has no match today', async () => {
+  it('rejects matchType=training — retired, not accepted from the client any more', async () => {
     const { token } = await createCoach();
     const player = await createPlayer(token);
     const teamIds = await defaultTeamIds(player.ageGroup);
@@ -522,30 +526,10 @@ describe('Report matchType (training / friendly) and free-text teams', () => {
       .set('Authorization', `Bearer ${token}`)
       .send(reportPayload({ matchType: 'training' }));
 
-    expect(res.status).toBe(201);
-    expect(res.body.data.document.matchType).toBe('training');
-    expect(res.body.data.document.homeTeam).toBeFalsy();
-    expect(res.body.data.document.awayTeam).toBeFalsy();
+    expect(res.status).toBe(400);
   });
 
-  it('friendly report auto-fills the player\'s own registered team as homeTeam and accepts a free-text opponent', async () => {
-    const { token } = await createCoach();
-    const player = await createPlayer(token);
-    const teamIds = await defaultTeamIds(player.ageGroup);
-    await setupPlayerMatchDay(player._id, teamIds); // registers the player's team, no bearing on friendly's date
-
-    const res = await request(app)
-      .post(`/api/v1/players/${player._id}/reports`)
-      .set('Authorization', `Bearer ${token}`)
-      .send(reportPayload({ matchType: 'friendly', awayTeamName: 'Unregistered Youth FC' }));
-
-    expect(res.status).toBe(201);
-    expect(res.body.data.document.matchType).toBe('friendly');
-    expect(res.body.data.document.homeTeam._id).toBe(teamIds.homeTeam);
-    expect(res.body.data.document.awayTeamName).toBe('Unregistered Youth FC');
-  });
-
-  it('friendly report requires an opponent (team or free-text name)', async () => {
+  it('rejects matchType=friendly — retired too', async () => {
     const { token } = await createCoach();
     const player = await createPlayer(token);
     const teamIds = await defaultTeamIds(player.ageGroup);
@@ -554,7 +538,47 @@ describe('Report matchType (training / friendly) and free-text teams', () => {
     const res = await request(app)
       .post(`/api/v1/players/${player._id}/reports`)
       .set('Authorization', `Bearer ${token}`)
-      .send(reportPayload({ matchType: 'friendly' }));
+      .send(reportPayload({ matchType: 'friendly', awayTeamName: 'Unregistered Youth FC' }));
+
+    expect(res.status).toBe(400);
+  });
+
+  it("picks the age group he played with: the player's own team is filled in server-side, the opponent comes from the client", async () => {
+    const { token } = await createCoach();
+    const player = await createPlayer(token);
+    const teamIds = await defaultTeamIds(player.ageGroup);
+    // مباراة قديمة برّه النافذة — بتسجّل فريق اللاعب من غير ما تدي ماتش النهاردة
+    const lastWeek = new Date(); lastWeek.setDate(lastWeek.getDate() - 7);
+    await setupPlayerMatchDay(player._id, teamIds, lastWeek);
+
+    const res = await request(app)
+      .post(`/api/v1/players/${player._id}/reports`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(reportPayload({
+        homeTeam: undefined,
+        awayTeam: undefined,
+        playedWithAgeGroup: player.ageGroup,
+        awayTeamName: 'Unregistered Youth FC',
+      }));
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.document.matchType).toBe('official');
+    // مفيش مضيف/ضيف يتبعت: فريق اللاعب هو الطرف الأول دايماً، من السيرفر
+    expect(res.body.data.document.homeTeam._id).toBe(teamIds.homeTeam);
+    expect(res.body.data.document.awayTeamName).toBe('Unregistered Youth FC');
+  });
+
+  it('the age-group path still requires an opponent (team or free-text name)', async () => {
+    const { token } = await createCoach();
+    const player = await createPlayer(token);
+    const teamIds = await defaultTeamIds(player.ageGroup);
+    const lastWeek = new Date(); lastWeek.setDate(lastWeek.getDate() - 7);
+    await setupPlayerMatchDay(player._id, teamIds, lastWeek);
+
+    const res = await request(app)
+      .post(`/api/v1/players/${player._id}/reports`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(reportPayload({ homeTeam: undefined, awayTeam: undefined, playedWithAgeGroup: player.ageGroup }));
 
     expect(res.status).toBe(400);
   });

@@ -1,4 +1,4 @@
-import { Component, inject, input, output, signal, HostListener } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output, signal, HostListener } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AuthService } from '../../core/auth/auth.service';
@@ -9,6 +9,7 @@ import { NotificationPanelComponent } from '../notification-panel/notification-p
 
 @Component({
     selector: 'app-header',
+    changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [RouterLink, NotificationPanelComponent, TranslatePipe],
     template: `
     <header class="flex items-center justify-between px-4 md:px-6 py-3 border-b shrink-0"

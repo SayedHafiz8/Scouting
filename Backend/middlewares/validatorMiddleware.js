@@ -12,11 +12,25 @@ const cleanupUploadedFile = (req) => {
     fs.unlink(path, () => {});
 };
 
+// ⚠️ الفورماتر الافتراضي في express-validator هو `error => error`، يعني كل عنصر
+// في result.array() جواه حقل `value` فيه **المدخل الخام زي ما اتبعت**.
+//
+// على مسارات زي PATCH /auth/changeMyPassword ده معناه إن رد الـ400 بيرجّع
+// الباسورد الجديد **نصًا صريحًا**: المستخدم بيغلط في الباسورد الحالي، الڤاليداتور
+// المخصص بيفشل، والرد بيشيل الباسورد اللي نواه — فبيروح لسجل الشبكة في المتصفح،
+// وأي أداة تتبّع أخطاء، وأي بروكسي بيسجّل أجسام الردود. نفس الشيء على
+// resetPassword و verifyResetCode (كود إعادة التعيين) و POST /users.
+//
+// بنشيل `value` من كل الأخطاء مش من اللي على حقول الباسورد بس: الوايت ليست
+// بتتنسى لما يتضاف حقل حسّاس جديد، والعميل عارف أصلاً إيه اللي بعته.
+const stripSubmittedValues = (errors) =>
+    errors.map(({ value, ...rest }) => rest);
+
 const validatorMiddleware = (req, res, next) => {
     const result = validationResult(req);
     if (!result.isEmpty()) {
         cleanupUploadedFile(req);
-        return res.status(400).json({ status: "fail", errors: result.array() });
+        return res.status(400).json({ status: "fail", errors: stripSubmittedValues(result.array()) });
     }
     next();
 }

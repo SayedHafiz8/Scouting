@@ -1,4 +1,5 @@
-import { Component, inject, signal, computed, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, inject, signal, computed, DestroyRef, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators, AbstractControl } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { TranslateService, TranslatePipe } from '@ngx-translate/core';
@@ -224,6 +225,7 @@ export class UserFormComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly userService = inject(UserService);
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
@@ -343,10 +345,12 @@ export class UserFormComponent implements OnInit {
 
   ngOnInit(): void {
     // Keep the observer/proScout-context flags in sync with the selected role
-    this.form.get('role')!.valueChanges.subscribe(r => {
-      this.isObserverCtx.set(r === 'observer');
-      this.isProScoutCtx.set(r === 'proScout');
-    });
+    this.form.get('role')!.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(r => {
+        this.isObserverCtx.set(r === 'observer');
+        this.isProScoutCtx.set(r === 'proScout');
+      });
 
     this.userId = this.route.snapshot.paramMap.get('userId') ?? '';
     if (this.userId) {

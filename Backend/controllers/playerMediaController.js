@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 
 import PlayerMedia from "../models/playerMediaModel.js";
-import SeasonMatch from "../models/seasonMatchModel.js";
+import SeasonMatch, { populateMatchDisplay } from "../models/seasonMatchModel.js";
 import User from "../models/userModel.js";
 import VideoUploadCounter from "../models/videoUploadCounterModel.js";
 import { bunnyConfig, createStreamVideo, deleteStreamVideo } from "../config/bunny.js";
@@ -327,6 +327,37 @@ export const deleteMediaBytes = async (media, { strict = false } = {}) => {
     }
 };
 
+// سقف التوازي لنداءات حذف Bunny — نفس القيمة والسبب في mediaRetention.js:
+// التوازي غير المحدود بيضرب الـrate limit بتاع Bunny وبيفشل الحذف بالجملة.
+const BUNNY_DELETE_CONCURRENCY = 5;
+
+// يمسح بايتات قايمة ميديا في دفعات محدودة التوازي، strict (لازم Bunny يأكّد)،
+// ويرجّع ids اللي بايتاتها اتمسحت فعلاً. المستدعي بيمسح صفوف دي بس — الصفوف اللي
+// فشلت بتتساب (هي المرجع الوحيد لمفاتيح البايتات، فمسحها = تسريب تخزين دائم).
+//
+// ⚠️ الشكل القديم في حذف اللاعب كان Promise.all غير محدود ثم deleteMany للكل —
+// 200 ملف = 200 نداء Bunny متزامن بيضربوا الحد ويفشلوا بصمت، وبعدها deleteMany
+// بيمسح الصفوف فتضيع المفاتيح للأبد. ده إصلاح فقدان بيانات مش أداء.
+export const purgeMediaBytesBatched = async (mediaList) => {
+    const purgedIds = [];
+    for (let i = 0; i < mediaList.length; i += BUNNY_DELETE_CONCURRENCY) {
+        const batch = mediaList.slice(i, i + BUNNY_DELETE_CONCURRENCY);
+        const results = await Promise.all(
+            batch.map(async (m) => {
+                try {
+                    await deleteMediaBytes(m, { strict: true });
+                    return m._id;
+                } catch (err) {
+                    console.error(`Keeping media ${m._id} — Bunny delete failed: ${err.message}`);
+                    return null;
+                }
+            })
+        );
+        for (const id of results) if (id) purgedIds.push(id);
+    }
+    return purgedIds;
+};
+
 export const deleteMedia = asyncHandler(async (req, res, next) => {
     const media = await PlayerMedia.findById(req.params.id);
 
@@ -337,9 +368,11 @@ export const deleteMedia = asyncHandler(async (req, res, next) => {
     // حذف الفيديو بيسحب معاه الصور المرتبطة بيه (رفعوا مع بعض) — عكسها مش بيحصل لو اتحذفت صورة واحدة بس
     if (media.type === "video") {
         const linkedImages = await PlayerMedia.find({ linkedVideo: media._id });
-        for (const image of linkedImages) {
-            await deleteMediaBytes(image);
-            await image.deleteOne();
+        // كان await جوه for (نداءين متسلسلين لكل صورة). التوازي المحدود + مسح
+        // صفوف اللي اتأكّد حذف بايتاتها بس (نفس ضمانة حذف اللاعب).
+        const purgedIds = await purgeMediaBytesBatched(linkedImages);
+        if (purgedIds.length) {
+            await PlayerMedia.deleteMany({ _id: { $in: purgedIds } });
         }
     }
 
@@ -452,9 +485,9 @@ export const getUploadEligibility = asyncHandler(async (req, res, next) => {
         return res.status(200).json({ status: "success", data: { mode: gate.mode } });
     }
 
-    // نفس الـpopulate اللي بيحصل تلقائي على SeasonMatch.find، بس هنا بنجيبه بنفسنا لأننا
-    // مسكناه بـ .setOptions({skipPopulate:true}) جوه resolveVideoUploadGate
-    const seasonMatch = await SeasonMatch.findById(gate.seasonMatch);
+    // populate صريح: الهوك التلقائي اتشال (شوف seasonMatchModel)، والرد بيرجع
+    // المباراة للواجهة اللي بتعرض أسماء الفرق في بوابة الرفع المربوط.
+    const seasonMatch = await populateMatchDisplay(SeasonMatch.findById(gate.seasonMatch));
 
     res.status(200).json({
         status: "success",
@@ -570,6 +603,14 @@ export const bunnyWebhook = asyncHandler(async (req, res) => {
     const { stream } = bunnyConfig();
     const provided = req.params.secret || "";
     const expected = stream.webhookSecret || "";
+
+    // ⚠️ لو السر مش مضبوط (expected === "")، أي provided فاضي كان هيساوي طوله
+    // ويعدّي timingSafeEqual. Express 5 مابيطابقش :secret على مقطع فاضي النهاردة
+    // فالمسار ده غير مستغَل حاليًا — بس ده كل اللي بين الكود وبين تجاوز مصادقة
+    // لو نمط الراوت اتغيّر يومًا. فحص صريح أوضح من الاعتماد على سلوك الراوتر.
+    if (!expected) {
+        return res.status(404).json({ status: "fail" });
+    }
 
     const secretOk =
         provided.length === expected.length &&

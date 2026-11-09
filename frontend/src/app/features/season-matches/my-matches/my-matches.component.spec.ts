@@ -119,16 +119,27 @@ function pageText(): string {
 }
 
 describe('MyMatchesComponent — US1 (browse professional-league matches)', () => {
-  for (const role of ['coach', 'observer', 'admin'] as UserRole[]) {
+  function hasLeagueToggle(): boolean {
+    const buttons = fixture.nativeElement.querySelectorAll('button[type="button"]');
+    return Array.from(buttons as NodeListOf<HTMLButtonElement>)
+      .some(b => b.textContent?.includes('SEASON_MATCHES.LEAGUE_'));
+  }
+
+  for (const role of ['observer', 'admin'] as UserRole[]) {
     it(`${role}: age-group column and league toggle are still present (regression, FR-007)`, async () => {
       await setup(role, [makeMatch({ matchDate: '2020-01-01T00:00:00.000Z', attendees: ['scout-1'] })]);
       expect(pageText()).toContain('SEASON_MATCHES.AGE_GROUP');
-      const leagueButtons = fixture.nativeElement.querySelectorAll('button[type="button"]');
-      const hasLeagueToggle = Array.from(leagueButtons as NodeListOf<HTMLButtonElement>)
-        .some(b => b.textContent?.includes('SEASON_MATCHES.LEAGUE_'));
-      expect(hasLeagueToggle).toBeTrue();
+      expect(hasLeagueToggle()).toBeTrue();
     });
   }
+
+  // طلب مالك 2026-09 — الكوتش مالوش دعوة بمباريات دوري المحترفين أصلاً، فزرار
+  // تبديل الدوري اتشال من واجهته. عمود الفئة العمرية بيفضل زي ما هو.
+  it('coach: keeps the age-group column but no league toggle', async () => {
+    await setup('coach', [makeMatch({ matchDate: '2020-01-01T00:00:00.000Z', attendees: ['scout-1'] })]);
+    expect(pageText()).toContain('SEASON_MATCHES.AGE_GROUP');
+    expect(hasLeagueToggle()).toBeFalse();
+  });
 
   it('proScout: no age-group column or cell anywhere on the page (FR-002)', async () => {
     await setup('proScout', [makeMatch()]);

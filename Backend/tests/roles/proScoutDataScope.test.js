@@ -315,8 +315,10 @@ describe('proScout — player scope (US1, FR-003)', () => {
     const names = sorted.body.data.documents.map((d) => d.name);
     expect(names).not.toContain('Premier Player');
 
+    // الترتيب الافتراضي بقى -createdAt (الأحدث أولاً) بدل _id تصاعدي — ObjectId
+    // رتيب مع وقت الإنشاء، فالأحدث = _id تنازلي. ترتيب كلّي وحتمي برضه.
     const ids = sorted.body.data.documents.map((d) => d._id);
-    expect(ids).toEqual([...ids].sort());   // _id تصاعدي — ترتيب كلّي وحتمي
+    expect(ids).toEqual([...ids].sort().reverse());
 
     // in-scope = Pro Player + Mine Unassigned = 2
     const paged = await list(scout, '?limit=1&page=1');

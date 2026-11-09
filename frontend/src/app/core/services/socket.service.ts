@@ -1,6 +1,10 @@
 import { Injectable, signal } from '@angular/core';
 import { Subject } from 'rxjs';
-import { io, Socket } from 'socket.io-client';
+// ⚠️ import type فقط: socket.io-client كان بيتحمّل في الحزمة الابتدائية عبر
+// سلسلة ثابتة (app.config → AuthService → هنا) رغم إنه مش محتاج قبل تسجيل الدخول.
+// النوع بيتمسح وقت البناء، والمكتبة نفسها بتتحمّل ديناميكيًا في connect() تحت —
+// نفس نمط tus-js-client في media.service.ts.
+import type { Socket } from 'socket.io-client';
 import { environment } from '../../../environments/environment';
 import { SocketNotification, ObserverEvaluationPublished, CoachEvaluationPublished } from '../models/notification.model';
 import { AdminDashboard, CoachDashboard, ObserverDashboard } from '../models/dashboard.model';
@@ -13,6 +17,8 @@ export class SocketService {
   readonly connectionState = signal<ConnectionState>('disconnected');
 
   private socket: Socket | null = null;
+  // عدّاد عشان أي disconnect أو connect أحدث يبطّل connect لسه بيحمّل المكتبة
+  private connectEpoch = 0;
 
   readonly notification$ = new Subject<SocketNotification>();
   readonly adminDashboardUpdate$ = new Subject<AdminDashboard>();
@@ -22,8 +28,16 @@ export class SocketService {
   readonly observerEvaluationPublished$ = new Subject<ObserverEvaluationPublished>();
   readonly coachEvaluationPublished$ = new Subject<CoachEvaluationPublished>();
 
-  connect(token: string): void {
+  async connect(token: string): Promise<void> {
     if (this.socket?.connected) return;
+    const epoch = ++this.connectEpoch;
+
+    // تحميل ديناميكي — المكتبة بتدخل حزمة منفصلة بتتجاب بعد تسجيل الدخول بس
+    const { io } = await import('socket.io-client');
+
+    // لو حصل disconnect أو connect أحدث وإحنا بنحمّل، نبطّل ده
+    if (epoch !== this.connectEpoch) return;
+
     // A previous socket may exist but be disconnected (e.g. after logout) — tear
     // it down explicitly instead of letting it leak with duplicate listeners
     // once a new one is created below.
@@ -75,6 +89,8 @@ export class SocketService {
   }
 
   disconnect(): void {
+    // بيبطّل أي connect لسه بيحمّل المكتبة (شوف connectEpoch فوق)
+    this.connectEpoch++;
     // Deliberately do NOT .complete() the Subjects below — this service is
     // providedIn: 'root' and lives for the whole tab, so a Subject.complete()
     // here is permanent: any logout followed by a login in the same tab would

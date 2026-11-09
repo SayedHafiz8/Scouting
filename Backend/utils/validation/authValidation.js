@@ -70,6 +70,10 @@ export const forgotPasswordValidate = [
 ];
 
 export const verifyResetCodeValidate = [
+    // email مطلوب دلوقتي: التحقق بيتحصر على الحساب ده بدل بحث عالمي بالكود وحده.
+    // من غيره كان مهاجم يقدر يرشّ أكواد عشوائية على **أي** كود مفتوح في الكولكشن.
+    check('email').notEmpty().withMessage('Email is required')
+        .isEmail().withMessage('Invalid Email format'),
     check('resetCode').notEmpty().withMessage('Reset code is required')
         .isString().withMessage('Invalid reset code')
         .isLength({ min: 6, max: 6 }).withMessage('Reset code must be 6 digits')

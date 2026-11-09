@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SidebarComponent } from '../sidebar/sidebar.component';
@@ -11,6 +11,7 @@ import { AuthService } from '../../core/auth/auth.service';
 
 @Component({
     selector: 'app-shell',
+    changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [RouterOutlet, SidebarComponent, HeaderComponent, ToastContainerComponent],
     template: `
     <div class="flex h-screen overflow-hidden" style="position:relative;z-index:1">
@@ -65,12 +66,22 @@ export class ShellComponent implements OnInit {
       });
   }
 
+  private readonly destroyRef = inject(DestroyRef);
+
   ngOnInit(): void {
-    window.addEventListener('resize', () => {
-      const mobile = window.innerWidth < 1024;
-      this.isMobile.set(mobile);
-      if (!mobile) this.sidebarCollapsed.set(false);
-    });
+    // ⚠️ كان addEventListener('resize') بلا إزالة ولا throttle، وبيقرا innerWidth
+    // (reflow) في كل حدث جوه الزون. matchMedia بيضرب مرة واحدة بس عند **عبور**
+    // نقطة الكسر (مش كل بكسل)، فمفيش throttle محتاج ولا reflow متكرر — ومنسجّل
+    // الإزالة عشان الـShell بيتدمّر عند الخروج.
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const apply = (matches: boolean) => {
+      this.isMobile.set(matches);
+      if (!matches) this.sidebarCollapsed.set(false);
+    };
+    apply(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => apply(e.matches);
+    mq.addEventListener('change', onChange);
+    this.destroyRef.onDestroy(() => mq.removeEventListener('change', onChange));
   }
 
   toggleSidebar(): void {

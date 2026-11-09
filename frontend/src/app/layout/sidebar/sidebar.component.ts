@@ -1,4 +1,4 @@
-import { Component, input, output, inject, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output, inject, computed, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, Router, NavigationEnd } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map, startWith } from 'rxjs';
@@ -36,8 +36,42 @@ const STATUS_CHILDREN = [
   { labelKey: 'NAV.REJECTED', status: 'rejected', color: '#ef4444' },
 ] as const;
 
+// ⚠️ ملعب المراكز كان 11 مجموعة مكتوبة بالإيد، كل واحدة بتنده isActivePos()
+// من 4 لـ6 مرات — ~50 نداء في **كل** دورة تغيير، على رسمة مابتتغيرش إلا لما
+// المستخدم يدوس على مركز. البيانات اتفصلت عن الرسم، والحالة بقت computed
+// واحدة، والقالب بقى حلقة واحدة بتقرا خصائص جاهزة.
+interface PitchSpot {
+  /** id فريد للتتبع — CB متكرر مرتين بنفس المركز */
+  id: string;
+  /** المركز اللي بيتفلتر بيه (CB الاتنين بيفلتروا نفس الفلتر) */
+  pos: string;
+  label: string;
+  cx: number; cy: number; textY: number;
+  fontSize: number;
+  /** GK وحده بيكبر خطه لما يتفعّل؛ الباقي ثابت */
+  activeFontSize: number;
+  fill: string;
+  ring: string;
+  activeText: string;
+}
+
+const PITCH_SPOTS: readonly PitchSpot[] = [
+  { id: 'GK',  pos: 'GK', label: 'GK',  cx: 100, cy: 278, textY: 283, fontSize: 7.5, activeFontSize: 8,   fill: '#fbbf24', ring: '#fbbf24', activeText: '#92400e' },
+  { id: 'LB',  pos: 'LB', label: 'LB',  cx: 25,  cy: 228, textY: 232, fontSize: 7,   activeFontSize: 7,   fill: '#60a5fa', ring: '#3b82f6', activeText: '#1e3a8a' },
+  { id: 'CB1', pos: 'CB', label: 'CB',  cx: 75,  cy: 228, textY: 232, fontSize: 7,   activeFontSize: 7,   fill: '#60a5fa', ring: '#3b82f6', activeText: '#1e3a8a' },
+  { id: 'CB2', pos: 'CB', label: 'CB',  cx: 125, cy: 228, textY: 232, fontSize: 7,   activeFontSize: 7,   fill: '#60a5fa', ring: '#3b82f6', activeText: '#1e3a8a' },
+  { id: 'RB',  pos: 'RB', label: 'RB',  cx: 175, cy: 228, textY: 232, fontSize: 7,   activeFontSize: 7,   fill: '#60a5fa', ring: '#3b82f6', activeText: '#1e3a8a' },
+  { id: 'CM',  pos: 'CM', label: 'CMF', cx: 55,  cy: 158, textY: 162, fontSize: 6.5, activeFontSize: 6.5, fill: '#4ade80', ring: '#22c55e', activeText: '#14532d' },
+  { id: 'DM',  pos: 'DM', label: 'DMF', cx: 145, cy: 158, textY: 162, fontSize: 6.5, activeFontSize: 6.5, fill: '#a78bfa', ring: '#7c3aed', activeText: '#3b0764' },
+  { id: 'AM',  pos: 'AM', label: 'AMF', cx: 100, cy: 115, textY: 119, fontSize: 6.5, activeFontSize: 6.5, fill: '#4ade80', ring: '#22c55e', activeText: '#14532d' },
+  { id: 'LW',  pos: 'LW', label: 'LWF', cx: 38,  cy: 65,  textY: 69,  fontSize: 6.5, activeFontSize: 6.5, fill: '#fb923c', ring: '#ea580c', activeText: '#7c2d12' },
+  { id: 'RW',  pos: 'RW', label: 'RWF', cx: 162, cy: 65,  textY: 69,  fontSize: 6.5, activeFontSize: 6.5, fill: '#fb923c', ring: '#ea580c', activeText: '#7c2d12' },
+  { id: 'ST',  pos: 'ST', label: 'CF',  cx: 100, cy: 45,  textY: 49,  fontSize: 7,   activeFontSize: 7,   fill: '#f87171', ring: '#ef4444', activeText: '#7f1d1d' },
+];
+
 @Component({
     selector: 'app-sidebar',
+    changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [RouterLink, RouterLinkActive, TranslatePipe],
     template: `
     <aside
@@ -146,113 +180,19 @@ const STATUS_CHILDREN = [
             <rect x="72" y="278" width="56" height="22" stroke="white" stroke-width="1" fill="none" opacity="0.4"/>
             <rect x="84" y="297" width="32" height="9"  stroke="white" stroke-width="2" fill="none" opacity="0.8"/>
 
-            <!-- GK -->
-            <g (click)="filterByPosition('GK')" style="cursor:pointer">
-              <circle cx="100" cy="278" [attr.r]="isActivePos('GK') ? 14 : 11"
-                      [attr.fill]="isActivePos('GK') ? '#fff' : '#fbbf24'"
-                      [attr.stroke]="isActivePos('GK') ? '#fbbf24' : 'white'"
-                      [attr.stroke-width]="isActivePos('GK') ? 3 : 1.5"/>
-              <text x="100" y="283" text-anchor="middle" [attr.font-size]="isActivePos('GK') ? 8 : 7.5"
-                    [attr.fill]="isActivePos('GK') ? '#92400e' : '#000'" font-weight="bold">GK</text>
-            </g>
-
-            <!-- LB -->
-            <g (click)="filterByPosition('LB')" style="cursor:pointer">
-              <circle cx="25" cy="228" [attr.r]="isActivePos('LB') ? 14 : 11"
-                      [attr.fill]="isActivePos('LB') ? '#fff' : '#60a5fa'"
-                      [attr.stroke]="isActivePos('LB') ? '#3b82f6' : 'white'"
-                      [attr.stroke-width]="isActivePos('LB') ? 3 : 1.5"/>
-              <text x="25" y="232" text-anchor="middle" font-size="7"
-                    [attr.fill]="isActivePos('LB') ? '#1e3a8a' : '#000'" font-weight="bold">LB</text>
-            </g>
-
-            <!-- CB x2 -->
-            <g (click)="filterByPosition('CB')" style="cursor:pointer">
-              <circle cx="75" cy="228" [attr.r]="isActivePos('CB') ? 14 : 11"
-                      [attr.fill]="isActivePos('CB') ? '#fff' : '#60a5fa'"
-                      [attr.stroke]="isActivePos('CB') ? '#3b82f6' : 'white'"
-                      [attr.stroke-width]="isActivePos('CB') ? 3 : 1.5"/>
-              <text x="75" y="232" text-anchor="middle" font-size="7"
-                    [attr.fill]="isActivePos('CB') ? '#1e3a8a' : '#000'" font-weight="bold">CB</text>
-            </g>
-            <g (click)="filterByPosition('CB')" style="cursor:pointer">
-              <circle cx="125" cy="228" [attr.r]="isActivePos('CB') ? 14 : 11"
-                      [attr.fill]="isActivePos('CB') ? '#fff' : '#60a5fa'"
-                      [attr.stroke]="isActivePos('CB') ? '#3b82f6' : 'white'"
-                      [attr.stroke-width]="isActivePos('CB') ? 3 : 1.5"/>
-              <text x="125" y="232" text-anchor="middle" font-size="7"
-                    [attr.fill]="isActivePos('CB') ? '#1e3a8a' : '#000'" font-weight="bold">CB</text>
-            </g>
-
-            <!-- RB -->
-            <g (click)="filterByPosition('RB')" style="cursor:pointer">
-              <circle cx="175" cy="228" [attr.r]="isActivePos('RB') ? 14 : 11"
-                      [attr.fill]="isActivePos('RB') ? '#fff' : '#60a5fa'"
-                      [attr.stroke]="isActivePos('RB') ? '#3b82f6' : 'white'"
-                      [attr.stroke-width]="isActivePos('RB') ? 3 : 1.5"/>
-              <text x="175" y="232" text-anchor="middle" font-size="7"
-                    [attr.fill]="isActivePos('RB') ? '#1e3a8a' : '#000'" font-weight="bold">RB</text>
-            </g>
-
-            <!-- CMF -->
-            <g (click)="filterByPosition('CM')" style="cursor:pointer">
-              <circle cx="55" cy="158" [attr.r]="isActivePos('CM') ? 14 : 11"
-                      [attr.fill]="isActivePos('CM') ? '#fff' : '#4ade80'"
-                      [attr.stroke]="isActivePos('CM') ? '#22c55e' : 'white'"
-                      [attr.stroke-width]="isActivePos('CM') ? 3 : 1.5"/>
-              <text x="55" y="162" text-anchor="middle" font-size="6.5"
-                    [attr.fill]="isActivePos('CM') ? '#14532d' : '#000'" font-weight="bold">CMF</text>
-            </g>
-
-            <!-- DMF -->
-            <g (click)="filterByPosition('DM')" style="cursor:pointer">
-              <circle cx="145" cy="158" [attr.r]="isActivePos('DM') ? 14 : 11"
-                      [attr.fill]="isActivePos('DM') ? '#fff' : '#a78bfa'"
-                      [attr.stroke]="isActivePos('DM') ? '#7c3aed' : 'white'"
-                      [attr.stroke-width]="isActivePos('DM') ? 3 : 1.5"/>
-              <text x="145" y="162" text-anchor="middle" font-size="6.5"
-                    [attr.fill]="isActivePos('DM') ? '#3b0764' : '#000'" font-weight="bold">DMF</text>
-            </g>
-
-            <!-- AMF -->
-            <g (click)="filterByPosition('AM')" style="cursor:pointer">
-              <circle cx="100" cy="115" [attr.r]="isActivePos('AM') ? 14 : 11"
-                      [attr.fill]="isActivePos('AM') ? '#fff' : '#4ade80'"
-                      [attr.stroke]="isActivePos('AM') ? '#22c55e' : 'white'"
-                      [attr.stroke-width]="isActivePos('AM') ? 3 : 1.5"/>
-              <text x="100" y="119" text-anchor="middle" font-size="6.5"
-                    [attr.fill]="isActivePos('AM') ? '#14532d' : '#000'" font-weight="bold">AMF</text>
-            </g>
-
-            <!-- LWF -->
-            <g (click)="filterByPosition('LW')" style="cursor:pointer">
-              <circle cx="38" cy="65" [attr.r]="isActivePos('LW') ? 14 : 11"
-                      [attr.fill]="isActivePos('LW') ? '#fff' : '#fb923c'"
-                      [attr.stroke]="isActivePos('LW') ? '#ea580c' : 'white'"
-                      [attr.stroke-width]="isActivePos('LW') ? 3 : 1.5"/>
-              <text x="38" y="69" text-anchor="middle" font-size="6.5"
-                    [attr.fill]="isActivePos('LW') ? '#7c2d12' : '#000'" font-weight="bold">LWF</text>
-            </g>
-
-            <!-- RWF -->
-            <g (click)="filterByPosition('RW')" style="cursor:pointer">
-              <circle cx="162" cy="65" [attr.r]="isActivePos('RW') ? 14 : 11"
-                      [attr.fill]="isActivePos('RW') ? '#fff' : '#fb923c'"
-                      [attr.stroke]="isActivePos('RW') ? '#ea580c' : 'white'"
-                      [attr.stroke-width]="isActivePos('RW') ? 3 : 1.5"/>
-              <text x="162" y="69" text-anchor="middle" font-size="6.5"
-                    [attr.fill]="isActivePos('RW') ? '#7c2d12' : '#000'" font-weight="bold">RWF</text>
-            </g>
-
-            <!-- CF -->
-            <g (click)="filterByPosition('ST')" style="cursor:pointer">
-              <circle cx="100" cy="45" [attr.r]="isActivePos('ST') ? 14 : 11"
-                      [attr.fill]="isActivePos('ST') ? '#fff' : '#f87171'"
-                      [attr.stroke]="isActivePos('ST') ? '#ef4444' : 'white'"
-                      [attr.stroke-width]="isActivePos('ST') ? 3 : 1.5"/>
-              <text x="100" y="49" text-anchor="middle" font-size="7"
-                    [attr.fill]="isActivePos('ST') ? '#7f1d1d' : '#000'" font-weight="bold">CF</text>
-            </g>
+            <!-- مراكز الملعب — الهندسة والألوان في PITCH_SPOTS، والحالة المحسوبة في pitchSpots() -->
+            @for (spot of pitchSpots(); track spot.id) {
+              <g (click)="filterByPosition(spot.pos)" style="cursor:pointer">
+                <circle [attr.cx]="spot.cx" [attr.cy]="spot.cy"
+                        [attr.r]="spot.r"
+                        [attr.fill]="spot.circleFill"
+                        [attr.stroke]="spot.circleStroke"
+                        [attr.stroke-width]="spot.strokeWidth"/>
+                <text [attr.x]="spot.cx" [attr.y]="spot.textY" text-anchor="middle"
+                      [attr.font-size]="spot.textSize"
+                      [attr.fill]="spot.textFill" font-weight="bold">{{ spot.label }}</text>
+              </g>
+            }
           </svg>
         </div>
       }
@@ -294,25 +234,6 @@ const STATUS_CHILDREN = [
       background: var(--accent);
       border-radius: 0 3px 3px 0;
     }
-    .sidebar-child {
-      color: var(--sidebar-text-muted);
-    }
-    .sidebar-child:hover {
-      background-color: var(--sidebar-hover-bg);
-      color: var(--sidebar-text);
-    }
-    .sidebar-child-active {
-      color: var(--sidebar-active-text) !important;
-      background-color: var(--sidebar-active-bg) !important;
-    }
-    .dropdown-list {
-      animation: dropDown 0.2s ease;
-      overflow: hidden;
-    }
-    @keyframes dropDown {
-      from { opacity: 0; transform: translateY(-6px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
   `]
 })
 export class SidebarComponent {
@@ -343,10 +264,23 @@ export class SidebarComponent {
   );
   readonly isPlayersActive = computed(() => (this.currentUrl() ?? '').startsWith('/players'));
 
-  isActivePos(pos: string): boolean {
-    return this.playerContext.activePosition() === pos
-        || this.playerContext.filterPosition() === pos;
-  }
+  // بتتحسب مرة واحدة لما المركز النشط أو الفلتر يتغير، مش ~50 نداء كل دورة تغيير
+  readonly pitchSpots = computed(() => {
+    const active = this.playerContext.activePosition();
+    const filtered = this.playerContext.filterPosition();
+    return PITCH_SPOTS.map(spot => {
+      const on = spot.pos === active || spot.pos === filtered;
+      return {
+        ...spot,
+        r: on ? 14 : 11,
+        circleFill: on ? '#fff' : spot.fill,
+        circleStroke: on ? spot.ring : 'white',
+        strokeWidth: on ? 3 : 1.5,
+        textSize: on ? spot.activeFontSize : spot.fontSize,
+        textFill: on ? spot.activeText : '#000',
+      };
+    });
+  });
 
   filterByPosition(pos: string): void {
     const current = this.playerContext.filterPosition();

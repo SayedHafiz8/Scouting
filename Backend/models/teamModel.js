@@ -30,12 +30,9 @@ const teamSchema = new mongoose.Schema({
     toObject: { virtuals: true }
 });
 
-// اللاعبين التابعين للفريق (الربط من ناحية Player.team)
-teamSchema.virtual('players', {
-    ref: 'Player',
-    localField: '_id',
-    foreignField: 'team'
-});
+// virtual('players') اتشال: مكانش بيتعمله populate في أي مكان في المشروع
+// (اتفحص عبر الريبو كله). الاندكس الداعم له {team:1} في playedModel باقي لأن
+// عدسة ?team= للمحترفين بتستخدمه.
 
 teamSchema.index({name: 1, ageGroup: 1, league: 1}, {
     unique: true,

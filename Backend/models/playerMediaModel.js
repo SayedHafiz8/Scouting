@@ -97,7 +97,7 @@ const playerMediaSchema = new mongoose.Schema(
     }
 );
 
-playerMediaSchema.index({ player: 1, createdAt: -1 }); // كل ميديا اللاعب مرتبة بالأحدث
+playerMediaSchema.index({ player: 1, createdAt: -1, _id: -1 }); // كل ميديا اللاعب مرتبة بالأحدث — _id فاصل تعادل
 // audit-database I3 — { player: 1, type: 1 } اتشال (كان 2,844 KB على 50,000 مستند).
 // التعليق القديم كان "فلترة صور أو فيديوهات"، والفلترة دي **مش موجودة**:
 // playerMediaController.getAll بيعمل new ApiFeature(...) من غير ما ينده .filter()
@@ -115,7 +115,7 @@ playerMediaSchema.index({ seasonMatch: 1 }, { sparse: true });
 // الصور المرتبطة بفيديو معين (رفعوا مع بعض) — بس للصور اللي فعلاً مربوطة
 playerMediaSchema.index({ linkedVideo: 1 }, { sparse: true });
 // ميديا الأوبزيرفر/الكوتش اللي رفعها بنفسه، مرتبة بالأحدث
-playerMediaSchema.index({ uploadedBy: 1, createdAt: -1 });
+playerMediaSchema.index({ uploadedBy: 1, createdAt: -1, _id: -1 });  // _id فاصل تعادل لترتيب createdAt
 // audit-database I3 — { reviewStatus: 1 } اتشال (كان 904 KB على 50,000 مستند).
 // reviewStatus بيتكتب في تلات أماكن وبيتقرا في **صفر** استعلامات: مراجعة الأدمن
 // بتحصل من صفحة تفاصيل المباراة عن طريق populate على الـvirtual media

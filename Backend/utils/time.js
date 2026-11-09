@@ -64,3 +64,17 @@ export const utcDayRange = (date) => {
     const start = startOfTodayUTC(new Date(date));
     return { start: new Date(start), end: new Date(start + DAY_MS) };
 };
+
+/**
+ * نافذة من منتصف ليل UTC بتاع (النهاردة − days) لحد نهاية النهاردة — `{ start, end }`
+ * نصف مفتوح. بتستعمل في "المباراة اللي اتلعبت النهاردة أو امبارح" لما اللاعب يلعب
+ * مع فئة عمرية تانية والتقرير بيتربط بمباراة الفئة دي (طلب مالك 2026-09).
+ * الحساب كله على epoch ms فوق منتصف ليل UTC — مفيش أي getDate محلي في الطريق.
+ */
+export const utcRecentDaysRange = (days = 1, now = new Date()) => {
+    const todayStart = startOfTodayUTC(now);
+    return {
+        start: new Date(todayStart - days * DAY_MS),
+        end: new Date(todayStart + DAY_MS),
+    };
+};

@@ -24,6 +24,7 @@ import Player from "../models/playedModel.js";
 import User from "../models/userModel.js";
 import PlayerMedia from "../models/playerMediaModel.js";
 import IdCardAccessLog from "../models/idCardAccessLogModel.js";
+import { TOKEN_TYPES } from "../constants/security.js";
 import { putStorageObject, getStorageObject, deleteStorageObject, purgeUrl } from "../config/bunny.js";
 import {
     createAdmin,
@@ -46,9 +47,13 @@ beforeEach(async () => {
 });
 
 const vaultToken = (adminId) =>
-    jwt.sign({ userId: adminId.toString(), vault: true }, process.env.JWT_SECRET_KEY, {
-        expiresIn: "5m",
-    });
+    jwt.sign(
+        // `typ` لازم يطابق اللي authController بيوقّع بيه — requireVaultToken
+        // بيرفض أي نوع تاني، وresolveTokenUser بيرفض النوع ده كـaccess token.
+        { userId: adminId.toString(), vault: true, typ: TOKEN_TYPES.VAULT },
+        process.env.JWT_SECRET_KEY,
+        { expiresIn: "5m" }
+    );
 
 describe("§5 — scouting image upload goes to Bunny media zone", () => {
     beforeEach(seedAgeGroups);
@@ -361,6 +366,34 @@ describe("C3 — ID cards live in the vault zone, streamed through the backend",
         expect(logs.length).toBe(1);
         expect(logs[0].side).toBe("front");
         expect(logs[0].viewer.toString()).toBe(admin._id.toString());
+    });
+
+    // ⚠️ العقد ده هو إصلاح ثغرة 2026-09، ومن غير التست ده مفيش حاجة بتمسكه:
+    // توكن الڤولت بيتوقّع بنفس JWT_SECRET_KEY بتاع الـaccess token، فكان بيعدّي
+    // على protect من غير أي اعتراض. يعني خطوة إعادة المصادقة اللي المفروض
+    // **تضيّق** الصلاحية لـ15 دقيقة على صور البطاقة بس، كانت بتطلّع جلسة أدمن
+    // كاملة بتتنقل في هيدر — وأي حاجة بتشوف الهيدر ده بتورّثها.
+    //
+    // الفصل بالنوع (constants/security.js TOKEN_TYPES) هو اللي بيقفلها.
+    it("⚠️ a vault token is NOT a session — it cannot be replayed as a Bearer token", async () => {
+        const { user: admin } = await createAdmin();
+        const vault = vaultToken(admin._id);
+
+        // نفس التوكن اللي بيفتح صور البطاقة، مبعوت كـAuthorization
+        const asSession = await request(app)
+            .get("/api/v1/players")
+            .set("Authorization", `Bearer ${vault}`);
+
+        expect(asSession.status).toBe(401);
+
+        // والاتجاه العكسي مقفول برضه: access token عادي مش بيفتح الڤولت
+        const { token: accessToken, user: other } = await createAdmin({ email: `vault_dir_${Date.now()}@test.com` });
+        const asVault = await request(app)
+            .get(`/api/v1/users/${other._id}/idcard/front`)
+            .set("Authorization", `Bearer ${accessToken}`)
+            .set("X-Vault-Token", accessToken);
+
+        expect(asVault.status).toBe(403);
     });
 });
 

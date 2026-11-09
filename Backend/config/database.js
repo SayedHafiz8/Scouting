@@ -63,6 +63,30 @@ export const assertDbTarget = ({
         );
     }
 
+    // ⚠️ الفحص فوق بيغطي الحالة الموثّقة (production ضد development/test) بس.
+    // NODE_ENV بيحكم سلوكيات أمنية تانية بره الداتا بيز خالص — /api-docs مفتوح،
+    // ستاك تريس في الأخطاء، وحدود الـrate limiting بترجع 10000 — كل ده معلّق على
+    // `NODE_ENV === "production"` بالظبط (app.js, rateLimiters.js). يعني
+    // DB_TARGET=staging + NODE_ENV=development بيعدّي الفحص فوق **ويشتغل ضد
+    // قاعدة بيانات حقيقية** وهو لسه فاتح docs وستاك تريس — نفس فئة المشكلة اللي
+    // الفحص فوق اتكتب عشانها، على staging بدل production.
+    //
+    // `local` معفى: قاعدة بيانات محلية على جهاز مطوّر هي بالظبط الحالة اللي
+    // development المفروض يشتغل فيها.
+    if (dbTarget !== "local" && nodeEnv !== "production") {
+        if (override === OVERRIDE_PHRASE) {
+            return { target: dbTarget, overridden: true };
+        }
+        throw new Error(
+            `Refusing to start: NODE_ENV='${nodeEnv}' with DB_TARGET='${dbTarget}'.\n` +
+            "    A non-production NODE_ENV against a real remote database (staging or\n" +
+            "    production) also leaves /api-docs mounted and returns stack traces in error\n" +
+            "    responses — safe against a local database, not against one holding real data.\n" +
+            "    Set NODE_ENV=production for this server, or — if this is genuinely intended —\n" +
+            `    set ${OVERRIDE_ENV}='${OVERRIDE_PHRASE}'.`
+        );
+    }
+
     return { target: dbTarget, overridden: false };
 };
 

@@ -1,10 +1,9 @@
-import { Component, DestroyRef, inject, signal, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EMPTY, Subject, of } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap, tap } from 'rxjs/operators';
 import { FormsModule } from '@angular/forms';
-import { TitleCasePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { environment } from '../../../../environments/environment';
@@ -26,9 +25,81 @@ import { ImageLightboxComponent } from '../../../shared/components/image-lightbo
 // (~120ms) فبيجمّع الكلمة في طلب واحد، وأقصر من إن المستخدم يحس إن الصفحة واقفة.
 const SEARCH_DEBOUNCE_MS = 300;
 
+// ════════ كارت اللاعب — صف محسوب مسبقاً ════════
+// الكارت كان أسوأ مخالف في المشروع لقاعدة CLAUDE.md ("مفيش استدعاء دالة جوه
+// @for"): ~20 تقييم للكارت الواحد (teamName, scoutName, isOrphaned, calcAge اللي
+// بيخلق 3 كائنات Date، avgRating مرتين، ratingColor، initials، وسلاسل ternary
+// طويلة بتبني نصوص style من الأول لكل حالة) × عدد الكروت في الصفحة × **كل** دورة
+// تغيير. ومفيش أي كومبوننت في المشروع بيستخدم OnPush، فكل دورة بتمشي على الشجرة
+// كلها — يعني أي ضغطة زرار أو تحريك ماوس كانت بتعيد الحساب ده كله.
+//
+// الحل: الحساب بيحصل مرة واحدة لما البيانات تتغير (computed)، والقالب بيقرا
+// حقول جاهزة بس. تكلفة الرندر بقت قراءة خصائص، والحساب بقى مربوط بتغيّر
+// البيانات مش بعدد دورات التغيير.
+interface PlayerRow {
+    _id: string;
+    name: string;
+    initials: string;
+    profileImg: string | null;
+    position: string;
+    nationality: string;
+    teamName: string;
+    scout: string;
+    orphaned: boolean;
+    registration: string | null;
+    age: number;
+    foot: string;
+    rating: number | null;
+    ratingColor: string;
+    statusLabel: string;
+    headerBg: string;
+    glowBg: string;
+    avatarBg: string;
+    badgeStyle: string;
+    dotColor: string;
+}
+
+// ألوان الحالة — ثوابت بدل سلاسل ternary بتتقيّم في القالب لكل كارت
+interface StatusStyle {
+    header: string; glow: string; avatar: string; badge: string; dot: string;
+}
+
+const STATUS_STYLES: Record<string, StatusStyle> = {
+    selected: {
+        header: 'linear-gradient(145deg,rgba(34,197,94,0.20) 0%,rgba(16,185,129,0.07) 100%)',
+        glow: 'rgba(34,197,94,0.15)',
+        avatar: 'linear-gradient(135deg,#059669,#22c55e)',
+        badge: 'background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.28)',
+        dot: '#22c55e',
+    },
+    rejected: {
+        header: 'linear-gradient(145deg,rgba(244,63,94,0.20) 0%,rgba(239,68,68,0.07) 100%)',
+        glow: 'rgba(244,63,94,0.15)',
+        avatar: 'linear-gradient(135deg,#be123c,#f43f5e)',
+        badge: 'background:rgba(244,63,94,0.15);color:#fb7185;border:1px solid rgba(244,63,94,0.28)',
+        dot: '#f43f5e',
+    },
+    observed: {
+        header: 'linear-gradient(145deg,rgba(139,92,246,0.20) 0%,rgba(109,40,217,0.07) 100%)',
+        glow: 'rgba(139,92,246,0.15)',
+        avatar: 'linear-gradient(135deg,#6d28d9,#8b5cf6)',
+        badge: 'background:rgba(139,92,246,0.15);color:#a78bfa;border:1px solid rgba(139,92,246,0.28)',
+        dot: '#8b5cf6',
+    },
+    // الافتراضي (pending وأي حالة تانية) — نفس ألوان الفرع الأخير في القالب القديم
+    pending: {
+        header: 'linear-gradient(145deg,rgba(245,158,11,0.20) 0%,rgba(234,179,8,0.07) 100%)',
+        glow: 'rgba(245,158,11,0.15)',
+        avatar: 'linear-gradient(135deg,#b45309,#f59e0b)',
+        badge: 'background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.28)',
+        dot: '#f59e0b',
+    },
+};
+
 @Component({
     selector: 'app-player-list',
-    imports: [RouterLink, FormsModule, TitleCasePipe, SkeletonLoaderComponent, EmptyStateComponent, ConfirmDialogComponent, ImageLightboxComponent, TranslatePipe],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [RouterLink, FormsModule, SkeletonLoaderComponent, EmptyStateComponent, ConfirmDialogComponent, ImageLightboxComponent, TranslatePipe],
     template: `
     <div class="space-y-5">
 
@@ -71,51 +142,51 @@ const SEARCH_DEBOUNCE_MS = 300;
       <!-- ── Status filter chips (hidden for observers — all their players are "observed") ── -->
       @if (!auth.isObserver()) {
       <div class="flex flex-wrap gap-2">
-        <button class="status-chip" [class.status-chip-on]="!statusFilter"
+        <button class="status-chip" [class.status-chip-on]="!statusFilter()"
                 (click)="setStatus('')">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
             <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
           </svg>
           All
-          @if (!statusFilter) {
+          @if (!statusFilter()) {
             <span class="chip-badge">{{ total() }}</span>
           }
         </button>
 
-        <button class="status-chip status-chip-selected" [class.status-chip-on]="statusFilter === 'selected'"
+        <button class="status-chip status-chip-selected" [class.status-chip-on]="statusFilter() === 'selected'"
                 (click)="setStatus('selected')">
           <span class="chip-dot" style="background:#22c55e"></span>
           {{ 'NAV.SELECTED' | translate }}
-          @if (statusFilter === 'selected') {
+          @if (statusFilter() === 'selected') {
             <span class="chip-badge chip-badge-selected">{{ total() }}</span>
           }
         </button>
 
-        <button class="status-chip status-chip-pending" [class.status-chip-on]="statusFilter === 'pending'"
+        <button class="status-chip status-chip-pending" [class.status-chip-on]="statusFilter() === 'pending'"
                 (click)="setStatus('pending')">
           <span class="chip-dot" style="background:#f59e0b"></span>
           {{ 'NAV.PENDING' | translate }}
-          @if (statusFilter === 'pending') {
+          @if (statusFilter() === 'pending') {
             <span class="chip-badge chip-badge-pending">{{ total() }}</span>
           }
         </button>
 
-        <button class="status-chip status-chip-rejected" [class.status-chip-on]="statusFilter === 'rejected'"
+        <button class="status-chip status-chip-rejected" [class.status-chip-on]="statusFilter() === 'rejected'"
                 (click)="setStatus('rejected')">
           <span class="chip-dot" style="background:#f43f5e"></span>
           {{ 'NAV.REJECTED' | translate }}
-          @if (statusFilter === 'rejected') {
+          @if (statusFilter() === 'rejected') {
             <span class="chip-badge chip-badge-rejected">{{ total() }}</span>
           }
         </button>
 
         @if (auth.isAdmin()) {
-          <button class="status-chip status-chip-observed" [class.status-chip-on]="statusFilter === 'observed'"
+          <button class="status-chip status-chip-observed" [class.status-chip-on]="statusFilter() === 'observed'"
                   (click)="setStatus('observed')">
             <span class="chip-dot" style="background:#8b5cf6"></span>
             {{ 'NAV.OBSERVED' | translate }}
-            @if (statusFilter === 'observed') {
+            @if (statusFilter() === 'observed') {
               <span class="chip-badge">{{ total() }}</span>
             }
           </button>
@@ -316,11 +387,11 @@ const SEARCH_DEBOUNCE_MS = 300;
                  fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
-            <input [(ngModel)]="keyword" (ngModelChange)="onKeywordChange($event)" type="text"
+            <input [ngModel]="keyword()" (ngModelChange)="onKeywordChange($event)" type="text"
                    [placeholder]="'PLAYERS.SEARCH_PH' | translate"
                    style="flex:1;background:transparent;border:none;outline:none;padding:14px 0;
                           font-size:14px;color:var(--text-primary);min-width:0" />
-            @if (keyword) {
+            @if (keyword()) {
               <button (click)="clearKeyword()" title="Clear"
                       style="background:none;border:none;cursor:pointer;padding:2px;display:flex;color:var(--text-muted);flex-shrink:0;transition:color 0.15s"
                       onmouseenter="this.style.color='var(--text-primary)'" onmouseleave="this.style.color='var(--text-muted)'">
@@ -337,7 +408,7 @@ const SEARCH_DEBOUNCE_MS = 300;
                  fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
             </svg>
-            <select [(ngModel)]="positionFilter" (ngModelChange)="resetAndLoad()"
+            <select [ngModel]="positionFilter()" (ngModelChange)="positionFilter.set($event); resetAndLoad()"
                     style="background:transparent;border:none;outline:none;padding:14px 0;
                            font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;min-width:120px">
               <option value="" style="background:var(--bg-card)">{{ 'PLAYERS.ALL_POSITIONS' | translate }}</option>
@@ -359,7 +430,7 @@ const SEARCH_DEBOUNCE_MS = 300;
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
               </svg>
-              <select [(ngModel)]="teamFilter" (ngModelChange)="resetAndLoad()"
+              <select [ngModel]="teamFilter()" (ngModelChange)="teamFilter.set($event); resetAndLoad()"
                       data-testid="professional-team-filter"
                       style="background:transparent;border:none;outline:none;padding:14px 0;
                              font-size:13px;font-weight:500;color:var(--text-primary);cursor:pointer;min-width:140px">
@@ -382,14 +453,14 @@ const SEARCH_DEBOUNCE_MS = 300;
       } @else if (players().length === 0) {
         <app-empty-state
           [title]="'PLAYERS.EMPTY_TITLE' | translate"
-          [message]="keyword ? ('PLAYERS.EMPTY_SEARCH' | translate) : ('PLAYERS.EMPTY_FIRST' | translate)"
-          [actionLabel]="(auth.isCoach() || auth.isProScout() || auth.isObserver() || auth.isAdmin()) && !keyword ? ('PLAYERS.ADD' | translate) : null"
+          [message]="keyword() ? ('PLAYERS.EMPTY_SEARCH' | translate) : ('PLAYERS.EMPTY_FIRST' | translate)"
+          [actionLabel]="(auth.isCoach() || auth.isProScout() || auth.isObserver() || auth.isAdmin()) && !keyword() ? ('PLAYERS.ADD' | translate) : null"
           (actionClicked)="goToNewPlayer()"
           icon="players"
         />
       } @else {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          @for (player of players(); track player._id) {
+          @for (player of rows(); track player._id) {
 
             <div class="card overflow-hidden cursor-pointer group hover-scale"
                  style="--hover-scale:1.016"
@@ -397,15 +468,11 @@ const SEARCH_DEBOUNCE_MS = 300;
 
               <!-- Status-based gradient header -->
               <div class="relative px-5 pt-5 pb-4 overflow-hidden"
-                   [style]="'background:' + (
-                     player.status === 'selected' ? 'linear-gradient(145deg,rgba(34,197,94,0.20) 0%,rgba(16,185,129,0.07) 100%)' :
-                     player.status === 'rejected' ? 'linear-gradient(145deg,rgba(244,63,94,0.20) 0%,rgba(239,68,68,0.07) 100%)' :
-                     player.status === 'observed' ? 'linear-gradient(145deg,rgba(139,92,246,0.20) 0%,rgba(109,40,217,0.07) 100%)' :
-                                                    'linear-gradient(145deg,rgba(245,158,11,0.20) 0%,rgba(234,179,8,0.07) 100%)')">
+                   [style.background]="player.headerBg">
 
                 <!-- Ambient glow -->
                 <div style="position:absolute;top:-30px;right:-15px;width:110px;height:110px;border-radius:50%;filter:blur(30px);pointer-events:none;opacity:0.7"
-                     [style.background]="player.status === 'selected' ? 'rgba(34,197,94,0.15)' : player.status === 'rejected' ? 'rgba(244,63,94,0.15)' : player.status === 'observed' ? 'rgba(139,92,246,0.15)' : 'rgba(245,158,11,0.15)'">
+                     [style.background]="player.glowBg">
                 </div>
 
                 <div class="flex items-center gap-4">
@@ -414,13 +481,13 @@ const SEARCH_DEBOUNCE_MS = 300;
                   <div class="relative flex-shrink-0">
                     <div class="rounded-2xl flex items-center justify-center font-black text-white overflow-hidden"
                          style="width:68px;height:68px;font-size:26px;box-shadow:0 8px 22px rgba(0,0,0,0.35)"
-                         [style.background]="player.status === 'selected' ? 'linear-gradient(135deg,#059669,#22c55e)' : player.status === 'rejected' ? 'linear-gradient(135deg,#be123c,#f43f5e)' : player.status === 'observed' ? 'linear-gradient(135deg,#6d28d9,#8b5cf6)' : 'linear-gradient(135deg,#b45309,#f59e0b)'">
+                         [style.background]="player.avatarBg">
                       @if (player.profileImg) {
                         <img [src]="player.profileImg" [alt]="player.name" class="w-full h-full object-cover" loading="lazy"
-                             [style.cursor]="auth.isAdmin() ? 'zoom-in' : null"
-                             (click)="auth.isAdmin() && openAvatar($event, player.profileImg, player.name)" />
+                             [style.cursor]="isAdmin() ? 'zoom-in' : null"
+                             (click)="isAdmin() && openAvatar($event, player.profileImg, player.name)" />
                       } @else {
-                        {{ initials(player.name) }}
+                        {{ player.initials }}
                       }
                     </div>
                     <!-- Position micro-badge -->
@@ -442,14 +509,14 @@ const SEARCH_DEBOUNCE_MS = 300;
                         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                       </svg>
                       <span class="truncate">
-                        @if (teamName(player)) {
-                          {{ teamName(player) }} <span style="color:var(--text-muted)">·</span> {{ player.nationality }}
+                        @if (player.teamName) {
+                          {{ player.teamName }} <span style="color:var(--text-muted)">·</span> {{ player.nationality }}
                         } @else {
                           {{ player.nationality }}
                         }
                       </span>
                     </p>
-                    @if (scoutName(player); as scout) {
+                    @if (player.scout; as scout) {
                       <!-- الكشاف — مالك اللاعب باسم واحد للكل (كوتش/أوبزيرفر/proScout)، نفس قاعدة player-detail -->
                       <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
                         <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
@@ -457,7 +524,7 @@ const SEARCH_DEBOUNCE_MS = 300;
                         </svg>
                         <span class="truncate">{{ scout }}</span>
                       </p>
-                    } @else if (isOrphaned(player)) {
+                    } @else if (player.orphaned) {
                       <!-- كوتش اللاعب اتحذف نهائياً — بيتعرض للأدمن بس، لأنه الوحيد اللي
                            بيشوف حقل الكوتش أصلاً وهو الوحيد اللي يقدر يعيّن واحد جديد -->
                       <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:#f59e0b">
@@ -469,7 +536,7 @@ const SEARCH_DEBOUNCE_MS = 300;
                       </p>
                     }
                     <!-- تسجيل اللاعب — نص مجهّز مسبقاً ("بعقد" / "استمارة") -->
-                    @if (registrationLabels()[player._id]; as contract) {
+                    @if (player.registration; as contract) {
                       <p class="text-xs truncate mt-1 flex items-center gap-1.5" style="color:var(--text-secondary)">
                         <svg class="w-3 h-3 flex-shrink-0" style="color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
@@ -480,17 +547,9 @@ const SEARCH_DEBOUNCE_MS = 300;
                     <!-- Status badge -->
                     <div class="mt-2">
                       <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                            [style]="player.status === 'selected'
-                              ? 'background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.28)'
-                              : player.status === 'rejected'
-                              ? 'background:rgba(244,63,94,0.15);color:#fb7185;border:1px solid rgba(244,63,94,0.28)'
-                              : player.status === 'observed'
-                              ? 'background:rgba(139,92,246,0.15);color:#a78bfa;border:1px solid rgba(139,92,246,0.28)'
-                              : 'background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.28)'">
-                        <span class="w-1.5 h-1.5 rounded-full"
-                              [style.background]="player.status === 'selected' ? '#22c55e' : player.status === 'rejected' ? '#f43f5e' : player.status === 'observed' ? '#8b5cf6' : '#f59e0b'">
-                        </span>
-                        {{ player.status | titlecase }}
+                            [style]="player.badgeStyle">
+                        <span class="w-1.5 h-1.5 rounded-full" [style.background]="player.dotColor"></span>
+                        {{ player.statusLabel }}
                       </span>
                     </div>
                   </div>
@@ -502,7 +561,7 @@ const SEARCH_DEBOUNCE_MS = 300;
                 <div class="flex flex-col items-center gap-0.5"
                      style="border-inline-end:1px solid var(--border-subtle)">
                   <span class="text-base font-extrabold tabular-nums leading-none" style="color:var(--accent)">
-                    {{ calcAge(player.dateOfBirth) }}
+                    {{ player.age }}
                   </span>
                   <span class="text-[10px] font-semibold uppercase tracking-widest" style="color:var(--text-muted)">AGE</span>
                 </div>
@@ -510,14 +569,14 @@ const SEARCH_DEBOUNCE_MS = 300;
                 <div class="flex flex-col items-center gap-0.5"
                      style="border-inline-end:1px solid var(--border-subtle)">
                   <span class="text-base font-extrabold leading-none capitalize" style="color:#38bdf8">
-                    {{ player.preferredFoot ? player.preferredFoot[0].toUpperCase() : '—' }}
+                    {{ player.foot }}
                   </span>
                   <span class="text-[10px] font-semibold uppercase tracking-widest" style="color:var(--text-muted)">FOOT</span>
                 </div>
 
                 <div class="flex flex-col items-center gap-0.5">
-                  <span class="text-base font-extrabold tabular-nums leading-none" [style.color]="ratingColor(avgRating(player._id))">
-                    {{ avgRating(player._id) ?? '—' }}
+                  <span class="text-base font-extrabold tabular-nums leading-none" [style.color]="player.ratingColor">
+                    {{ player.rating ?? '—' }}
                   </span>
                   <span class="text-[10px] font-semibold uppercase tracking-widest" style="color:var(--text-muted)">{{ 'PLAYERS.AVG_RATING' | translate }}</span>
                 </div>
@@ -527,7 +586,7 @@ const SEARCH_DEBOUNCE_MS = 300;
               <div class="flex items-center justify-between px-4 py-2.5 opacity-0 group-hover:opacity-100 transition-all duration-200"
                    style="border-top:1px solid var(--border-subtle);background:rgba(255,255,255,0.025)"
                    (click)="$event.stopPropagation()">
-                <a [routerLink]="['/players', player._id, 'reports']" [queryParams]="observerFilter ? { authorRole: 'observer' } : {}"
+                <a [routerLink]="['/players', player._id, 'reports']" [queryParams]="observerFilter() ? { authorRole: 'observer' } : {}"
                    class="flex items-center gap-1.5 text-xs font-semibold transition-opacity hover:opacity-80"
                    style="color:var(--accent)">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -542,7 +601,7 @@ const SEARCH_DEBOUNCE_MS = 300;
                        admin-assign-players-reports-media — الأدمن اتضاف كمان،
                        PATCH /players/:id يقبله دلوقتي (checkPlayerOwnership
                        بيعمل short-circuit له، فيقدر يعدّل أي لاعب). -->
-                  @if (auth.isCoach() || auth.isObserver() || auth.isProScout() || auth.isAdmin()) {
+                  @if (canEditPlayers()) {
                     <a [routerLink]="['/players', player._id, 'edit']"
                        class="btn btn-ghost btn-icon btn-sm" title="Edit">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -555,7 +614,7 @@ const SEARCH_DEBOUNCE_MS = 300;
                        observer saw a delete button the backend has always rejected
                        (DELETE /players/:id is admin-only). Corrected to the role that
                        can actually delete, now that observer is a real write-capable role. -->
-                  @if (auth.isAdmin()) {
+                  @if (isAdmin()) {
                     <button class="btn btn-ghost btn-icon btn-sm" style="color:#f43f5e" title="Delete"
                             (click)="confirmDelete(player)">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -697,7 +756,8 @@ export class PlayerListComponent implements OnInit {
   readonly avgRatings = signal<Record<string, number>>({});
   readonly pagination = signal<Pagination | null>(null);
   readonly currentPage = signal(1);
-  readonly deleteTarget = signal<Player | null>(null);
+  // الصف المعروض في الكارت بقى PlayerRow مش Player — الحوار محتاج الاسم والـid بس
+  readonly deleteTarget = signal<{ _id: string; name: string } | null>(null);
 
   // Age-group view state
   readonly ageGroups = signal<AgeGroup[]>([]);
@@ -713,9 +773,57 @@ export class PlayerListComponent implements OnInit {
   // opens "View Assigned Players" for a specific observer (?observer=id).
   readonly flatView = signal(false);
 
+  // ════════ صفوف الكروت — بتتبني مرة لما البيانات تتغير، مش كل دورة تغيير ════════
+  // الاعتمادات: players() + avgRatings() + registrationLabels() + auth.isAdmin()
+  // (داخل isOrphaned). أي واحدة تتغير → إعادة بناء واحدة للقايمة كلها.
+  readonly rows = computed<PlayerRow[]>(() => {
+    const ratings = this.avgRatings();
+    const registrations = this.registrationLabels();
+    const isAdmin = this.auth.isAdmin();
+    // new Date() مرة واحدة للقايمة كلها بدل 3 كائنات Date لكل كارت لكل دورة
+    const now = new Date();
+    const nowYear = now.getFullYear();
+
+    return this.players().map(player => {
+      const style = STATUS_STYLES[player.status] ?? STATUS_STYLES['pending'];
+      const rating = ratings[player._id] ?? null;
+      const scout = this.scoutName(player);
+      const status = player.status ?? '';
+
+      return {
+        _id: player._id,
+        name: player.name,
+        initials: this.initials(player.name),
+        profileImg: player.profileImg ?? null,
+        position: player.position ?? '',
+        nationality: player.nationality ?? '',
+        teamName: this.teamName(player),
+        scout,
+        orphaned: isAdmin && !scout && !player.isProfessional,
+        registration: registrations[player._id] ?? null,
+        age: this.ageAt(player.dateOfBirth, now, nowYear),
+        foot: player.preferredFoot ? player.preferredFoot[0].toUpperCase() : '—',
+        rating,
+        ratingColor: this.ratingColor(rating),
+        statusLabel: status ? status.charAt(0).toUpperCase() + status.slice(1) : '',
+        headerBg: style.header,
+        glowBg: style.glow,
+        avatarBg: style.avatar,
+        badgeStyle: style.badge,
+        dotColor: style.dot,
+      };
+    });
+  });
+
+  // صلاحيات الأزرار — تقييم واحد لكل الصفحة بدل سلسلة OR لكل كارت
+  readonly isAdmin = this.auth.isAdmin;
+  readonly canEditPlayers = computed(() =>
+    this.auth.isCoach() || this.auth.isObserver() || this.auth.isProScout() || this.auth.isAdmin()
+  );
+
   // لما نيجي من صفحة أوبزيرفر معين (?observer=id) عايزين نفتح على طول على فلتر الأوبزيرفر في صفحة الريبورتس
   goToPlayer(playerId: string): void {
-    const queryParams = this.observerFilter ? { authorRole: 'observer' } : {};
+    const queryParams = this.observerFilter() ? { authorRole: 'observer' } : {};
     this.router.navigate(['/players', playerId], { queryParams });
   }
 
@@ -738,12 +846,18 @@ export class PlayerListComponent implements OnInit {
   }
 
   // Only groups that have players matching the active status (all groups when no status filter)
-  visibleGroups(): AgeGroup[] {
+  //
+  // perf — كانت دالة عادية متندهة من جوه @for، يعني مع وجود فلتر حالة كانت
+  // بتعمل filter وترجّع **مصفوفة جديدة في كل دورة تغيير**، فالـ@for كان بيشوف
+  // مرجع جديد ويعيد المقارنة كل مرة. الـcomputed بيرجّع نفس المرجع طول ما
+  // (الفئات، العدادات، فلتر الحالة) ما اتغيروش — وعشان كده statusFilter بقى
+  // signal، لأن الـcomputed مابيقدرش يتابع حقل عادي.
+  readonly visibleGroups = computed<AgeGroup[]>(() => {
     const groups = this.ageGroups();
-    if (!this.statusFilter) return groups;
+    if (!this.statusFilter()) return groups;
     const counts = this.groupCounts();
     return groups.filter(g => (counts[g._id] ?? 0) > 0);
-  }
+  });
 
   private readonly destroyRef = inject(DestroyRef);
 
@@ -752,18 +866,18 @@ export class PlayerListComponent implements OnInit {
   private readonly reload$ = new Subject<void>();
   private readonly keywordInput$ = new Subject<string>();
 
-  keyword = '';
-  positionFilter: PlayerPosition | '' = '';
-  statusFilter: PlayerStatus | '' = '';
-  coachFilter = '';
-  observerFilter = '';
-  proScoutFilter = '';
-  followedOnly = false;
+  readonly keyword = signal('');
+  readonly positionFilter = signal<PlayerPosition | ''>('');
+  readonly statusFilter = signal<PlayerStatus | ''>('');
+  readonly coachFilter = signal('');
+  readonly observerFilter = signal('');
+  readonly proScoutFilter = signal('');
+  readonly followedOnly = signal(false);
   // Stage 4c (PC-2) — team dropdown scoped to the professional lens only.
   // Convenience over the server-side isProfessional filter (D-1), never the
   // thing that confines the result: a non-professional team id here would
   // simply return nothing under the active isProfessional=true condition.
-  teamFilter = '';
+  readonly teamFilter = signal('');
   readonly professionalTeams = signal<Team[]>([]);
   private professionalTeamsLoaded = false;
 
@@ -776,12 +890,12 @@ export class PlayerListComponent implements OnInit {
   ngOnInit(): void {
     this.wireLoadPipeline();
     this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(qp => {
-      this.statusFilter = (qp.get('status') as PlayerStatus | null) ?? '';
-      this.coachFilter = qp.get('coach') ?? '';
-      this.observerFilter = qp.get('observer') ?? '';
-      this.proScoutFilter = qp.get('proScout') ?? '';
-      this.followedOnly = qp.get('followed') === 'true';
-      this.positionFilter = (qp.get('position') as PlayerPosition | null) ?? '';
+      this.statusFilter.set((qp.get('status') as PlayerStatus | null) ?? '');
+      this.coachFilter.set(qp.get('coach') ?? '');
+      this.observerFilter.set(qp.get('observer') ?? '');
+      this.proScoutFilter.set(qp.get('proScout') ?? '');
+      this.followedOnly.set(qp.get('followed') === 'true');
+      this.positionFilter.set((qp.get('position') as PlayerPosition | null) ?? '');
       this.pendingGroupId = qp.get('ageGroup') ?? '';
       // Stage 4c — عدسة "دوري المحترفين" للأدمن. isProfessional بتتقرا زي
       // أي بارام تاني في الـURL، نفس نمط coachFilter/observerFilter.
@@ -796,7 +910,7 @@ export class PlayerListComponent implements OnInit {
   // وبيتترجم في الباكإند لـ{coach: null}. coachFilter أصلاً بيتقرا من نفس الـ
   // query param فمفيش حالة جديدة محتاجة تتخزّن.
   orphanedOnly(): boolean {
-    return this.coachFilter === 'none';
+    return this.coachFilter() === 'none';
   }
 
   // Stage 4c — عدسة "دوري المحترفين". isProfessional=true بيفتح flat view
@@ -813,7 +927,7 @@ export class PlayerListComponent implements OnInit {
   // الافتراضي)، وkeyword بيتصفّر يدوي لأنه عايش بره الـURL أصلاً فمفيش
   // navigation بيلمسه لوحده.
   toggleOrphaned(): void {
-    this.keyword = '';
+    this.keyword.set('');
     this.router.navigate([], {
       relativeTo: this.route,
       queryParams: this.orphanedOnly() ? {} : { coach: 'none' },
@@ -821,7 +935,7 @@ export class PlayerListComponent implements OnInit {
   }
 
   toggleProfessional(): void {
-    this.keyword = '';
+    this.keyword.set('');
     this.router.navigate([], {
       relativeTo: this.route,
       queryParams: this.professionalOnly() ? {} : { isProfessional: 'true' },
@@ -848,7 +962,7 @@ export class PlayerListComponent implements OnInit {
   // list stays for the admin's "?observer=<id>" lens (observerFilter, unchanged)
   // and for orphaned/professional, which are still flat views for every role.
   private skipGroupsView(): boolean {
-    return !!this.observerFilter || !!this.proScoutFilter || this.followedOnly || this.auth.isProScout() || this.orphanedOnly() || this.professionalOnly();
+    return !!this.observerFilter() || !!this.proScoutFilter() || this.followedOnly() || this.auth.isProScout() || this.orphanedOnly() || this.professionalOnly();
   }
 
   // Decide which view to show based on the ageGroup query param
@@ -921,7 +1035,7 @@ export class PlayerListComponent implements OnInit {
     this.countsLoading.set(true);
     // Single aggregation request → { counts: { ageGroupId: n }, total }
     // (coach/observer scope the counts when the admin is browsing a specific coach's or observer's players)
-    this.playerService.countsByAgeGroup(this.statusFilter, this.coachFilter, this.observerFilter).subscribe({
+    this.playerService.countsByAgeGroup(this.statusFilter(), this.coachFilter(), this.observerFilter()).subscribe({
       next: res => {
         const counts = res.data?.counts ?? {};
         this.groupCounts.set(counts);
@@ -946,7 +1060,7 @@ export class PlayerListComponent implements OnInit {
   }
 
   backToGroups(): void {
-    this.keyword = '';
+    this.keyword.set('');
     // Drop only the ageGroup param, keep the active status filter
     this.router.navigate([], {
       relativeTo: this.route,
@@ -962,16 +1076,16 @@ export class PlayerListComponent implements OnInit {
     return {
       page: this.currentPage(),
       limit: 20,
-      keyword: this.keyword || undefined,
-      position: this.positionFilter || undefined,
-      status: this.statusFilter || undefined,
-      coach: this.coachFilter || undefined,
-      observer: this.observerFilter || undefined,
-      proScout: this.proScoutFilter || undefined,
-      followed: this.followedOnly ? 'true' : undefined,
+      keyword: this.keyword() || undefined,
+      position: this.positionFilter() || undefined,
+      status: this.statusFilter() || undefined,
+      coach: this.coachFilter() || undefined,
+      observer: this.observerFilter() || undefined,
+      proScout: this.proScoutFilter() || undefined,
+      followed: this.followedOnly() ? 'true' : undefined,
       ageGroup: this.pendingGroupId || this.selectedGroup()?._id || undefined,
       isProfessional: this.professionalOnly() ? 'true' : undefined,
-      team: this.professionalOnly() ? (this.teamFilter || undefined) : undefined,
+      team: this.professionalOnly() ? (this.teamFilter() || undefined) : undefined,
     };
   }
 
@@ -1049,7 +1163,7 @@ export class PlayerListComponent implements OnInit {
   // طلب زيادة من آخر حرف اتكتب. التكلفة 300ms على المسح، والمقابل مسار واحد
   // للبحث مفيهوش حالة سباق تانية نتابعها.
   clearKeyword(): void {
-    this.keyword = '';
+    this.keyword.set('');
     this.keywordInput$.next('');
   }
 
@@ -1085,7 +1199,7 @@ export class PlayerListComponent implements OnInit {
     });
   }
 
-  confirmDelete(player: Player): void {
+  confirmDelete(player: { _id: string; name: string }): void {
     this.deleteTarget.set(player);
   }
 
@@ -1149,11 +1263,17 @@ export class PlayerListComponent implements OnInit {
   }
 
   calcAge(dob: string): number {
+    const now = new Date();
+    return this.ageAt(dob, now, now.getFullYear());
+  }
+
+  // نفس حساب calcAge بالظبط، بس بـ"دلوقتي" ممرَّر من برّه — عشان بناء صفوف
+  // القايمة كله يشترك في كائن Date واحد بدلاً من تلاتة لكل لاعب.
+  private ageAt(dob: string, now: Date, nowYear: number): number {
     if (!dob) return 0;
-    const today = new Date();
     const birth = new Date(dob);
-    let age = today.getFullYear() - birth.getFullYear();
-    if (today < new Date(today.getFullYear(), birth.getMonth(), birth.getDate())) age--;
+    let age = nowYear - birth.getFullYear();
+    if (now < new Date(nowYear, birth.getMonth(), birth.getDate())) age--;
     return age;
   }
 

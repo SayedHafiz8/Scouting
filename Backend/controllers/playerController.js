@@ -12,7 +12,7 @@ import AppError from "../utils/appError.js";
 import ApiFeature from "../utils/apiFeatures.js";
 import { updating } from "../services/services.js";
 import { buildKey, uploadMediaImage, deleteMediaImage } from "../services/imageStorage.js";
-import { deleteMediaBytes } from "./playerMediaController.js";
+import { purgeMediaBytesBatched } from "./playerMediaController.js";
 import { resolveImageUrl } from "../utils/mediaUrl.js";
 import { ROLES } from "../constants/roles.js";
 import { playerScopeFor, MATCH_NOTHING } from "../services/scope.js";
@@ -326,8 +326,11 @@ const PLAYER_ADMIN_ONLY_LENSES = ["coach", "observer", "observers", "proScout", 
 // ما هو (AND عادي في ApiFeature.filter()، سكوب الملكية بيتطبق آخراً دايماً).
 // كوتش يبعت ?isProfessional=true هيرجّعله تقاطع لاعبينه هو مع الفلاج ده —
 // مفيش أي كشف مش موجود أصلاً. (specs/006-admin-professional-lens D-1)
+// nationality اتشال: مفيش اندكس عليه، ومفيش واجهة بتبعته كفلتر قايمة (بيظهر في
+// فورم اللاعب والتفاصيل بس). كفلتر كان بيعمل COLLSCAN على كل اللاعبين — نفس
+// فئة المشكلة اللي searchTokens اتعمل عشان يقفلها، متسابة مفتوحة للفلترة.
 const PLAYER_FILTERS = [
-    "status", "position", "preferredFoot", "ageGroup", "team", "nationality",
+    "status", "position", "preferredFoot", "ageGroup", "team",
     "coach", "observers", "isProfessional", "createdBy",
 ];
 
@@ -339,6 +342,13 @@ const PLAYER_FILTERS = [
 // createdBy_1_createdAt_-1 (الـproScout)، وcreatedAt_1 (الأدمن).
 // الفرونت مابيبعتش أي قيمة تانية النهارده (اتفحص) — أي إضافة هنا لازم يسبقها index.
 const PLAYER_SORT_FIELDS = ["createdAt"];
+
+// ⚠️ الترتيب الافتراضي كان غايب تمامًا من الملف ده (عكس seasonMatch/ages/evals)،
+// والفرونت مابيبعتش sort أبدًا — فـApiFeature.sort([]) كان بيوصل لمصفوفة فاضية
+// وبيحط `_id` **تصاعدي**، يعني قايمة اللاعبين كانت مرتّبة من الأقدم للأحدث
+// واللاعب الجديد بيروح آخر صفحة. الافتراضي `-createdAt` بيصلّح الترتيب المرئي
+// وبيخلي coach_1_createdAt_-1 فعليًا بيخدم المسار ده.
+const PLAYER_DEFAULT_SORT = "-createdAt";
 
 // @desc    Get all players (coach sees own with "observed" masked to "pending")
 // @route   GET api/v1/players
@@ -352,7 +362,10 @@ export const getAll = asyncHandler(async (req, res, next) => {
     // من غير فلتر (تناقض بين ما بيتعرض وما بيتفلتر بيه).
     const masksObservedAsPending = isCoach || req.user.role === ROLES.PRO_SCOUT;
 
-    const queryParams = { ...req.query };
+    // sort بيتحط على النسخة دي مش على req.query: في Express 5 الـquery عبارة عن
+    // getter بيعيد الـparse في كل قراءة، فالكتابة عليه مباشرة بتضيع (نفس الفخ
+    // الموثّق في seasonMatchController). النسخة دي هي اللي بتروح لـApiFeature.
+    const queryParams = { ...req.query, sort: req.query.sort || PLAYER_DEFAULT_SORT };
     if (req.user.role !== ROLES.ADMIN) {
         PLAYER_ADMIN_ONLY_LENSES.forEach((k) => delete queryParams[k]);
     }
@@ -556,9 +569,13 @@ export const deleting = asyncHandler(async (req, res, next) => {
     }
 
     const media = await PlayerMedia.find({ player: id });
-    // امسح بايتات كل ميديا من مصدرها (Bunny Stream/Storage أو legacy Cloudinary) — best-effort
-    await Promise.all(media.map((m) => deleteMediaBytes(m)));
-    await PlayerMedia.deleteMany({ player: id });
+    // ⚠️ بايتات Bunny الأول بتوازي محدود وstrict، وبعدها بنمسح صفوف اللي بايتاتها
+    // اتأكّد حذفها بس — الصف هو المرجع الوحيد لمفتاح البايتات، فمسحه والبايتات
+    // لسه موجودة = تسريب تخزين دائم. الفاشلين بيتسابوا لـmediaRetention.
+    const purgedIds = await purgeMediaBytesBatched(media);
+    if (purgedIds.length) {
+        await PlayerMedia.deleteMany({ _id: { $in: purgedIds } });
+    }
 
     await ScoutingReport.deleteMany({ player: id });
 

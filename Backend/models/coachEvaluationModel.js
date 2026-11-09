@@ -103,7 +103,11 @@ coachEvaluationSchema.pre("findOneAndUpdate", async function () {
 
     if (!touchesRatings) return;
 
-    const current = await this.model.findOne(this.getQuery()).lean();
+    // .select: الهوك بيقرا الفئات بس عشان يعيد حساب المتوسط — مش محتاج
+    // stats/strengths/areasForImprovement/notes.
+    const current = await this.model.findOne(this.getQuery())
+        .select(EVALUATION_CATEGORIES.join(" "))
+        .lean();
     if (!current) return;
 
     // دمج الـ dot-notation جوه أوبجكت لكل فئة

@@ -144,7 +144,7 @@ export class ForgotPasswordComponent {
     if (this.codeForm.invalid) { this.codeForm.markAllAsTouched(); return; }
     this.loading.set(true);
     try {
-      await this.auth.verifyResetCode(this.codeForm.get('resetCode')!.value!);
+      await this.auth.verifyResetCode(this.emailForm.get('email')!.value!, this.codeForm.get('resetCode')!.value!);
       this.step.set(3);
     } finally {
       this.loading.set(false);

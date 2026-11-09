@@ -23,9 +23,10 @@ const scoutingReportSchema = new mongoose.Schema(
             required: true,
         },
 
-        // نوع التقرير: مباراة رسمية (مرتبطة بجدول الموسم)، مباراة ودية، أو تدريب —
-        // التدريب مفيهوش فرق خالص، والودية بيتكتب/يتحدد فيها اسم الفريق التاني بس (فريق
-        // اللاعب نفسه بيتحط تلقائي لو متسجل)
+        // ⚠️ طلب مالك 2026-09 — "friendly" و"training" اتلغوا من الواجهة والتحقق:
+        // كل تقرير جديد بقى "official". القيمتين القدام باقيين في الـenum عشان
+        // التقارير القديمة المخزّنة بيهم تفضل صالحة للقراءة والتعديل، مش عشان
+        // يتبعتوا من العميل — createValidate بيرفض أي قيمة غير "official".
         matchType: {
             type: String,
             enum: ["official", "friendly", "training"],
@@ -60,6 +61,15 @@ const scoutingReportSchema = new mongoose.Schema(
         seasonMatch: {
             type: mongoose.Schema.ObjectId,
             ref: "SeasonMatch",
+            default: null,
+        },
+
+        // الفئة العمرية اللي اللاعب لعب معاها المباراة دي — لاعب مواليد 2011 ممكن
+        // يلعب مع فئة 2010. بتتحدد بس لما مايكونش فيه مباراة من الجدول (seasonMatch
+        // = null)؛ لو التقرير مربوط بمباراة، فئتها هي المصدر مش الحقل ده.
+        playedWithAgeGroup: {
+            type: mongoose.Schema.ObjectId,
+            ref: "AgeGroup",
             default: null,
         },
 
@@ -230,7 +240,11 @@ scoutingReportSchema.pre("findOneAndUpdate", async function () {
 
     if (!hasNestedUpdate) return;
 
-    const current = await this.model.findOne(this.getQuery()).lean();
+    // .select: الهوك بيحسب متوسط من الـ15 تقييم بس — مكانش محتاج يجيب المستند
+    // كامل (notes وكل الحقول) عشان كده.
+    const current = await this.model.findOne(this.getQuery())
+        .select("technical physical mental")
+        .lean();
     if (!current) return;
 
     // لازم تدمج الـ dot notation كمان مش بس nested objects
@@ -315,7 +329,7 @@ scoutingReportSchema.index(
 scoutingReportSchema.index({ player: 1, createdAt: -1 });
 scoutingReportSchema.index({ coach: 1, createdAt: -1 });
 // list سكوب على اللاعب مرتب بتاريخ الماتش (report-list default sort: -matchDate)
-scoutingReportSchema.index({ player: 1, matchDate: -1 });
+scoutingReportSchema.index({ player: 1, matchDate: -1, _id: -1 });  // _id فاصل تعادل لترتيب matchDate (قايمة تقارير اللاعب)
 // الربط العكسي SeasonMatch.reports (foreignField: seasonMatch) — بس للتقارير المربوطة فعلاً بماتش
 scoutingReportSchema.index({ seasonMatch: 1 }, { sparse: true });
 // §11 — الـtext index على notes اتشال: ApiFeature عمره ما استخدم $text (كان

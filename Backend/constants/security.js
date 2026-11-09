@@ -18,3 +18,25 @@
 // authController.changeLoggedUserPass، userController.changePassword) — تكرار
 // كان بالظبط سبب الانحراف المسجّل في تقرير المراجعة (audit-backend-2026-08.md، C2).
 export const BCRYPT_SALT_ROUNDS = 10;
+
+// ⚠️ كل توكن بيتوقّع بـJWT_SECRET_KEY لازم يعلن نوعه في `typ`، و**كل** مستهلك
+// لازم يتأكد من النوع اللي هو مستنيه.
+//
+// السبب (ثغرة 2026-09): توكن الڤولت كان بيتوقّع بنفس JWT_SECRET_KEY بتاع الـ
+// access token، و`resolveTokenUser` كان بيقرا `userId` و`iat` وبس — من غير أي
+// فحص للنوع. فالتوكن اللي المفروض **يضيّق** الصلاحية (يفتح صور البطاقة بس،
+// 15 دقيقة) كان عمليًا **سوبرست** من الـaccess token: أي حاجة بتشوف هيدر
+// X-Vault-Token — إكستنشن، XSS، بروكسي بيفك TLS، أداة تتبّع أخطاء — تعيد
+// إرساله كـ`Authorization: Bearer` وتعمل كل حاجة الأدمن بيعملها.
+//
+// الفصل بالنوع بيقفل الفئة كلها، مش الحالة دي بس. الـrefresh token معزول أصلاً
+// بمفتاح مختلف (JWT_REFRESH_SECRET) — بنعلن نوعه برضه عشان القاعدة تبقى واحدة
+// من غير استثناءات حد ينساها بعدين.
+//
+// النوع هنا (مش في authController) عشان vaultAccess.js يستورده من غير دورة
+// استيراد مع الكنترولر.
+export const TOKEN_TYPES = Object.freeze({
+    ACCESS: "access",
+    REFRESH: "refresh",
+    VAULT: "vault",
+});

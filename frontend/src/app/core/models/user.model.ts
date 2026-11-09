@@ -44,12 +44,3 @@ export type CreateUserPayload =
   paths['/users']['post']['requestBody']['content']['application/json'] & {
     role?: UserRole;
   };
-
-// No signup route in the spec; kept for the dead-code path in AuthService.signup()
-export interface SignupPayload {
-  name: string;
-  email: string;
-  password: string;
-  passwordConfirm: string;
-  phoneNumber?: string;
-}

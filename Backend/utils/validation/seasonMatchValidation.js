@@ -45,7 +45,7 @@ const resolveMatchContext = async (req) => {
     let ageGroup = req.body.ageGroup;
     let league = req.body.league;
     if ((!ageGroup || !league) && req.params.id) {
-        const match = await SeasonMatch.findById(req.params.id).select("ageGroup league").setOptions({ skipPopulate: true });
+        const match = await SeasonMatch.findById(req.params.id).select("ageGroup league");
         ageGroup = ageGroup ?? match?.ageGroup?.toString();
         league = league ?? match?.league;
     }
@@ -98,8 +98,7 @@ const noDuplicateFixture = body().custom(async (_, { req }) => {
 
     if (req.params.id && (!ageGroup || !matchDate || !homeTeam || !awayTeam || !league)) {
         const existing = await SeasonMatch.findById(req.params.id)
-            .select("ageGroup matchDate homeTeam awayTeam league")
-            .setOptions({ skipPopulate: true });
+            .select("ageGroup matchDate homeTeam awayTeam league");
         if (existing) {
             // Stage 13 — مباريات professional مالهاش ageGroup أصلاً؛ فضل undefined
             // بدل ما نكراش على .toString() (نفس منطق R6).
@@ -142,8 +141,7 @@ const alternateHomeAway = body().custom(async (_, { req }) => {
 
     if (req.params.id && (!ageGroup || !homeTeam || !awayTeam || !league || !season)) {
         const existing = await SeasonMatch.findById(req.params.id)
-            .select("ageGroup homeTeam awayTeam league season")
-            .setOptions({ skipPopulate: true });
+            .select("ageGroup homeTeam awayTeam league season");
         if (existing) {
             ageGroup = ageGroup ?? existing.ageGroup?.toString();
             homeTeam = homeTeam ?? existing.homeTeam.toString();
@@ -175,7 +173,7 @@ const alternateHomeAway = body().custom(async (_, { req }) => {
 
 // بعد ما ميعاد المباراة يعدي، الأدمن ميقدرش يعدل أو يمسح المباراة تاني
 const matchNotLocked = param("id").custom(async (val) => {
-    const match = await SeasonMatch.findById(val).select("matchDate").setOptions({ skipPopulate: true });
+    const match = await SeasonMatch.findById(val).select("matchDate");
     if (match && match.matchDate.getTime() < Date.now()) {
         throw new Error("This match's date has already passed and can no longer be modified");
     }

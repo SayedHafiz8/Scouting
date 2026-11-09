@@ -363,11 +363,9 @@ const getProScoutDashboardData = async (req) => {
         // كارت الإحصائية لازم يعرض الرقم الحقيقي مش الحد الأقصى.
         SeasonMatch.countDocuments(upcomingMatchFilter),
         ScoutingReport.countDocuments(reportFilter),
-        // skipPopulate بيوقف hook الـpre(/^find/) اللي بيعمل populate تلقائي على
-        // ageGroup/homeTeam/awayTeam/attendees — ageGroup ممنوع تماماً هنا (FR-005)،
-        // والـpopulate الصريح تحت بيجيب homeTeam/awayTeam بس بالحقول المطلوبة.
+        // الـpopulate التلقائي اتشال من الموديل، فده المسار بياخد raw IDs إلا
+        // للـpopulate الصريح تحت — homeTeam/awayTeam بس (ageGroup ممنوع هنا FR-005).
         SeasonMatch.find(upcomingMatchFilter)
-            .setOptions({ skipPopulate: true })
             .select("matchDate homeTeam awayTeam venue status result")
             .populate({ path: "homeTeam", select: "name clubName" })
             .populate({ path: "awayTeam", select: "name clubName" })
@@ -375,7 +373,6 @@ const getProScoutDashboardData = async (req) => {
             .limit(5)
             .lean(),
         SeasonMatch.find(pastMatchFilter)
-            .setOptions({ skipPopulate: true })
             .select("matchDate homeTeam awayTeam venue status result")
             .populate({ path: "homeTeam", select: "name clubName" })
             .populate({ path: "awayTeam", select: "name clubName" })

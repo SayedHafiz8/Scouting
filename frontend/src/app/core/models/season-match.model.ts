@@ -33,19 +33,7 @@ type _Schema = components['schemas']['SeasonMatch'];
 
 export type SeasonMatchStatus = NonNullable<_Schema['status']>;
 
-export const SEASON_MATCH_STATUSES: { value: SeasonMatchStatus; labelKey: string }[] = [
-  { value: 'scheduled', labelKey: 'SEASON_MATCHES.STATUS.SCHEDULED' },
-  { value: 'completed', labelKey: 'SEASON_MATCHES.STATUS.COMPLETED' },
-  { value: 'cancelled', labelKey: 'SEASON_MATCHES.STATUS.CANCELLED' },
-  { value: 'postponed', labelKey: 'SEASON_MATCHES.STATUS.POSTPONED' },
-];
-
 export type SeasonMatchLeague = 'premier' | 'professional';
-
-export const SEASON_MATCH_LEAGUES: { value: SeasonMatchLeague; labelKey: string }[] = [
-  { value: 'premier', labelKey: 'SEASON_MATCHES.LEAGUE_PREMIER' },
-  { value: 'professional', labelKey: 'SEASON_MATCHES.LEAGUE_PROFESSIONAL' },
-];
 
 export interface SeasonMatchResult {
   homeScore?: number;

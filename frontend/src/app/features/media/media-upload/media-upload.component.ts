@@ -6,6 +6,7 @@ import { MediaService } from '../services/media.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { PlayerService } from '../../players/services/player.service';
+import { PlayerContextService } from '../../../core/services/player-context.service';
 import { UploadEligibility } from '../../../core/models/player-media.model';
 
 // Fallbacks only, used until the server-driven limits load (see ngOnInit).
@@ -277,6 +278,7 @@ export class MediaUploadComponent implements OnInit {
 
     private readonly mediaService = inject(MediaService);
     private readonly playerService = inject(PlayerService);
+    private readonly playerContext = inject(PlayerContextService);
     private readonly toast = inject(ToastService);
     private readonly translate = inject(TranslateService);
     readonly auth = inject(AuthService);
@@ -342,18 +344,27 @@ export class MediaUploadComponent implements OnInit {
 
         this.loadUploadGate();
 
-        // admin-assign-players-reports-media — only ever needed for an admin;
-        // reuses the player fetch other roles have no reason to make here.
+        // admin-assign-players-reports-media — only ever needed for an admin.
+        // ⚠️ المستند ده الأب (player-detail) جابه للتو وحطّه في PlayerContext،
+        // و<router-outlet> بتاعه جوه @if (player()) فإحنا أصلاً مابنتركّبش قبل
+        // ما رده يوصل — فالريكوست التاني كان زيادة مؤكدة. بنقراه من الكاش،
+        // والـfetch fallback بس لو مش موجود (deep-link نادر).
         if (this.auth.isAdmin()) {
-            this.playerService.getOne(this.playerId()).subscribe({
-                next: res => {
-                    const observers = (res.data as any)?.document?.observers;
-                    if (Array.isArray(observers)) {
-                        this.playerObservers.set(observers.filter((o: any) => o && typeof o === 'object' && o._id));
-                    }
-                },
-                error: () => {},
-            });
+            const applyObservers = (res: any) => {
+                const observers = res?.data?.document?.observers;
+                if (Array.isArray(observers)) {
+                    this.playerObservers.set(observers.filter((o: any) => o && typeof o === 'object' && o._id));
+                }
+            };
+            const cached = this.playerContext.playerDocument(this.playerId());
+            if (cached) {
+                applyObservers(cached);
+            } else {
+                this.playerService.getOne(this.playerId()).subscribe({
+                    next: applyObservers,
+                    error: () => {},
+                });
+            }
         }
     }
 
