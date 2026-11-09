@@ -29,6 +29,17 @@ let createSpy: jasmine.Spy;
 const PRO_TEAM = { _id: 'proteam1', name: 'Pro Home Club' };
 const YOUTH_TEAM = { _id: 'youthteam1', name: 'Youth Club' };
 
+// التقييمات الـ15 مطلوبة كلها (Validators.min(1)) وقيمتها الابتدائية 0، فـsubmit()
+// بيرجع قبل ما ينده create لو مااتملّتش. التستات اللي بتفحص شكل الـpayload كانت
+// ناسية ده فكانت بتفشل على createSpy.calls.mostRecent() = undefined.
+function fillRatings(comp: any): void {
+  comp.form.patchValue({
+    technical: { turning: 8, dribbling: 8, tackling: 8, twoFooted: 8, longPassing: 8, shortPassing: 8, heading: 8 },
+    physical: { shortSprints: 8, longSprints: 8, agility: 8, aerialDuels: 8, groundDuels: 8 },
+    mental: { vision: 8, personality: 8, movement: 8 },
+  });
+}
+
 function makeMatch(id: string, home: any, away: any) {
   return {
     _id: id, season: '2026/2027', league: 'professional',
@@ -168,17 +179,19 @@ describe('ReportFormComponent — a professional player can be reported on at an
     expect(filters.sort).toBe('-matchDate');           // الأحدث الأول
   });
 
-  it('offers the fixture list and the training/friendly buttons together while nothing is picked', async () => {
+  it('offers the fixture list and the manual opponent picker together while nothing is picked', async () => {
     const comp = await setup(
       professionalPlayer(),
       [makeMatch('m1', PRO_TEAM, { _id: 'other', name: 'Pro Away Club' })]
     );
 
     expect(comp.showFixturePicker()).toBeTrue();
-    expect(comp.showTypeButtons()).toBeTrue();
+    expect(comp.showOpponentPicker()).toBeTrue();
+    // المحترف مالوش فئة عمرية — اختيار "لعب مع فئة" مابيظهرش له
+    expect(comp.showAgeGroupPicker()).toBeFalse();
   });
 
-  it('hides the training/friendly buttons once a fixture is picked', async () => {
+  it('hides the manual opponent picker once a fixture is picked', async () => {
     const comp = await setup(
       professionalPlayer(),
       [makeMatch('m1', PRO_TEAM, { _id: 'other', name: 'Pro Away Club' })]
@@ -188,40 +201,47 @@ describe('ReportFormComponent — a professional player can be reported on at an
     fixture.detectChanges();
 
     expect(comp.selectedSeasonMatch()).toBe('m1');
-    expect(comp.showTypeButtons()).toBeFalse();
+    expect(comp.showOpponentPicker()).toBeFalse();
   });
 
-  it('still offers training/friendly when the club has played nothing yet', async () => {
+  it('still offers the manual opponent picker when the club has played nothing yet', async () => {
     const comp = await setup(professionalPlayer(), []);
     expect(comp.showFixturePicker()).toBeFalse();
-    expect(comp.showTypeButtons()).toBeTrue();
+    expect(comp.showOpponentPicker()).toBeTrue();
   });
 });
 
 describe('ReportFormComponent — youth players keep the age-group scope unchanged', () => {
-  it("still asks for today's fixtures only — a bounded window on both sides", async () => {
+  // طلب مالك 2026-09 — النافذة بقت النهاردة أو امبارح، والأحدث الأول عشان
+  // الربط التلقائي يختار ماتش النهاردة قبل ماتش امبارح.
+  it('asks for fixtures in a bounded window, newest first', async () => {
     await setup(youthPlayer());
 
     const filters = matchesGetAllSpy.calls.mostRecent().args[0];
     expect(filters['matchDate[gte]']).toBeTruthy();
     expect(filters['matchDate[lte]']).toBeTruthy();
-    expect(filters.sort).toBe('matchDate');
+    expect(filters.sort).toBe('-matchDate');
   });
 
-  it("shows the fixture picker alone when there is a match today — no type buttons", async () => {
+  // طلب مالك 2026-09 — قايمة اختيار المباراة اتشالت للناشئ: بتترتبط تلقائي
+  it('links the fixture automatically when there is one — no picker at all', async () => {
     const comp = await setup(
       youthPlayer(),
       [makeMatch('ym1', YOUTH_TEAM, { _id: 'yother', name: 'Other Youth Club' })]
     );
 
-    expect(comp.showFixturePicker()).toBeTrue();
-    expect(comp.showTypeButtons()).toBeFalse();
+    expect(comp.showFixturePicker()).toBeFalse();
+    expect(comp.selectedSeasonMatch()).toBe('ym1');
+    expect(comp.showLinkedMatch()).toBeTrue();
+    expect(comp.showOpponentPicker()).toBeFalse();
   });
 
-  it('shows the type buttons alone when there is no match today', async () => {
+  // طلب مالك 2026-09 — بدل "تدريب/ودية": يختار الفئة اللي لعب معاها والمنافس
+  it('asks which age group he played with when there is no match today', async () => {
     const comp = await setup(youthPlayer(), []);
     expect(comp.showFixturePicker()).toBeFalse();
-    expect(comp.showTypeButtons()).toBeTrue();
+    expect(comp.showOpponentPicker()).toBeTrue();
+    expect(comp.showAgeGroupPicker()).toBeTrue();
   });
 
   it('requests teams by age group, with no league filter', async () => {
@@ -266,6 +286,7 @@ describe('ReportFormComponent — admin "file on behalf of" picker', () => {
     comp.onTeamSelectChange('home', comp.OTHER_TEAM);
     comp.onTeamSelectChange('away', comp.OTHER_TEAM);
     (comp as any).form.patchValue({ homeTeamName: 'A', awayTeamName: 'B' });
+    fillRatings(comp);
 
     comp.submit();
 
@@ -278,6 +299,7 @@ describe('ReportFormComponent — admin "file on behalf of" picker', () => {
     comp.onTeamSelectChange('home', comp.OTHER_TEAM);
     comp.onTeamSelectChange('away', comp.OTHER_TEAM);
     (comp as any).form.patchValue({ homeTeamName: 'A', awayTeamName: 'B' });
+    fillRatings(comp);
 
     comp.submit();
 
@@ -291,6 +313,7 @@ describe('ReportFormComponent — admin "file on behalf of" picker', () => {
     comp.onTeamSelectChange('home', comp.OTHER_TEAM);
     comp.onTeamSelectChange('away', comp.OTHER_TEAM);
     (comp as any).form.patchValue({ homeTeamName: 'A', awayTeamName: 'B' });
+    fillRatings(comp);
 
     comp.submit();
 

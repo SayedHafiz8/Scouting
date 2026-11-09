@@ -4090,6 +4090,16 @@ export interface components {
              * @description Set server-side to the report creation date
              */
             matchDate?: string;
+            /**
+             * @description Always 'official' for new reports. Older reports may still carry the retired 'friendly'/'training' values.
+             * @default official
+             * @enum {string}
+             */
+            matchType: "official";
+            /** @description Scheduled match this report is tied to — resolved server-side from the player's fixtures for that day */
+            seasonMatch?: string | null;
+            /** @description The age group the player actually played with, when the report is not tied to a scheduled match — a player may turn out for an older age group. The opposing team is then picked from that age group's teams, or typed free-text when it has none. */
+            playedWithAgeGroup?: string | null;
             homeTeam?: string;
             awayTeam?: string;
             technical?: components["schemas"]["TechnicalSkills"];

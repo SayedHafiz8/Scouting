@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { User, LoginPayload, SignupPayload, UpdateProfilePayload, ChangePasswordPayload, AuthResponse } from '../models/user.model';
+import { User, LoginPayload, UpdateProfilePayload, ChangePasswordPayload, AuthResponse } from '../models/user.model';
 import { ApiResponse } from '../models/api-response.model';
 import { SocketService } from '../services/socket.service';
 
@@ -40,17 +40,6 @@ export class AuthService {
     const res = await firstValueFrom(
       this.http.post<ApiResponse<AuthResponse>>(
         `${this.baseUrl}/login`,
-        payload,
-        { withCredentials: true }
-      )
-    );
-    if (res.data) this.setSession(res.data.user, res.data.accessToken);
-  }
-
-  async signup(payload: SignupPayload): Promise<void> {
-    const res = await firstValueFrom(
-      this.http.post<ApiResponse<AuthResponse>>(
-        `${this.baseUrl}/signup`,
         payload,
         { withCredentials: true }
       )
@@ -109,9 +98,10 @@ export class AuthService {
     );
   }
 
-  async verifyResetCode(resetCode: string): Promise<void> {
+  // email مطلوب: السيرفر بيحصر التحقق على الحساب ده بدل بحث عالمي بالكود وحده
+  async verifyResetCode(email: string, resetCode: string): Promise<void> {
     await firstValueFrom(
-      this.http.post<ApiResponse<void>>(`${this.baseUrl}/verifyResetCode`, { resetCode })
+      this.http.post<ApiResponse<void>>(`${this.baseUrl}/verifyResetCode`, { email, resetCode })
     );
   }
 

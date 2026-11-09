@@ -1,6 +1,6 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { of } from 'rxjs';
+import { of, forkJoin } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { TranslateService, TranslatePipe } from '@ngx-translate/core';
 import { UserService } from '../services/user.service';
@@ -156,33 +156,35 @@ export class UserListComponent implements OnInit {
 
   load(): void {
     this.loading.set(true);
-    this.userService.getAll({ sort: 'name', role: 'coach' }).subscribe({
-      next: res => {
-        const coaches: User[] = (res.data as any)?.documents ?? [];
+    // ⚠️ الطلبين مستقلين — getAllCoachesStats() مابتاخدش وسيط والقايمة مش شرط
+    // لها. كانوا متسلسلين (قايمة ثم إحصائيات)، forkJoin بيخليهم بالتوازي
+    // وبناء الخريطة بيحصل بعد ما الاتنين يوصلوا.
+    forkJoin({
+      list: this.userService.getAll({ sort: 'name', role: 'coach' }),
+      stats: this.dashboardService.getAllCoachesStats().pipe(catchError(() => of(null))),
+    }).subscribe({
+      next: ({ list, stats }) => {
+        const coaches: User[] = (list.data as any)?.documents ?? [];
         this.users.set(coaches);
         this.loading.set(false);
-        this.loadStats(coaches);
+        this.buildStatsMap(coaches, stats);
       },
       error: () => this.loading.set(false),
     });
   }
 
-  private loadStats(coaches: User[]): void {
-    if (!coaches.length) return;
-    // ريكويست واحد لكل الكباتن بدل ريكويست لكل واحد لوحده (كان بيعمل burst كبير على الـ rate limit)
-    this.dashboardService.getAllCoachesStats().pipe(catchError(() => of(null))).subscribe(res => {
-      const stats = res?.data?.stats ?? {};
-      const map: Record<string, CoachStats> = {};
-      coaches.forEach(c => {
-        const d = stats[c._id];
-        if (d) {
-          const total = d.totalPlayers ?? 0;
-          const selected = d.selectedPlayers ?? 0;
-          map[c._id] = { total, selected, rate: total ? Math.round((selected / total) * 100) : 0 };
-        }
-      });
-      this.statsMap.set(map);
+  private buildStatsMap(coaches: User[], res: { data?: { stats?: Record<string, any> } } | null): void {
+    const stats = res?.data?.stats ?? {};
+    const map: Record<string, CoachStats> = {};
+    coaches.forEach(c => {
+      const d = stats[c._id];
+      if (d) {
+        const total = d.totalPlayers ?? 0;
+        const selected = d.selectedPlayers ?? 0;
+        map[c._id] = { total, selected, rate: total ? Math.round((selected / total) * 100) : 0 };
+      }
     });
+    this.statsMap.set(map);
   }
 
   openAvatar(event: Event, url: string, name: string): void {

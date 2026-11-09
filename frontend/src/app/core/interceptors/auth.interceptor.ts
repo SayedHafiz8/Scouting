@@ -8,7 +8,7 @@ import { AuthService } from '../auth/auth.service';
 let isRefreshing = false;
 const refreshTokenSubject = new BehaviorSubject<string | null>(null);
 
-const AUTH_SKIP_URLS = ['/auth/refreshToken', '/auth/login', '/auth/logout', '/auth/signup', '/auth/forgotPassword', '/auth/verifyResetCode', '/auth/resetPassword'];
+const AUTH_SKIP_URLS = ['/auth/refreshToken', '/auth/login', '/auth/logout', '/auth/forgotPassword', '/auth/verifyResetCode', '/auth/resetPassword'];
 
 function shouldSkip(url: string): boolean {
   return AUTH_SKIP_URLS.some(s => url.includes(s));

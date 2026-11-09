@@ -3,6 +3,7 @@ import type { Player } from './player.model';
 import type { User } from './user.model';
 import type { Team } from './team.model';
 import type { SeasonMatch } from './season-match.model';
+import type { AgeGroup } from './age-group.model';
 
 type _Schema = components['schemas']['ScoutingReport'];
 
@@ -24,6 +25,9 @@ export interface ScoutingReport {
   awayTeam?: Team | string | null;
   awayTeamName?: string | null;
   seasonMatch?: SeasonMatch | string | null;
+  // الفئة العمرية اللي اللاعب لعب معاها لما التقرير مش مربوط بمباراة من الجدول —
+  // ممكن تكون غير فئته هو (لاعب بيلعب مع فئة أكبر)
+  playedWithAgeGroup?: AgeGroup | string | null;
   technical: TechnicalSkills;
   physical: PhysicalSkills;
   mental: MentalSkills;
@@ -33,24 +37,3 @@ export interface ScoutingReport {
   updatedAt: string;
 }
 
-export interface ReportFormValue {
-  matchDate: string;
-  homeTeam: string;
-  awayTeam: string;
-  turning: number | null;
-  dribbling: number | null;
-  tackling: number | null;
-  twoFooted: number | null;
-  longPassing: number | null;
-  shortPassing: number | null;
-  heading: number | null;
-  shortSprints: number | null;
-  longSprints: number | null;
-  agility: number | null;
-  aerialDuels: number | null;
-  groundDuels: number | null;
-  vision: number | null;
-  personality: number | null;
-  movement: number | null;
-  notes: string;
-}

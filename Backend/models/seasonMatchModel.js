@@ -66,10 +66,18 @@ const seasonMatchSchema = new mongoose.Schema({
     toObject: { virtuals: true }
 });
 
-// جدول الفئة/الموسم/الدوري مرتب بالتاريخ (صفحة تفاصيل الفئة العمرية — GET ?ageGroup&season&league)
-seasonMatchSchema.index({ ageGroup: 1, season: 1, league: 1, matchDate: 1 });
-// الجدول الكامل لكل الكشافين مقسّم بالدوري (صفحة "ماتشاتي" — GET ?league&season، من غير ageGroup)
-seasonMatchSchema.index({ league: 1, season: 1, matchDate: 1 });
+// ⚠️ season اتشال من نص الاندكسين دول وراح للـpost-filter، و_id اتضاف كفاصل.
+//
+// السبب: season كان بين حقول المساواة وحقل الترتيب (matchDate)، فكان بيكسر
+// تتابع الـmatchDate — أي استعلام بيفلتر ageGroup+league ويرتّب بالتاريخ كان
+// بيقع على SORT حاجزة. والاستعلامات الحقيقية مابتبعتش season غالبًا أصلاً:
+//   • my-matches: {ageGroup, league, matchDate[gte]} — بلا season
+//   • age-group-detail: {ageGroup, league} + season **اختياري** — لما يتبعت
+//     بيـpost-filter على مجموعة صغيرة (فئة واحدة + دوري)، وده رخيص.
+// الترتيب الجديد: المساواة ثم matchDate متتابع ثم _id فاصل التعادل.
+seasonMatchSchema.index({ ageGroup: 1, league: 1, matchDate: 1, _id: 1 });
+// صفحة "ماتشاتي" ودوري المحترفين — GET ?league مع ترتيب/مدى matchDate (بلا season)
+seasonMatchSchema.index({ league: 1, matchDate: 1, _id: 1 });
 seasonMatchSchema.index({ season: 1, status: 1 });
 // عدّاد "عدد المباريات الحاضرها" فى الداشبورد وإحصائيات التقييمات الشهرية (attendees: multikey + مدى تاريخ)
 seasonMatchSchema.index({ attendees: 1, matchDate: 1 });
@@ -101,15 +109,24 @@ seasonMatchSchema.virtual("media", {
     foreignField: "seasonMatch"
 });
 
-// setOptions({ skipPopulate: true }) بيتستخدم لما نحتاج نجيب المستند بالـ raw ObjectIds
-// (من غير populate) — مثلاً وقت المقارنات الداخلية فى الفاليديشن/الـ ownership checks
-seasonMatchSchema.pre(/^find/, function () {
-    if (this.getOptions().skipPopulate) return;
-    this.populate({ path: "ageGroup", select: "name birthYear" })
+// ⚠️ الـpopulate التلقائي (pre(/^find/)) اتشال — الافتراضي كان مقلوب.
+//
+// قبل كده كل عملية تطابق /^find/ كانت بتعمل populate لأربع مسارات، و20+ موضع
+// (الفاليديشن، الـownership، الكنترولرز، السكوينس) كان **مضطر** يكتب
+// setOptions({ skipPopulate: true }) عشان يتهرب منه — الحالة الشاذة بقت القاعدة.
+// والأسوأ: findOneAndUpdate بيطابق /^find/ كمان، فكل كتابة حالة/حضور كانت بتدفع
+// تمن أربع عمليات ربط للقراءة على الفاضي. وصفحة تفاصيل المباراة الواحدة كانت
+// ~13 استعلام (4 من الهوك + 4 صريحة + 4 متداخلة + البحث).
+//
+// دلوقتي الـpopulate صريح في المسارين اللي بيحتاجوه بس (getAll, getSpecific)
+// عن طريق الدالة دي. أي مسار تاني بياخد raw ObjectIds تلقائيًا — وهو اللي كان
+// عايزه أصلاً.
+export const populateMatchDisplay = (query) =>
+    query
+        .populate({ path: "ageGroup", select: "name birthYear" })
         .populate({ path: "homeTeam", select: "name clubName" })
         .populate({ path: "awayTeam", select: "name clubName" })
         .populate({ path: "attendees", select: "name email role" });
-});
 
 // Stage 13 (constitution v1.2.0) — مباراة دوري المحترفين مالهاش فئة عمرية، بنفس
 // نمط Team.ageGroup و Player.isProfessional بالضبط: مش required على مستوى الـschema،

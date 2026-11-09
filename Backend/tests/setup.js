@@ -24,6 +24,8 @@ vi.mock('../socket/index.js', () => ({
     emit: vi.fn(),
   }),
   getConnectedUsers: vi.fn().mockReturnValue(new Map()),
+  // logout بينده الدالة دي عشان يفصل جلسات السوكيت المفتوحة
+  disconnectUserSockets: vi.fn().mockReturnValue(0),
 }));
 
 // ── Database lifecycle ────────────────────────────────────────────────────────

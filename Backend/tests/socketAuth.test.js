@@ -17,9 +17,17 @@ import jwt from "jsonwebtoken";
 import { authenticateSocket } from "../socket/authenticateSocket.js";
 import User from "../models/userModel.js";
 import { createAdmin, createCoach, seedAgeGroups } from "./helpers/factory.js";
+import { TOKEN_TYPES } from "../constants/security.js";
 
+// `typ: access` جزء من العقد — resolveTokenUser بيرفض أي توكن نوعه مش access
+// (عشان توكن الڤولت، المتوقَّع بنفس المفتاح، ما يعديش كجلسة كاملة).
+// overrides بعد الـtyp عن قصد: عشان التستات تقدر تدوس عليه وتختبر الرفض.
 const sign = (userId, overrides = {}) =>
-    jwt.sign({ userId, ...overrides }, process.env.JWT_SECRET_KEY, { expiresIn: "15m" });
+    jwt.sign(
+        { userId, typ: TOKEN_TYPES.ACCESS, ...overrides },
+        process.env.JWT_SECRET_KEY,
+        { expiresIn: "15m" }
+    );
 
 // socket مزيّف بالشكل اللي الميدلوير بيقراه بس
 const fakeSocket = ({ auth = {}, query = {} } = {}) => ({

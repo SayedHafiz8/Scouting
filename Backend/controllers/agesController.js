@@ -64,6 +64,10 @@ export const getAll = asyncHandler(async (req, res, next) => {
     ]);
     features.buildPagination(documentCount);
 
+    // الفئات العمرية بيانات مرجعية شبه ثابتة (بتتغير نادراً جداً من الأدمن).
+    // private عشان ميتخزّنش على بروكسي مشترك، ومدة قصيرة عشان تعديل الأدمن يبان.
+    // الكاش الأقوى (داخل الجلسة) في AgeGroupService على الفرونت.
+    res.set("Cache-Control", "private, max-age=300");
     res.status(200).json({
         status: "success",
         count: documents.length,

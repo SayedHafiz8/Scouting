@@ -171,6 +171,10 @@ app.get('/api/v1/health', (req, res) => {
 // hardcoding a number that can drift from BUNNY_MAX_VIDEO_MB (env-driven).
 app.get('/api/v1/media-limits', (req, res) => {
     const { limits } = bunnyConfig();
+    // إعدادات بيئة شبه ثابتة — كاش خاص قصير بدل جلب في كل تحميل صفحة.
+    // private عشان ميتخزّنش على بروكسي مشترك، والمدة قصيرة عشان أي تغيير env
+    // يبان بسرعة.
+    res.set('Cache-Control', 'private, max-age=300');
     res.status(200).json({
         status: 'success',
         data: { maxVideoMB: limits.maxVideoMB, maxImageMB: 10 },

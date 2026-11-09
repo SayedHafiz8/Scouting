@@ -56,3 +56,26 @@ io.on("connection", (socket) => {
 export const getIO = () => io;
 
 export const getConnectedUsers = () => connectedUsers;
+
+// بيفصل كل سوكتس اليوزر ده فورًا. بيتستخدم من logout: المصادقة بتحصل مرة واحدة
+// بس وقت المصافحة (authenticateSocket) وبعدها مابتتراجعش أبدًا، فاليوزر اللي
+// سجّل خروج كان بيفضل مستقبل إشعارات وتحديثات لحد ما يقفل التبويبة.
+//
+// بيشتغل عادي لو السوكيت مش متشغّلة (تستات، سكريبتات) — بيرجع 0 من غير رمي.
+export const disconnectUserSockets = (userId) => {
+    if (!io) return 0;
+    const socketIds = connectedUsers.get(String(userId));
+    if (!socketIds?.size) return 0;
+
+    // نسخة من الـids: socket.disconnect بيشغّل معالج "disconnect" اللي بيعدّل
+    // نفس الـSet اللي بنلف عليه.
+    let closed = 0;
+    for (const id of [...socketIds]) {
+        const socket = io.sockets.sockets.get(id);
+        if (socket) {
+            socket.disconnect(true);
+            closed += 1;
+        }
+    }
+    return closed;
+};

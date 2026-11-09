@@ -64,8 +64,14 @@ const userSchema = new mongoose.Schema({
     passwordResetCode: String,
     passwordResetExpires: Date,
     passwordResetVerified: Boolean,
-    refreshToken: String,
-    refreshTokenExpires: Date,
+    // عدّاد محاولات التحقق الغلط للكود — بيصفّر الكود عند الحد (verifyResetPassword).
+    // من غيره مساحة 900 ألف احتمال كانت قابلة للرش بما إن الليميتر على IP بس.
+    passwordResetAttempts: { type: Number, select: false },
+    // select:false — الكود كان بيكتب `.select("+refreshToken")` كأنها موجودة
+    // وهي مش موجودة، فالحقل كان بيترجع في كل قراءة عادية لليوزر. القيمة نفسها
+    // بقت مهشَّمة (authController.hashRefreshToken)، والاتنين مع بعض.
+    refreshToken: { type: String, select: false },
+    refreshTokenExpires: { type: Date, select: false },
 });
 
 userSchema.pre('save', async function() {

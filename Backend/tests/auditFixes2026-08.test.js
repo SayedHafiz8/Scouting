@@ -228,7 +228,9 @@ describe('audit fix B1 — proScout can write reports on a professional (ageGrou
     expect(rep.body.data.document.overallRating).toBeGreaterThan(0);
   });
 
-  it('matchType: friendly no longer crashes with TypeError — 201 with the report created', async () => {
+  // طلب مالك 2026-09 — "friendly" اتلغى. نفس الحالة بالظبط (لاعب محترف بلا فئة
+  // عمرية + منافس بلا مباراة في الجدول) بقت المسار الافتراضي من غير matchType.
+  it('a professional player with a named opponent and no fixture — 201, no TypeError', async () => {
     await seedAgeGroups();
     const scout = await createProScout();
     const proTeam = await Team.create({ name: 'pro-club-b1-f', clubName: 'Pro Club B1 F', league: 'professional' });
@@ -243,7 +245,7 @@ describe('audit fix B1 — proScout can write reports on a professional (ageGrou
     const rep = await request(app)
       .post(`/api/v1/players/${player._id}/reports`)
       .set(...auth(scout.token))
-      .send(reportPayload({ matchType: 'friendly', awayTeam: String(otherTeam._id) }));
+      .send(reportPayload({ awayTeam: String(otherTeam._id) }));
 
     expect(rep.status).toBe(201);
   });
@@ -270,13 +272,13 @@ describe('audit fix B1 — proScout can write reports on a professional (ageGrou
     const badRep = await request(app)
       .post(`/api/v1/players/${player._id}/reports`)
       .set(...auth(coach.token))
-      .send(reportPayload({ matchType: 'friendly', awayTeam: String(mismatchedTeam._id) }));
+      .send(reportPayload({ playedWithAgeGroup: String(group._id), awayTeam: String(mismatchedTeam._id) }));
     expect(badRep.status).toBe(400);
 
     const goodRep = await request(app)
       .post(`/api/v1/players/${player._id}/reports`)
       .set(...auth(coach.token))
-      .send(reportPayload({ matchType: 'friendly', awayTeam: String(otherYouthTeam._id) }));
+      .send(reportPayload({ playedWithAgeGroup: String(group._id), awayTeam: String(otherYouthTeam._id) }));
     expect(goodRep.status).toBe(201);
   });
 });
@@ -317,7 +319,7 @@ describe('audit fix S5 — forgotPassword uses a cryptographic RNG for the reset
 
     const verify = await request(app)
       .post('/api/v1/auth/verifyResetCode')
-      .send({ resetCode: code });
+      .send({ email: coach.user.email, resetCode: code });
     expect(verify.status).toBe(200);
   });
 });

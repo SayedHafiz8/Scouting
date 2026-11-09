@@ -21,13 +21,21 @@ export class ToastService {
     this.add({ type: 'info', message, duration });
   }
 
+  // مؤقّتات الإخفاء التلقائي لكل توست — عشان نلغيها عند الإخفاء اليدوي.
+  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+
   dismiss(id: string): void {
+    const timer = this.timers.get(id);
+    if (timer) {
+      clearTimeout(timer);   // ⚠️ من غير ده المؤقّت بيفضل شغّال ويضرب dismiss
+      this.timers.delete(id); // على توست اتشال خلاص = دورة تغيير على الفاضي
+    }
     this.toasts.update(ts => ts.filter(t => t.id !== id));
   }
 
   private add(partial: Omit<Toast, 'id'>): void {
     const id = crypto.randomUUID();
     this.toasts.update(ts => [...ts, { ...partial, id }]);
-    setTimeout(() => this.dismiss(id), partial.duration);
+    this.timers.set(id, setTimeout(() => this.dismiss(id), partial.duration));
   }
 }

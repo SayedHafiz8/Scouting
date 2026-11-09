@@ -1,5 +1,5 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ChangeDetectionStrategy, Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ScoutingReportService } from '../services/scouting-report.service';
@@ -12,7 +12,8 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
 
 @Component({
     selector: 'app-report-detail',
-    imports: [RouterLink, DatePipe, TranslatePipe, RatingBarComponent, RadarChartComponent, SkeletonLoaderComponent],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [DatePipe, TranslatePipe, RatingBarComponent, RadarChartComponent, SkeletonLoaderComponent],
     template: `
     <div class="max-w-4xl mx-auto space-y-5">
 
@@ -52,9 +53,10 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
                   </p>
                 }
               </div>
-              @if (auth.isCoach()) {
-                <a [routerLink]="['../edit']" class="btn btn-secondary btn-sm">{{ 'REPORTS.DETAIL.EDIT' | translate }}</a>
-              }
+              <!-- زرار التعديل اتشال: كان بيوجّه لـ['../edit'] واللي بيتحلّ لـ
+                   reports/edit فبيطابق reports/:reportId بـreportId='edit' ويرجع
+                   صفحة فاضية — الراوت ده مش موجود أصلاً. التقارير للقراءة بعد
+                   الإنشاء، والأدمن وحده بيمسح. (قرار المالك 2026-11) -->
             </div>
 
             <!-- Technical -->

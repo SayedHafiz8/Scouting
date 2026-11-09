@@ -1,7 +1,8 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal, computed, OnInit } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { Observable, catchError, forkJoin, map, of, shareReplay } from 'rxjs';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ScoutingReportService } from '../services/scouting-report.service';
 import { ToastService } from '../../../core/services/toast.service';
@@ -12,11 +13,19 @@ import { SeasonMatchService } from '../../season-matches/services/season-match.s
 import { SeasonMatch } from '../../../core/models/season-match.model';
 import { TeamService } from '../../teams/services/team.service';
 import { Team } from '../../../core/models/team.model';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../../environments/environment';
+import { AgeGroup } from '../../../core/models/age-group.model';
+import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
+import { PlayerContextService } from '../../../core/services/player-context.service';
 
 interface RatingField { key: string; label: string; }
 
 // طلب مالك 2026-09 — استبدال كامل لمجموعة الفيلدز (راجع Backend/models/scoutingReportModel.js
 // لتفاصيل القرار والتسميات المقابلة بالعربي).
+const ratingColorOf = (value: number | null | undefined): string =>
+  !value ? 'var(--text-muted)' : value >= 8 ? '#22c55e' : value >= 5 ? '#f59e0b' : '#f43f5e';
+
 const TECHNICAL_FIELDS: RatingField[] = [
   { key: 'turning', label: 'REPORTS.FORM.TURNING' },
   { key: 'dribbling', label: 'REPORTS.FORM.DRIBBLING' },
@@ -43,7 +52,8 @@ const MENTAL_FIELDS: RatingField[] = [
 
 @Component({
     selector: 'app-report-form',
-    imports: [ReactiveFormsModule, FormsModule, RouterLink, RadarChartComponent, TranslatePipe],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [ReactiveFormsModule, FormsModule, RouterLink, RadarChartComponent, SkeletonLoaderComponent, TranslatePipe],
     styles: [`
       /* ── Rating pip buttons ──────────────────── */
       .pip {
@@ -105,7 +115,7 @@ const MENTAL_FIELDS: RatingField[] = [
           <polyline points="9 18 15 12 9 6"/>
         </svg>
         <span style="color:var(--text-primary);font-weight:600">
-          {{ isEdit() ? ('REPORTS.FORM.EDIT' | translate) : ('REPORTS.FORM.NEW' | translate) }}
+          {{ 'REPORTS.FORM.NEW' | translate }}
         </span>
       </nav>
 
@@ -142,7 +152,7 @@ const MENTAL_FIELDS: RatingField[] = [
                    from the player's own observers[] (already loaded with the player, no
                    extra request) — matches the server's requirement that assignedObserver
                    must already be assigned to this player. -->
-              @if (auth.isAdmin() && !isEdit() && (playerObservers().length > 0 || playerProScout())) {
+              @if (auth.isAdmin() && (playerObservers().length > 0 || playerProScout())) {
                 <div class="space-y-1.5 mb-2">
                   <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
                     {{ 'REPORTS.FORM.FILE_ON_BEHALF_OF' | translate }}
@@ -160,9 +170,34 @@ const MENTAL_FIELDS: RatingField[] = [
                 </div>
               }
 
+              <!-- ⚠️ القسم كله مخفي لحد ما البيانات اللي بتحدد شكله توصل.
+                   من غير البوابة دي، أول رسمة بتطلع بفرع "مضيف × ضيف" (لأن
+                   hasTeam() ابتدائيًا false) وبعدين الشكل بيتغيّر مع كل رد. -->
+              @if (!matchInputsReady()) {
+                <app-skeleton-loader [count]="2" />
+              } @else {
+
+              @if (showLinkedMatch()) {
+                <!-- مباراة فريقه في الجدول النهاردة أو امبارح — بتترتبط تلقائي،
+                     مفيش اختيار. (طلب مالك 2026-09: قايمة "ربط بمباراة" اتشالت) -->
+                <div class="space-y-1.5 mb-2">
+                  <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                    {{ 'REPORTS.FORM.SEASON_MATCH' | translate }}
+                  </label>
+                  <div class="form-input flex items-center gap-2"
+                       style="cursor:default;background:rgba(148,163,184,0.08)">
+                    <svg style="width:14px;height:14px;color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                    <span class="font-semibold" style="color:var(--text-secondary)">{{ linkedMatchLabel() }}</span>
+                  </div>
+                  <p class="text-[11px]" style="color:var(--text-muted)">{{ 'REPORTS.FORM.AUTO_LINKED_HINT' | translate }}</p>
+                </div>
+              }
+
               @if (showFixturePicker()) {
-                <!-- اللاعب متسجل في فريق وله مباريات يقدر يربط بيها التقرير.
-                     للناشئ: مباراة النهارده بس. للمحترف: أي مباراة اتلعبت. -->
+                <!-- المحترف وحده: مبارياته قليلة ومتباعدة وبيكتب تقريره وقت ما يقدر،
+                     فبيختار من كل مباريات ناديه اللي اتلعبت. -->
                 <div class="space-y-1.5 mb-2">
                   <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
                     {{ 'REPORTS.FORM.SEASON_MATCH' | translate }}
@@ -178,47 +213,96 @@ const MENTAL_FIELDS: RatingField[] = [
                 </div>
               }
 
-              @if (showTypeButtons()) {
-                <!-- مفيش مباراة مختارة — يختار تدريب ولا مباراة ودية -->
+              @if (showOpponentPicker()) {
+                <!-- مفيش مباراة من الجدول — فريق اللاعب ثابت (من السيرفر)، والكشاف
+                     بيحدد الفئة اللي لعب معاها النهاردة (ممكن تكون أكبر من فئته)
+                     والفريق المنافس. مفيش مضيف/ضيف هنا (طلب مالك 2026-09). -->
                 <div class="space-y-2.5">
-                  <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
-                    {{ 'REPORTS.FORM.REPORT_TYPE' | translate }}
-                  </label>
-                  <div class="flex gap-2">
-                    <button type="button" class="btn btn-sm flex-1" [class]="matchType() === 'training' ? 'btn-primary' : 'btn-secondary'" (click)="setMatchType('training')">
-                      {{ 'REPORTS.FORM.TRAINING' | translate }}
-                    </button>
-                    <button type="button" class="btn btn-sm flex-1" [class]="matchType() === 'friendly' ? 'btn-primary' : 'btn-secondary'" (click)="setMatchType('friendly')">
-                      {{ 'REPORTS.FORM.FRIENDLY' | translate }}
-                    </button>
-                  </div>
+                  @if (playerTeamName()) {
+                    <div class="space-y-1.5">
+                      <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                        {{ 'REPORTS.FORM.PLAYER_TEAM' | translate }}
+                      </label>
+                      <div class="form-input flex items-center gap-2"
+                           style="cursor:default;background:rgba(148,163,184,0.08)">
+                        <svg style="width:14px;height:14px;color:var(--text-muted)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                        <span class="font-semibold" style="color:var(--text-secondary)">{{ playerTeamName() }}</span>
+                      </div>
+                    </div>
+                  }
 
-                  @if (matchType() === 'friendly') {
+                  @if (showAgeGroupPicker()) {
+                    <div class="space-y-1.5">
+                      <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                        {{ 'REPORTS.FORM.PLAYED_WITH' | translate }}
+                      </label>
+                      <select [ngModel]="playedWithAgeGroup()" (ngModelChange)="onPlayedWithChange($event)"
+                              [ngModelOptions]="{standalone: true}" class="form-input">
+                        <option value="">{{ 'REPORTS.FORM.SELECT_AGE_GROUP' | translate }}</option>
+                        @for (g of ageGroupOptions(); track g._id) {
+                          <option [value]="g._id">{{ g.name }}</option>
+                        }
+                      </select>
+                      <p class="text-[11px]" style="color:var(--text-muted)">{{ 'REPORTS.FORM.PLAYED_WITH_HINT' | translate }}</p>
+                      @if (submitted() && !playedWithAgeGroup()) {
+                        <p class="field-error">{{ 'REPORTS.FORM.PLAYED_WITH_ERR' | translate }}</p>
+                      }
+                    </div>
+                  }
+
+                  @if (ageGroupMatchOptions().length > 0) {
+                    <!-- فريق نفس النادي في الفئة دي عنده مباراة في الجدول النهاردة/امبارح —
+                         التقرير بيترتبط بيها والمنافس والتاريخ بييجوا منها -->
+                    <div class="space-y-1.5 pt-1">
+                      <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                        {{ 'REPORTS.FORM.AGE_GROUP_MATCH' | translate }}
+                      </label>
+                      <select [ngModel]="selectedAgeGroupMatch()" (ngModelChange)="onAgeGroupMatchChange($event)"
+                              [ngModelOptions]="{standalone: true}" class="form-input">
+                        <option value="">{{ 'REPORTS.FORM.NO_SEASON_MATCH' | translate }}</option>
+                        @for (m of ageGroupMatchOptions(); track m._id) {
+                          <option [value]="m._id">{{ m.label }}</option>
+                        }
+                      </select>
+                      <p class="text-[11px]" style="color:var(--text-muted)">
+                        {{ 'REPORTS.FORM.AGE_GROUP_MATCH_HINT' | translate }}
+                      </p>
+                    </div>
+                  }
+
+                  @if ((!showAgeGroupPicker() || playedWithAgeGroup()) && !selectedAgeGroupMatch()) {
                     <div class="space-y-1.5 pt-1">
                       <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
                         {{ 'REPORTS.FORM.OPPONENT_TEAM' | translate }}
                       </label>
-                      <select [ngModel]="awayIsOther() ? OTHER_TEAM : form.get('awayTeam')?.value"
-                              (ngModelChange)="onTeamSelectChange('away', $event)"
-                              [ngModelOptions]="{standalone: true}" class="form-input">
-                        <option value="">{{ 'REPORTS.FORM.SELECT_TEAM' | translate }}</option>
-                        @for (t of teamOptions(); track t._id) {
-                          <option [value]="t._id">{{ t.name }}</option>
-                        }
-                        <option [value]="OTHER_TEAM">{{ 'REPORTS.FORM.TEAM_NOT_LISTED' | translate }}</option>
-                      </select>
-                      @if (awayIsOther()) {
+                      @if (opponentOptions().length > 0) {
+                        <!-- تبديل الفئة بيبهّت الحقل ويقفله لحد ما القايمة الجديدة
+                             توصل — قبل كده كان بيختفي ويرجع، فالقسم كان بينط -->
+                        <select [ngModel]="awayIsOther() ? OTHER_TEAM : form.get('awayTeam')?.value"
+                                (ngModelChange)="onTeamSelectChange('away', $event)"
+                                [disabled]="ageGroupInputsLoading()"
+                                [style.opacity]="ageGroupInputsLoading() ? '0.55' : null"
+                                [ngModelOptions]="{standalone: true}" class="form-input">
+                          <option value="">{{ 'REPORTS.FORM.SELECT_TEAM' | translate }}</option>
+                          @for (t of opponentOptions(); track t._id) {
+                            <option [value]="t._id">{{ t.name }}</option>
+                          }
+                          <option [value]="OTHER_TEAM">{{ 'REPORTS.FORM.TEAM_NOT_LISTED' | translate }}</option>
+                        </select>
+                      } @else if (opponentOptionsLoaded()) {
+                        <!-- الفئة دي مالهاش فرق مسجلة — الاسم بيتكتب يدوي -->
+                        <p class="text-[11px]" style="color:var(--text-muted)">{{ 'REPORTS.FORM.NO_TEAMS_IN_AGE_GROUP' | translate }}</p>
+                      }
+                      @if (awayIsOther() || (opponentOptionsLoaded() && opponentOptions().length === 0)) {
                         <input type="text" formControlName="awayTeamName" class="form-input"
                                [placeholder]="'REPORTS.FORM.TEAM_NAME_PH' | translate" />
                       }
-                      @if (submitted() && matchType() === 'friendly' && !awayTeam() && !form.get('awayTeamName')?.value) {
+                      @if (submitted() && !awayTeam() && !form.get('awayTeamName')?.value) {
                         <p class="field-error">{{ 'REPORTS.FORM.TEAMS_ERR' | translate }}</p>
                       }
                     </div>
-                  } @else if (matchType() === 'training') {
-                    <p class="text-xs" style="color:var(--text-muted)">{{ 'REPORTS.FORM.TRAINING_HINT' | translate }}</p>
-                  } @else if (submitted()) {
-                    <p class="field-error">{{ 'REPORTS.FORM.REPORT_TYPE_ERR' | translate }}</p>
                   }
                 </div>
               }
@@ -274,6 +358,8 @@ const MENTAL_FIELDS: RatingField[] = [
                   <p class="field-error mt-1.5">{{ 'REPORTS.FORM.TEAMS_ERR' | translate }}</p>
                 }
               }
+
+              }
             </div>
 
             <!-- ── Technical ── -->
@@ -289,25 +375,24 @@ const MENTAL_FIELDS: RatingField[] = [
                   <h3 class="text-sm font-bold" style="color:#22c55e">{{ 'REPORTS.FORM.TECHNICAL' | translate }}</h3>
                   <p class="text-xs" style="color:var(--text-muted)">{{ technicalFields.length }} {{ 'REPORTS.FORM.METRICS' | translate }}</p>
                 </div>
-                <span class="text-xl font-black tabular-nums" [style.color]="ratingColor(categoryAverages().technical)">
+                <span class="text-xl font-black tabular-nums" [style.color]="categoryColors().technical">
                   {{ categoryAverages().technical || '—' }}
                 </span>
               </div>
               <div class="space-y-5" formGroupName="technical">
-                @for (field of technicalFields; track field.key) {
+                @for (field of ratingRows().technical; track field.key) {
                   <div class="space-y-2">
                     <div class="flex items-center justify-between">
                       <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
-                      <span class="text-sm font-black tabular-nums w-6 text-center"
-                            [style.color]="ratingColor(form.get('technical.' + field.key)?.value)">
-                        {{ form.get('technical.' + field.key)?.value ?? 0 }}
+                      <span class="text-sm font-black tabular-nums w-6 text-center" [style.color]="field.color">
+                        {{ field.value }}
                       </span>
                     </div>
                     <div class="flex gap-1">
                       @for (n of pipRange; track n) {
                         <button type="button" class="pip pip-t flex-1"
-                                [class.pip-on]="(form.get('technical.' + field.key)?.value ?? 0) >= n"
-                                (click)="setRating('technical.' + field.key, n)">{{ n }}</button>
+                                [class.pip-on]="n <= field.value"
+                                (click)="setRating(field.path, n)">{{ n }}</button>
                       }
                     </div>
                   </div>
@@ -327,25 +412,24 @@ const MENTAL_FIELDS: RatingField[] = [
                   <h3 class="text-sm font-bold" style="color:#38bdf8">{{ 'REPORTS.FORM.PHYSICAL' | translate }}</h3>
                   <p class="text-xs" style="color:var(--text-muted)">{{ physicalFields.length }} {{ 'REPORTS.FORM.METRICS' | translate }}</p>
                 </div>
-                <span class="text-xl font-black tabular-nums" [style.color]="ratingColor(categoryAverages().physical)">
+                <span class="text-xl font-black tabular-nums" [style.color]="categoryColors().physical">
                   {{ categoryAverages().physical || '—' }}
                 </span>
               </div>
               <div class="space-y-5" formGroupName="physical">
-                @for (field of physicalFields; track field.key) {
+                @for (field of ratingRows().physical; track field.key) {
                   <div class="space-y-2">
                     <div class="flex items-center justify-between">
                       <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
-                      <span class="text-sm font-black tabular-nums w-6 text-center"
-                            [style.color]="ratingColor(form.get('physical.' + field.key)?.value)">
-                        {{ form.get('physical.' + field.key)?.value ?? 0 }}
+                      <span class="text-sm font-black tabular-nums w-6 text-center" [style.color]="field.color">
+                        {{ field.value }}
                       </span>
                     </div>
                     <div class="flex gap-1">
                       @for (n of pipRange; track n) {
                         <button type="button" class="pip pip-p flex-1"
-                                [class.pip-on]="(form.get('physical.' + field.key)?.value ?? 0) >= n"
-                                (click)="setRating('physical.' + field.key, n)">{{ n }}</button>
+                                [class.pip-on]="n <= field.value"
+                                (click)="setRating(field.path, n)">{{ n }}</button>
                       }
                     </div>
                   </div>
@@ -366,25 +450,24 @@ const MENTAL_FIELDS: RatingField[] = [
                   <h3 class="text-sm font-bold" style="color:#8b5cf6">{{ 'REPORTS.FORM.MENTAL' | translate }}</h3>
                   <p class="text-xs" style="color:var(--text-muted)">{{ mentalFields.length }} {{ 'REPORTS.FORM.METRICS' | translate }}</p>
                 </div>
-                <span class="text-xl font-black tabular-nums" [style.color]="ratingColor(categoryAverages().mental)">
+                <span class="text-xl font-black tabular-nums" [style.color]="categoryColors().mental">
                   {{ categoryAverages().mental || '—' }}
                 </span>
               </div>
               <div class="space-y-5" formGroupName="mental">
-                @for (field of mentalFields; track field.key) {
+                @for (field of ratingRows().mental; track field.key) {
                   <div class="space-y-2">
                     <div class="flex items-center justify-between">
                       <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
-                      <span class="text-sm font-black tabular-nums w-6 text-center"
-                            [style.color]="ratingColor(form.get('mental.' + field.key)?.value)">
-                        {{ form.get('mental.' + field.key)?.value ?? 0 }}
+                      <span class="text-sm font-black tabular-nums w-6 text-center" [style.color]="field.color">
+                        {{ field.value }}
                       </span>
                     </div>
                     <div class="flex gap-1">
                       @for (n of pipRange; track n) {
                         <button type="button" class="pip pip-m flex-1"
-                                [class.pip-on]="(form.get('mental.' + field.key)?.value ?? 0) >= n"
-                                (click)="setRating('mental.' + field.key, n)">{{ n }}</button>
+                                [class.pip-on]="n <= field.value"
+                                (click)="setRating(field.path, n)">{{ n }}</button>
                       }
                     </div>
                   </div>
@@ -428,7 +511,7 @@ const MENTAL_FIELDS: RatingField[] = [
                     <polyline points="17 21 17 13 7 13 7 21"/>
                   </svg>
                 }
-                {{ loading() ? ('REPORTS.FORM.SAVING' | translate) : (isEdit() ? ('REPORTS.FORM.UPDATE' | translate) : ('REPORTS.FORM.SAVE' | translate)) }}
+                {{ loading() ? ('REPORTS.FORM.SAVING' | translate) : ('REPORTS.FORM.SAVE' | translate) }}
               </button>
               <a [routerLink]="['/players', playerId, 'reports']" class="btn btn-secondary">
                 {{ 'REPORTS.FORM.CANCEL' | translate }}
@@ -510,13 +593,14 @@ export class ReportFormComponent implements OnInit {
   private readonly playerService = inject(PlayerService);
   private readonly seasonMatchService = inject(SeasonMatchService);
   private readonly teamService = inject(TeamService);
+  private readonly http = inject(HttpClient);
   private readonly toast = inject(ToastService);
   private readonly translate = inject(TranslateService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly playerContext = inject(PlayerContextService);
   readonly auth = inject(AuthService);
 
   readonly loading = signal(false);
-  readonly isEdit = signal(false);
-  private reportId = '';
 
   // admin-assign-players-reports-media — admin-only, create-only. The player's
   // own observers[] (populated {_id,name}, already fetched by loadScopedOptions)
@@ -538,30 +622,94 @@ export class ReportFormComponent implements OnInit {
 
   // اللاعب متسجل في فريق فعلي؟ لو أيوه، لازم يختار مباراة النهارده بس (مفيش إدخال يدوي للفرق)
   readonly hasTeam = signal(false);
+  // فريق اللاعب — بيتشال من قايمة المنافسين (مينفعش يلعب ضد نفسه)
+  private playerTeamId = '';
+  // اسمه بيتعرض ثابت للقراءة بس: الطرف الأول مش اختيار للكشاف، السيرفر بيحطه
+  readonly playerTeamName = signal('');
 
   // اللاعب محترف؟ بيحدد نطاق التحميل (الدوري بدل الفئة العمرية) وكمان بيفتح
   // اختيار أي مباراة اتلعبت مش مباراة النهارده بس — الرخصة دي للـproScout وحده،
   // ومطبَّقة على السيرفر في resolveMatchTypeFields بنفس الشرط.
   readonly isProfessional = signal(false);
 
-  // قايمة مباريات معروضة + لسه مختارش منها حاجة → لسه ممكن يكتب تدريب/ودية.
-  // للناشئ ده مستحيل يحصل (القايمة إما فيها ماتش النهارده وإما فاضية)، فمساره متغيرش.
+  // طلب مالك 2026-09 — قايمة "ربط بمباراة من جدول المواسم" اتشالت من واجهة
+  // الناشئ: مافيش قرار للكشاف هنا أصلاً. لو فريق اللاعب عنده مباراة في الجدول
+  // النهاردة أو امبارح، التقرير بيترتبط بيها **تلقائي** وبتتعرض للقراءة بس؛
+  // ولو مافيش، بيروح على اختيار الفئة اللي لعب معاها.
+  // المحترف هو الاستثناء الوحيد اللي القايمة باقية عنده: مبارياته متباعدة
+  // وبيكتب تقريره بعدها بأيام، فاختيار المباراة هو مساره الأساسي (نفس الرخصة
+  // المطبَّقة على السيرفر في resolveMatchTypeFields).
   readonly showFixturePicker = computed(() =>
-    this.hasTeam() && this.seasonMatchOptionsLoaded() && this.seasonMatchOptions().length > 0
+    this.isProfessional() && this.seasonMatchOptionsLoaded() && this.seasonMatchOptions().length > 0
   );
 
-  readonly showTypeButtons = computed(() =>
-    this.hasTeam() &&
-    (this.seasonMatchOptions().length === 0 || (this.isProfessional() && !this.selectedSeasonMatch()))
+  // المباراة المرتبطة تلقائي — نص للعرض بس
+  readonly linkedMatchLabel = signal('');
+  readonly showLinkedMatch = computed(() =>
+    !this.isProfessional() && !!this.selectedSeasonMatch() && !!this.linkedMatchLabel()
   );
+
+  // طلب مالك 2026-09 — التدريب والودية اتلغوا. لما مايكونش فيه مباراة من الجدول
+  // متختارة، الكشاف بيحدد الفئة اللي اللاعب لعب معاها والفريق المنافس.
+  // اللاعب المحترف مالوش فئة عمرية أصلاً، فبيختار المنافس على طول من فرق الدوري.
+  // نفس شرط أزرار النوع القديمة بالظبط: لو فيه مباراة النهاردة في الجدول لازم
+  // يربط التقرير بيها، والاختيار اليدوي بيظهر بس لما مايكونش فيه (أو للمحترف
+  // اللي لسه مختارش من قايمة مبارياته).
+  // المحترف والأدمن بيشوفوا قايمة مباريات ممتدة (كل اللي اتلعب، مش النهاردة بس)،
+  // فالقايمة عندهم شبه دايماً مش فاضية — ولو ربطناهم بيها وحدها كان المسار اليدوي
+  // هيبقى مقفول عليهم تماماً. فبيظهر لهم طول ما مافيش مباراة متختارة، وبيختفي أول
+  // ما يختاروا واحدة. الكوتش/الأوبزيرفر زي ما هو بالظبط: قايمته النهاردة بس، فلو
+  // فيه ماتش لازم يربط بيه.
+  readonly showOpponentPicker = computed(() =>
+    this.hasTeam() && this.seasonMatchOptionsLoaded() && !this.selectedSeasonMatch()
+  );
+
+  readonly showAgeGroupPicker = computed(() => this.showOpponentPicker() && !this.isProfessional());
 
   // القيمة الخاصة اللي بتظهر في السيلكت لما يختار "الفريق مش موجود في القايمة"
   readonly OTHER_TEAM = '__other__';
   readonly homeIsOther = signal(false);
   readonly awayIsOther = signal(false);
 
-  // نوع التقرير لما فريق اللاعب متسجل ومفيش مباراة رسمية النهارده — تدريب ولا ودية
-  readonly matchType = signal<'friendly' | 'training' | ''>('');
+  // الفئة العمرية اللي اللاعب لعب معاها النهاردة (ممكن تكون غير فئته)، وفرق الفئة
+  // دي عشان يختار منها المنافس — لو مالهاش فرق مسجلة بيكتب الاسم يدوي
+  readonly ageGroupOptions = signal<AgeGroup[]>([]);
+  readonly playedWithAgeGroup = signal('');
+  readonly opponentOptions = signal<Team[]>([]);
+  readonly opponentOptionsLoaded = signal(false);
+  // فئة اللاعب نفسه — القيمة الافتراضية لـ"لعب مع فئة"
+  private playerAgeGroupId = '';
+
+  // ════════ بوابة الرسم ════════
+  // القالب كان بيفرّع على إشارات قيمتها الابتدائية توافق فرعًا حقيقيًا، فأول
+  // رسمة كانت بتطلع غلط (فرع "مضيف × ضيف" للاعب لسه بياناته في الطريق) وبعدين
+  // الشكل بيتغيّر 4 مرات مع كل رد. الحل: قسم معلومات المباراة مايترسمش خالص
+  // لحد ما البيانات اللي بتحدد شكله توصل كلها.
+  readonly playerLoaded = signal(false);
+  readonly agesLoaded = signal(false);
+  // بنستنى فرق الفئة ومبارياتها كمان — بس لما يكون المسار ده هو اللي هيتعرض
+  readonly ageGroupInputsPending = signal(false);
+  // تحميل جارٍ لتبديل فئة بعد أول رسم — بيبهّت الحقل بدل ما يشيله
+  readonly ageGroupInputsLoading = signal(false);
+
+  readonly matchInputsReady = computed(() => {
+    if (!this.playerLoaded() || !this.seasonMatchOptionsLoaded()) return false;
+    if (this.ageGroupInputsPending()) return false;
+    // قايمة الفئات مطلوبة بس لو الاختيار ده هو اللي هيتعرض — المحترف واللاعب
+    // اللي مربوط بمباراة مابيستنوهاش
+    if (this.showAgeGroupPicker() && !this.agesLoaded()) return false;
+    return true;
+  });
+
+  // نادي اللاعب — الرابط الوحيد بين "الأهلي 2009" و"الأهلي 2007": فريقين
+  // مختلفين تماماً بـ_id مختلف، بس نفس الـclubName.
+  private playerClubName = '';
+  // فريق نفس النادي في الفئة اللي لعب معاها (لو موجود) ومبارياته النهاردة/امبارح.
+  // لما يكون فيه مباراة، التقرير بيترتبط بيها والمنافس بييجي منها — مفيش كتابة يدوية.
+  readonly siblingTeamName = signal('');
+  // القايمة محسوبة مسبقًا ({_id,label}) — مفيش استدعاء دالة جوه @for (قاعدة CLAUDE.md)
+  readonly ageGroupMatchOptions = signal<{ _id: string; label: string }[]>([]);
+  readonly selectedAgeGroupMatch = signal('');
   readonly submitted = signal(false);
 
   readonly technicalFields = TECHNICAL_FIELDS;
@@ -628,6 +776,28 @@ export class ReportFormComponent implements OnInit {
     };
   });
 
+  // ⚠️ القالب كان بينده form.get('technical.' + key) **12 مرة لكل حقل** × 15 حقل
+  // = 180 نداء + 180 `split('.')` + 180 نص متسلسل، في كل دورة تغيير — والقيم
+  // كلها متاحة أصلاً في formValues. هنا بتتحسب مرة واحدة لما الفورم يتغير.
+  readonly ratingRows = computed(() => {
+    const v = this.formValues() as Record<string, Record<string, number | null> | undefined>;
+    const build = (group: 'technical' | 'physical' | 'mental', fields: RatingField[]) =>
+      fields.map(f => {
+        const value = v?.[group]?.[f.key] ?? 0;
+        return { key: f.key, label: f.label, path: `${group}.${f.key}`, value, color: ratingColorOf(value) };
+      });
+    return {
+      technical: build('technical', TECHNICAL_FIELDS),
+      physical: build('physical', PHYSICAL_FIELDS),
+      mental: build('mental', MENTAL_FIELDS),
+    };
+  });
+
+  readonly categoryColors = computed(() => {
+    const a = this.categoryAverages();
+    return { technical: ratingColorOf(a.technical), physical: ratingColorOf(a.physical), mental: ratingColorOf(a.mental) };
+  });
+
   readonly radarData = computed(() => {
     const v = this.formValues();
     return {
@@ -671,11 +841,6 @@ export class ReportFormComponent implements OnInit {
     this.form.get(path)?.setValue(value);
   }
 
-  ratingColor(value: number | null | undefined): string {
-    if (!value) return 'var(--text-muted)';
-    return value >= 8 ? '#22c55e' : value >= 5 ? '#f59e0b' : '#f43f5e';
-  }
-
   get playerId(): string {
     return this.route.snapshot.pathFromRoot
       .map(s => s.paramMap.get('playerId'))
@@ -683,39 +848,10 @@ export class ReportFormComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    // الفورم ده للإنشاء بس. مسار التعديل (reports/:reportId/edit) مش موجود أصلاً
+    // في players.routes.ts، وزرار "تعديل" اللي كان بيوجّهله اتشال — التقارير
+    // للقراءة بعد الإنشاء والأدمن وحده بيمسح. (قرار المالك 2026-11)
     this.loadScopedOptions();
-
-    this.reportId = this.route.snapshot.paramMap.get('reportId') ?? '';
-    if (this.reportId) {
-      this.isEdit.set(true);
-      this.reportService.getOne(this.playerId, this.reportId).subscribe(res => {
-        const r = (res.data as any)?.document;
-        if (r) {
-          if (r.matchDate) this.reportDate.set(new Date(r.matchDate).toLocaleDateString());
-          if (r.seasonMatch) {
-            const id = typeof r.seasonMatch === 'string' ? r.seasonMatch : r.seasonMatch._id;
-            this.selectedSeasonMatch.set(id);
-          }
-          if (r.matchType) this.matchType.set(r.matchType === 'training' ? 'training' : r.matchType === 'friendly' ? 'friendly' : '');
-          this.form.patchValue({
-            homeTeam: this.teamId(r.homeTeam),
-            homeTeamName: r.homeTeamName ?? '',
-            awayTeam: this.teamId(r.awayTeam),
-            awayTeamName: r.awayTeamName ?? '',
-            notes: r.notes ?? '',
-            technical: r.technical,
-            physical: r.physical,
-            mental: r.mental,
-          });
-          this.homeIsOther.set(!this.teamId(r.homeTeam) && !!r.homeTeamName);
-          this.awayIsOther.set(!this.teamId(r.awayTeam) && !!r.awayTeamName);
-          if (r.seasonMatch) {
-            this.form.get('homeTeam')?.disable();
-            this.form.get('awayTeam')?.disable();
-          }
-        }
-      });
-    }
   }
 
   // اللاعب المحترف مالوش فئة عمرية أصلاً (playedModel: اشتقاق ageGroup بيتخطى
@@ -730,15 +866,73 @@ export class ReportFormComponent implements OnInit {
   // الحل: نطاق المحترفين بالدوري (league: professional) بدل الفئة العمرية —
   // نفس اللي player-form.component.ts بيعمله بالظبط في سياق المحترفين، ونفس
   // النطاق اللي السيرفر مطبّقه للـproScout أصلاً في teamScopeFor/seasonMatchScopeFor.
+  //
+  // perf 2026-09 — الشكل ده كان شلال من 4 مستويات متسلسلة:
+  //   /players/:id → /seasonMatches → /teams?ageGroup → /seasonMatches?ageGroup
+  // وكل رد كان بيغيّر شكل القسم، فالمستخدم كان بيشوف 5 رسمات متتالية (أولها
+  // فرع "مضيف × ضيف" اللي مالوش علاقة بالحالة أصلاً، لأن hasTeam() قيمتها
+  // الابتدائية false). دلوقتي:
+  //   • /ages بيتفرز **مع** /players/:id — مالوش أي اعتماد على أي رد.
+  //   • فرق الفئة ومبارياتها بيتجابوا بالتوازي (forkJoin) فالقرار بيتاخد مرة واحدة.
+  //   • القسم كله متخفي ورا matchInputsReady() لحد ما الشكل النهائي يتحدد.
   private loadScopedOptions(): void {
-    this.playerService.getOne(this.playerId).subscribe({
-      next: res => {
-        const player = (res.data as any)?.document;
+    // الـproScout ممنوع من GET /ages (403)، والمحترف مالوش فئة يختارها أصلاً —
+    // بس إحنا لسه ماعرفناش هو محترف ولا لأ، فبنجيبها بالتوازي لكل غير الـproScout.
+    // التكلفة طلب صغير واحد على جدول بيانات مرجعي، والمقابل إننا شلنا ردّة كاملة
+    // من المسار الحرج لكل لاعب ناشئ.
+    //
+    // ⚠️ بالتوازي، **مش** forkJoin: الاتنين مستقلين تمامًا، وربطهم في forkJoin
+    // كان معناه إن معالجة اللاعب كلها تستنى رد /ages — عكس المطلوب بالظبط.
+    // البوابة (matchInputsReady) هي اللي بتقرر إمتى نرسم، وهي بتستنى /ages
+    // **بس لو** اختيار الفئة هو اللي هيتعرض فعلاً.
+    if (this.auth.isProScout()) {
+      // الـproScout ممنوع من GET /ages (403)، والمحترف مالوش فئة يختارها أصلاً
+      this.agesLoaded.set(true);
+    } else {
+      this.http.get<{ data?: { documents?: AgeGroup[] } }>(`${environment.apiUrl}/ages`)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: res => {
+            this.ageGroupOptions.set(res.data?.documents ?? []);
+            this.agesLoaded.set(true);
+          },
+          error: () => this.agesLoaded.set(true),
+        });
+    }
+
+    // الأب (PlayerDetailComponent) جاب المستند ده بالفعل — و<router-outlet>
+    // بتاعه جوه @if (player())، فإحنا مابنتركّبش قبل ما رده يوصل. الريكوست
+    // التاني كان زيادة مؤكدة + ردّة كاملة على المسار الحرج.
+    const cached = this.playerContext.playerDocument(this.playerId);
+    const player$ = cached ? of(cached) : this.playerService.getOne(this.playerId);
+
+    player$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: res => this.applyPlayer(res),
+        error: () => {
+          this.teamOptionsLoaded.set(true);
+          this.seasonMatchOptionsLoaded.set(true);
+          this.playerLoaded.set(true);
+        },
+      });
+  }
+
+  private applyPlayer(res: unknown): void {
+        const player = (res as any)?.data?.document;
         const isProfessional = !!player?.isProfessional;
         const ageGroupId = player?.ageGroup ? (typeof player.ageGroup === 'string' ? player.ageGroup : player.ageGroup._id) : null;
         const teamId = this.teamId(player?.team ?? undefined);
         this.hasTeam.set(!!teamId);
+        this.playerTeamId = teamId;
+        this.playerTeamName.set(
+          player?.team && typeof player.team === 'object' ? (player.team.name ?? '') : ''
+        );
+        this.playerClubName =
+          player?.team && typeof player.team === 'object' ? (player.team.clubName ?? '') : '';
+        this.playerAgeGroupId = ageGroupId ?? '';
         this.isProfessional.set(isProfessional);
+        this.playerLoaded.set(true);
 
         // admin-assign-players-reports-media — observers[] only reaches an admin
         // (maskCoachForObserver/maskObservedForCoach never touch it for admin);
@@ -751,7 +945,7 @@ export class ReportFormComponent implements OnInit {
         const creator = player?.createdBy;
         if (this.auth.isAdmin() && creator && typeof creator === 'object' && creator.role === 'proScout') {
           this.playerProScout.set({ _id: creator._id, name: creator.name });
-          if (!this.isEdit()) this.assignedObserver.set(creator._id);
+          this.assignedObserver.set(creator._id);
         }
 
         // لاعب ناشئ من غير فئة عمرية = حالة مالهاش نطاق نحمّل بيه، زي ما كانت
@@ -761,56 +955,86 @@ export class ReportFormComponent implements OnInit {
           return;
         }
 
-        // قايمة الفرق المسجلة دايمًا محملة — للاختيار اليدوي (لاعب من غير فريق) أو كخصم في
-        // مباراة ودية (لاعب متسجل). فريق اللاعب نفسه بيتشال من الاختيارات (مينفعش يلعب ضد نفسه)
-        this.teamService
-          .getAll(isProfessional ? undefined : ageGroupId, isProfessional ? 'professional' : undefined)
-          .subscribe({
+        // perf — قايمة الفرق العامة (teamOptions) ليها مستهلك واحد بس في القالب:
+        // فرع اللاعب اللي **مالوش فريق** (إدخال يدوي مضيف/ضيف). اللاعب اللي له
+        // فريق عمره ما بيشوفها، وكانت بتتبعت له برضه على الفاضي. المحترف استثناء:
+        // نفس القايمة هي قايمة منافسينه (مالوش فئة عمرية يتفلتر بيها).
+        if (isProfessional) {
+          this.teamService.getAll(undefined, 'professional')
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
             next: teamRes => {
               const teams = teamRes.data?.documents ?? [];
-              this.teamOptions.set(teamId ? teams.filter(t => t._id !== teamId) : teams);
+              const scoped = teamId ? teams.filter(t => t._id !== teamId) : teams;
+              this.teamOptions.set(scoped);
+              this.opponentOptions.set(scoped);
               this.teamOptionsLoaded.set(true);
+              this.opponentOptionsLoaded.set(true);
             },
-            error: () => this.teamOptionsLoaded.set(true),
+            error: () => {
+              this.teamOptionsLoaded.set(true);
+              this.opponentOptionsLoaded.set(true);
+            },
           });
+        } else if (!teamId) {
+          this.teamsFor(ageGroupId!)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(teams => {
+            this.teamOptions.set(teams);
+            this.teamOptionsLoaded.set(true);
+          });
+        } else {
+          this.teamOptionsLoaded.set(true);
+        }
 
         if (teamId) {
           const dayEnd = new Date(); dayEnd.setHours(23, 59, 59, 999);
+          const recent = this.recentWindow();
 
           // الـproScout مش مقيّد بيوم المباراة (نفس الرخصة في
           // resolveMatchTypeFields على السيرفر): بيشوف كل مباريات ناديه اللي
           // اتلعبت، من الأحدث للأقدم، ويكتب تقريره عليها وقت ما يقدر. الناشئ
           // زي ما هو بالظبط — مباريات النهارده بس.
           //
-          // admin-assign-players-reports-media — نفس الرخصة اتوسّعت للأدمن على
-          // السيرفر (resolveMatchTypeFields)، وبتنطبق على أي لاعب مش المحترفين
-          // بس — فبنستخدم isProfessional() || auth.isAdmin() هنا، مش isProfessional
-          // وحدها، عشان الأدمن يشوف كل مباريات الفريق مش النهارده بس حتى للاعب ناشئ.
-          const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-          const anyPastMatch = isProfessional || this.auth.isAdmin();
-          const windowFilters = anyPastMatch
-            ? { league: isProfessional ? ('professional' as const) : undefined, ageGroup: isProfessional ? undefined : ageGroupId, sort: '-matchDate' as const, 'matchDate[lte]': dayEnd.toISOString() }
-            : { ageGroup: ageGroupId, sort: 'matchDate' as const, 'matchDate[gte]': dayStart.toISOString(), 'matchDate[lte]': dayEnd.toISOString() };
+          // الناشئ (وكمان الأدمن على لاعب ناشئ): النافذة بقت النهاردة أو امبارح،
+          // والأحدث هو اللي بيترتبط تلقائي — القايمة نفسها ماعادتش بتتعرض.
+          const windowFilters = isProfessional
+            ? { league: 'professional' as const, sort: '-matchDate' as const, 'matchDate[lte]': dayEnd.toISOString() }
+            : { ageGroup: ageGroupId, sort: '-matchDate' as const, 'matchDate[gte]': recent.gte, 'matchDate[lte]': recent.lte };
 
-          this.seasonMatchService.getAll(windowFilters).subscribe({
-            next: matchRes => {
-              const own = (matchRes.data?.documents ?? [])
-                .filter(m => this.teamId(m.homeTeam) === teamId || this.teamId(m.awayTeam) === teamId);
-              this.seasonMatchOptions.set(own);
-              this.seasonMatchOptionsLoaded.set(true);
-            },
-            error: () => this.seasonMatchOptionsLoaded.set(true),
-          });
+          // ⚠️ ترتيب الإشارات هنا مقصود: seasonMatchOptionsLoaded وage-group
+          // pending بيتكتبوا في **نفس** الـcallback، فالقالب مابيشوفش حالة
+          // وسطية — إما لسه بيحمّل وإما الشكل النهائي.
+          this.seasonMatchService.getAll(windowFilters)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+              next: matchRes => {
+                const own = (matchRes.data?.documents ?? [])
+                  .filter(m => this.teamId(m.homeTeam) === teamId || this.teamId(m.awayTeam) === teamId);
+                this.seasonMatchOptions.set(own);
+
+                // الربط التلقائي: أحدث مباراة لفريقه في النافذة (النهاردة الأول،
+                // وإلا امبارح). مفيش قايمة ولا اختيار — السيرفر بيتحقق من نفس
+                // الشرط في resolveMatchTypeFields.
+                if (!isProfessional && own.length > 0) {
+                  this.linkMatch(own[0]);
+                }
+
+                if (!isProfessional && !this.selectedSeasonMatch()) {
+                  this.seedDefaultAgeGroup();
+                }
+                this.seasonMatchOptionsLoaded.set(true);
+              },
+              error: () => {
+                // فشل تحميل المباريات = القايمة فاضية = الاختيار اليدوي ظاهر
+                if (!isProfessional) this.seedDefaultAgeGroup();
+                this.seasonMatchOptionsLoaded.set(true);
+              },
+            });
           return;
         }
 
         this.seasonMatchOptionsLoaded.set(true);
-      },
-      error: () => {
-        this.teamOptionsLoaded.set(true);
-        this.seasonMatchOptionsLoaded.set(true);
-      },
-    });
   }
 
   private teamName(team: SeasonMatch['homeTeam']): string {
@@ -827,6 +1051,15 @@ export class ReportFormComponent implements OnInit {
     return `${this.teamName(m.homeTeam)} vs ${this.teamName(m.awayTeam)} — ${date}`;
   }
 
+  // ربط التقرير بمباراة من الجدول — الفرق بتتقفل لأن السيرفر بياخدها من المباراة
+  private linkMatch(match: SeasonMatch): void {
+    this.selectedSeasonMatch.set(match._id);
+    this.linkedMatchLabel.set(this.matchOptionLabel(match));
+    this.form.patchValue({ homeTeam: this.teamId(match.homeTeam), awayTeam: this.teamId(match.awayTeam) });
+    this.form.get('homeTeam')?.disable();
+    this.form.get('awayTeam')?.disable();
+  }
+
   onSeasonMatchChange(id: string): void {
     this.selectedSeasonMatch.set(id);
     const match = this.seasonMatchOptions().find(m => m._id === id);
@@ -840,9 +1073,152 @@ export class ReportFormComponent implements OnInit {
     }
   }
 
-  setMatchType(type: 'friendly' | 'training'): void {
-    this.matchType.set(type);
+  onPlayedWithChange(ageGroupId: string): void {
+    this.playedWithAgeGroup.set(ageGroupId);
+    // الفئة اتغيرت → المنافس المختار بقى من فئة تانية، فبنفضّيه
+    this.awayIsOther.set(false);
+    this.form.patchValue({ awayTeam: '', awayTeamName: '' });
+    // مش blocking: الحقل بيتقفل مؤقتاً لحد ما القايمة الجديدة توصل، مايختفيش
+    this.loadAgeGroupInputs(ageGroupId, { blocking: false });
   }
+
+  // perf — GET /teams?ageGroup=X بيتنده مرة واحدة لكل فئة طول عمر الفورم.
+  // من غير الكاش ده، فتح الفورم كان بيبعت نفس الطلب مرتين (فئة اللاعب مرة
+  // كـteamOptions ومرة كقايمة منافسين افتراضية)، وكل رجوع لفئة اتشافت قبل كده
+  // كان بيبعت طلب جديد. shareReplay بيخلي الطلبات المتوازية تشترك في استجابة
+  // واحدة، والفشل بيمسح المدخل عشان المحاولة الجاية تعيد الطلب فعلاً.
+  private readonly teamsByAgeGroup = new Map<string, Observable<Team[]>>();
+
+  private teamsFor(ageGroupId: string): Observable<Team[]> {
+    const cached = this.teamsByAgeGroup.get(ageGroupId);
+    if (cached) return cached;
+    // undefined صريحة للدوري: نفس التوقيع اللي الفرونت كان بينده بيه قبل الكاش
+    const req$ = this.teamService.getAll(ageGroupId, undefined).pipe(
+      map(res => res.data?.documents ?? []),
+      catchError(() => {
+        this.teamsByAgeGroup.delete(ageGroupId);
+        return of<Team[]>([]);
+      }),
+      shareReplay({ bufferSize: 1, refCount: false }),
+    );
+    this.teamsByAgeGroup.set(ageGroupId, req$);
+    return req$;
+  }
+
+  // الافتراضي "لعب مع" = فئة اللاعب نفسه، وبيتحدد **قبل** ما القسم يترسم عشان
+  // القايمة ماتظهرش فاضية وبعدين تقفز لقيمة.
+  private seedDefaultAgeGroup(): void {
+    if (!this.playerAgeGroupId || this.playedWithAgeGroup()) return;
+    this.playedWithAgeGroup.set(this.playerAgeGroupId);
+    this.loadAgeGroupInputs(this.playerAgeGroupId, { blocking: true });
+  }
+
+  // فرق الفئة اللي لعب معاها + مباريات نفس النادي فيها — **بالتوازي**.
+  // اللاعب مواليد 2009 بيلعب مع 2007 بتاعة ناديه: الفئة دي ليها جدول، فبنجيب
+  // مباراة النهاردة (أو امبارح) بتاعت فريق ناديه ونربط التقرير بيها على طول.
+  //
+  // perf 2026-09 — الاتنين كانوا متسلسلين (الفرق الأول عشان نعرف id فريق النادي،
+  // وبعدين المباريات)، فالمستخدم كان بيشوف حقل المنافس يظهر وبعد ردّة كاملة
+  // يتلغي لما المباراة تترتبط. دلوقتي بيتجابوا مع بعض والمطابقة بتحصل في
+  // الذاكرة، فالقرار بيتاخد **مرة واحدة** وبرسمة واحدة.
+  //
+  // blocking: أول تحميل — القسم كله مخفي لحد ما يخلص (matchInputsReady).
+  //           تبديل الفئة بعد كده مش blocking: الحقل بيبهت بس مابيختفيش.
+  private loadAgeGroupInputs(ageGroupId: string, opts: { blocking: boolean }): void {
+    if (!ageGroupId) {
+      this.opponentOptions.set([]);
+      this.opponentOptionsLoaded.set(true);
+      this.siblingTeamName.set('');
+      this.ageGroupMatchOptions.set([]);
+      this.selectedAgeGroupMatch.set('');
+      return;
+    }
+
+    if (opts.blocking) this.ageGroupInputsPending.set(true);
+    this.ageGroupInputsLoading.set(true);
+
+    const { gte, lte } = this.recentWindow();
+    forkJoin({
+      teams: this.teamsFor(ageGroupId),
+      matches: this.seasonMatchService
+        .getAll({ ageGroup: ageGroupId, sort: '-matchDate', 'matchDate[gte]': gte, 'matchDate[lte]': lte })
+        .pipe(
+          map(res => res.data?.documents ?? []),
+          catchError(() => of<SeasonMatch[]>([])),
+        ),
+    })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: ({ teams, matches }) => {
+          // تبديل سريع بين فئتين ممكن يرجّع استجابة قديمة بعد الجديدة — بنتجاهلها
+          if (this.playedWithAgeGroup() !== ageGroupId) return;
+
+          const sibling = this.playerClubName
+            ? teams.find(t => t.clubName === this.playerClubName)
+            : undefined;
+          this.siblingTeamName.set(sibling?.name ?? '');
+          // فريق اللاعب وفريق ناديه في الفئة دي الاتنين مستبعدين من المنافسين
+          this.opponentOptions.set(
+            teams.filter(t => t._id !== this.playerTeamId && t._id !== sibling?._id)
+          );
+          this.opponentOptionsLoaded.set(true);
+
+          // فريق النادي في الفئة دي لو هو فريق اللاعب نفسه، فمبارياته اتفحصت
+          // فوق بالفعل وطلعت فاضية (وإلا كان الربط التلقائي اشتغل) — فمفيش
+          // مباراة فئة تتعرض هنا.
+          const rows =
+            sibling && sibling._id !== this.playerTeamId
+              ? matches
+                  .filter(m => this.teamId(m.homeTeam) === sibling._id || this.teamId(m.awayTeam) === sibling._id)
+                  .map(m => ({ _id: m._id, label: this.matchOptionLabel(m) }))
+              : [];
+
+          this.ageGroupMatchOptions.set(rows);
+
+          // الأحدث بيتختار تلقائي — "يجيبهاله على طول"
+          if (rows.length > 0) {
+            this.selectAgeGroupMatch(rows[0]._id);
+          } else {
+            this.selectedAgeGroupMatch.set('');
+          }
+
+          this.ageGroupInputsLoading.set(false);
+          this.ageGroupInputsPending.set(false);
+        },
+        error: () => {
+          this.opponentOptions.set([]);
+          this.opponentOptionsLoaded.set(true);
+          this.ageGroupMatchOptions.set([]);
+          this.selectedAgeGroupMatch.set('');
+          this.ageGroupInputsLoading.set(false);
+          this.ageGroupInputsPending.set(false);
+        },
+      });
+  }
+
+  // اختيار مباراة الفئة — يدوي أو تلقائي، ودايماً بيفضّي الإدخال اليدوي للمنافس.
+  // ⚠️ الفرع التلقائي كان مابيفضّيش: لو المستخدم كان كتب اسم منافس قبل ما
+  // المباراة توصل، الاسم كان بيفضل في الفورم والتقرير بيتسجّل بالمباراة —
+  // البيانات اللي كتبها بتتجاهل في صمت.
+  private selectAgeGroupMatch(id: string): void {
+    this.selectedAgeGroupMatch.set(id);
+    if (!id) return;
+    this.awayIsOther.set(false);
+    this.form.patchValue({ awayTeam: '', awayTeamName: '' });
+  }
+
+  // نافذة "النهاردة أو امبارح" — من بداية امبارح محليًا لآخر النهاردة.
+  // السيرفر بيقارن بالـUTC، فالنافذة هنا أوسع شوية عن قصد (العميل بيعرض، والسيرفر بيقرر).
+  private recentWindow(): { gte: string; lte: string } {
+    const start = new Date(); start.setDate(start.getDate() - 1); start.setHours(0, 0, 0, 0);
+    const end = new Date(); end.setHours(23, 59, 59, 999);
+    return { gte: start.toISOString(), lte: end.toISOString() };
+  }
+
+  onAgeGroupMatchChange(id: string): void {
+    this.selectAgeGroupMatch(id);
+  }
+
 
   awayTeam(): string {
     return this.form.get('awayTeam')?.value ?? '';
@@ -867,9 +1243,10 @@ export class ReportFormComponent implements OnInit {
     // ولا إدخال يدوي للاعب من غير فريق.
     if (this.selectedSeasonMatch()) {
       // مفيش مطلوب زيادة — المباراة بتملأ الفرق والتاريخ من السيرفر
-    } else if (this.showTypeButtons()) {
-      if (!this.matchType()) return;
-      if (this.matchType() === 'friendly' && !this.awayTeam() && !this.form.get('awayTeamName')?.value) return;
+    } else if (this.showOpponentPicker()) {
+      if (this.showAgeGroupPicker() && !this.playedWithAgeGroup()) return;
+      // مربوط بمباراة الفئة → المنافس جاي منها، مش مطلوب إدخال
+      if (!this.selectedAgeGroupMatch() && !this.awayTeam() && !this.form.get('awayTeamName')?.value) return;
     } else if (!this.hasTeam()) {
       const homeOk = this.homeIsOther() ? !!this.form.get('homeTeamName')?.value : !!this.form.get('homeTeam')?.value;
       const awayOk = this.awayIsOther() ? !!this.form.get('awayTeamName')?.value : !!this.form.get('awayTeam')?.value;
@@ -894,12 +1271,18 @@ export class ReportFormComponent implements OnInit {
       // يعدّي من فرع الـproScout في resolveMatchTypeFields مش من فرع النهارده.
       payload['seasonMatch'] = this.selectedSeasonMatch();
       payload['matchType'] = 'official';
-    } else if (this.showTypeButtons()) {
-      // مفيش مباراة مختارة — تدريب أو ودية
-      payload['matchType'] = this.matchType();
-      if (this.matchType() === 'friendly') {
-        if (this.awayIsOther()) payload['awayTeamName'] = v.awayTeamName;
-        else payload['awayTeam'] = v.awayTeam;
+    } else if (this.showOpponentPicker()) {
+      // الفئة اللي لعب معاها. لو فريق ناديه في الفئة دي عنده مباراة في الجدول،
+      // بنربط التقرير بيها (السيرفر بياخد منها الفرق وmatchDate الحقيقي) —
+      // وغير كده المنافس بيتكتب/يتختار يدوي.
+      payload['matchType'] = 'official';
+      if (this.playedWithAgeGroup()) payload['playedWithAgeGroup'] = this.playedWithAgeGroup();
+      if (this.selectedAgeGroupMatch()) {
+        payload['seasonMatch'] = this.selectedAgeGroupMatch();
+      } else if (this.awayIsOther() || !this.awayTeam()) {
+        payload['awayTeamName'] = v.awayTeamName;
+      } else {
+        payload['awayTeam'] = v.awayTeam;
       }
     } else {
       if (this.homeIsOther()) payload['homeTeamName'] = v.homeTeamName; else payload['homeTeam'] = v.homeTeam;
@@ -908,18 +1291,15 @@ export class ReportFormComponent implements OnInit {
 
     // admin-assign-players-reports-media — only ever attached for an admin on
     // create, and only when a specific observer was chosen (empty = self).
-    if (this.auth.isAdmin() && !this.isEdit() && this.assignedObserver()) {
+    if (this.auth.isAdmin() && this.assignedObserver()) {
       const isProScout = this.assignedObserver() === this.playerProScout()?._id;
       payload[isProScout ? 'assignedProScout' : 'assignedObserver'] = this.assignedObserver();
     }
 
-    const req$ = this.isEdit()
-      ? this.reportService.update(this.playerId, this.reportId, payload as any)
-      : this.reportService.create(this.playerId, payload as any);
-
-    req$.subscribe({
+    // بلا takeUntilDestroyed عن قصد: الحفظ لازم يكمّل حتى لو الكومبوننت اتدمّر
+    this.reportService.create(this.playerId, payload as any).subscribe({
       next: () => {
-        this.toast.success(this.isEdit() ? this.translate.instant('REPORTS.FORM.UPDATE') : this.translate.instant('REPORTS.FORM.SAVE'));
+        this.toast.success(this.translate.instant('REPORTS.FORM.SAVE'));
         this.router.navigate(['/players', this.playerId, 'reports']);
       },
       error: () => this.loading.set(false),

@@ -16,11 +16,23 @@ export const checkPlayerOwnership = asyncHandler(async (req, res, next) => {
     const id = req.params.playerId ?? req.params.id;
     // team وcreatedBy مضافين للـselect عشان فرع proScout تحت يقارن في الذاكرة
     // (code-review high fix #4) بدل ما يعمل استعلام تاني على نفس المستند.
-    const player = await Player.findById(id).select("coach observers team createdBy");
+    // ⚠️ قائمة الـselect دي عقد: req.playerDoc تحت بيتقرا منها في التحقق
+    // والكنترولر، وحقل ناقص منها بيقرا undefined — مش "مش موجود". ageGroup
+    // مضاف عشان teamBelongsToReportAgeGroup يقارن من غير استعلام تاني؛ لو حقل
+    // اتشال من هنا لازم كل مستهلك يتراجع.
+    const player = await Player.findById(id).select("coach observers team createdBy ageGroup isProfessional");
 
     if (!player) {
         return next(new AppError("Player not found", 404));
     }
+
+    // perf — المستند ده اتجاب هنا بالفعل بـ(coach, observers, team, createdBy).
+    // الميدلويرز والكنترولرز اللي بعده على نفس الراوت كانت بتعمل findById تاني
+    // (وتالت) على نفس الـ_id عشان نفس الحقول دي بالظبط — مثال: إنشاء تقرير كان
+    // بيجيب اللاعب 3 مرات (هنا + resolveMatchTypeFields + فرع الأدمن في create).
+    // بنخزّنه على الطلب عشان يعاد استخدامه، مع الحفاظ على fallback في كل مستهلك
+    // لأن في راوتات بتنده الكنترولر من غير الحارس ده.
+    req.playerDoc = player;
 
     if (req.user.role === ROLES.ADMIN) {
         return next();
@@ -228,7 +240,7 @@ export const checkMediaOwnership = asyncHandler(async (req, res, next) => {
 
 // بيسمح للأدمن دايمًا، وللكوتش/الأوبزيرفر بس لو موجودين فى مصفوفة attendees بتاعت المباراة
 export const checkSeasonMatchAttendee = asyncHandler(async (req, res, next) => {
-    const match = await SeasonMatch.findById(req.params.id).select("attendees").setOptions({ skipPopulate: true });
+    const match = await SeasonMatch.findById(req.params.id).select("attendees");
 
     if (!match) {
         return next(new AppError("Season match not found", 404));
@@ -253,14 +265,12 @@ export const checkSeasonMatchAttendee = asyncHandler(async (req, res, next) => {
     // مباراة في الدوري الممتاز (بأي طريقة) كان هيعدّي. النطاق هو اللي بيبقى
     // حامل الحمل هنا — نفس منطق checkSeasonMatchScope بالظبط، مش نسخة تانية منه.
     //
-    // skipPopulate: exists() بتنفّذ كـfindOne فبتشغّل pre(/^find/) بتاع
-    // seasonMatchModel اللي بيعمل populate رباعي — نفس السبب اللي الفحص فوق
-    // مستخدم عشانه setOptions({ skipPopulate: true }).
+    // exists() بترجع { _id } بس — مفيش populate أصلاً، والهوك التلقائي اتشال كمان.
     if (req.user.role === ROLES.PRO_SCOUT) {
         const inScope = await SeasonMatch.exists({
             _id: req.params.id,
             ...(await seasonMatchScopeFor(req)),
-        }).setOptions({ skipPopulate: true });
+        });
 
         if (!inScope) {
             logScopeDenial({ req, resource: "seasonMatch", resourceId: req.params.id });
@@ -295,7 +305,7 @@ export const checkSeasonMatchScope = asyncHandler(async (req, res, next) => {
         const inScope = await SeasonMatch.exists({
             _id: req.params.id,
             ...(await seasonMatchScopeFor(req)),
-        }).setOptions({ skipPopulate: true });
+        });
 
         if (!inScope) {
             logScopeDenial({ req, resource: "seasonMatch", resourceId: req.params.id });

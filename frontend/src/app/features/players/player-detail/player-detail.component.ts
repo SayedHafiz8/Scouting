@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink, RouterOutlet, RouterLinkActive } from '@angular/router';
 import { DatePipe, TitleCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -14,6 +14,7 @@ import { SocketService } from '../../../core/services/socket.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { Player, PlayerStatus, PLAYER_POSITIONS } from '../../../core/models/player.model';
 import { PlayerContextService } from '../../../core/services/player-context.service';
+import { translationTick } from '../../../core/services/translation-tick';
 import { registrationLabel } from '../registration.util';
 import { BreadcrumbContextService } from '../../../core/services/breadcrumb-context.service';
 import { StatusBadgeComponent } from '../../../shared/components/status-badge/status-badge.component';
@@ -24,6 +25,7 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
 
 @Component({
     selector: 'app-player-detail',
+    changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [RouterLink, RouterOutlet, RouterLinkActive, FormsModule, DatePipe, TitleCasePipe, SkeletonLoaderComponent, ConfirmDialogComponent, ImageLightboxComponent, PlayerSelectedCelebrationComponent, TranslatePipe],
     template: `
     <div class="max-w-5xl mx-auto space-y-5">
@@ -429,8 +431,8 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                   <p class="text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">
                     {{ 'PLAYERS.DETAIL.CHANGE_STATUS' | translate }}
                   </p>
-                  <select class="form-input text-sm" [(ngModel)]="draftStatus"
-                          (ngModelChange)="onStatusSelect()">
+                  <select class="form-input text-sm" [ngModel]="draftStatus()"
+                          (ngModelChange)="onStatusSelect($event)">
                     <option value="pending">{{ 'NAV.PENDING' | translate }}</option>
                     <option value="selected">{{ 'NAV.SELECTED' | translate }}</option>
                     <option value="rejected">{{ 'NAV.REJECTED' | translate }}</option>
@@ -441,7 +443,7 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
                 <!-- Observer picker — shown whenever the (draft or actual) status is "observed".
                      Collapsed by default; opens into a scrollable list on click and collapses
                      back automatically once the selection is saved. -->
-                @if (draftStatus === 'observed') {
+                @if (draftStatus() === 'observed') {
                   <div class="rounded-xl overflow-hidden"
                        style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.22)">
 
@@ -569,7 +571,7 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
 
             <!-- Tabs -->
             <div class="flex gap-1 p-1 rounded-xl" style="background:var(--bg-secondary);border:1px solid var(--border-subtle)">
-              @for (tab of tabs; track tab.label) {
+              @for (tab of tabs(); track tab.label) {
                 <a [routerLink]="tab.path" routerLinkActive="tab-pill-active"
                    class="tab-pill flex-1 text-center px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150">
                   {{ tab.label }}
@@ -692,6 +694,7 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
   private readonly socketService = inject(SocketService);
   private readonly toastService = inject(ToastService);
   private readonly translate = inject(TranslateService);
+  private readonly i18nTick = translationTick();
   private readonly playerContext = inject(PlayerContextService);
   private readonly breadcrumbContext = inject(BreadcrumbContextService);
   readonly auth = inject(AuthService);
@@ -757,22 +760,26 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
   readonly selectedProScout = signal<string | null>(null);
   readonly proScoutPanelOpen = signal(false);
   readonly savingProScout = signal(false);
-  draftStatus: PlayerStatus = 'pending';
+  // إشارة (مش حقل عادي) عشان OnPush يشوف التغيير لما بيتحط من رد السيرفر
+  readonly draftStatus = signal<PlayerStatus>('pending');
 
   // team is populated as an object by the API, but guard against a plain id string too.
   // Falls back to the free-text teamName when the player isn't linked to a registered team.
-  teamLabel(): string {
+  readonly teamLabel = computed(() => {
     const team = this.player()?.team;
     if (team) return typeof team === 'string' ? team : team.name;
     return this.player()?.teamName ?? '';
-  }
+  });
 
-  get tabs() {
+  // كان getter بيرجّع مصفوفة جديدة + ترجمتين كل دورة تغيير، والمرجع الجديد
+  // بيخلي @for يعيد المقارنة على تبويبتين ثابتتين
+  readonly tabs = computed(() => {
+    this.i18nTick();
     return [
       { label: this.translate.instant('PLAYERS.DETAIL.REPORTS_TAB'), path: ['reports'] },
       { label: this.translate.instant('PLAYERS.DETAIL.MEDIA_TAB'), path: ['media'] },
     ];
-  }
+  });
 
   constructor() {
     this.socketService.getPlayerStatusUpdates()
@@ -790,16 +797,23 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('playerId')!;
+
+    // ⚠️ دول كانوا متسلسلين ورا رد اللاعب رغم إنهم مش محتاجينه: loadStatistics
+    // محتاجة الـid بس (موجود هنا من الراوت)، و loadObservers (أدمن) مستقلة
+    // تمامًا. تشغيلهم بالتوازي مع جلب اللاعب بيشيل مستوى من الشلال.
+    this.loadStatistics(id);
+    if (this.auth.isAdmin()) this.loadObservers();
+
     this.playerService.getOne(id).subscribe({
       next: res => {
         const p = res.data?.document ?? null;
         this.player.set(p);
-        this.draftStatus = p?.status ?? 'pending';
+        // الأبناء (فورم التقرير) بيقروا المستند من هنا بدل ريكوست تاني لنفس الـid
+        if (p) this.playerContext.setPlayer(id, res);
+        this.draftStatus.set(p?.status ?? 'pending');
         this.selectedObservers.set(new Set(this.followerIds(p)));
         this.loading.set(false);
         if (p?.position) this.playerContext.set(p.position);
-        if (this.auth.isAdmin()) this.loadObservers();
-        if (p) this.loadStatistics(p._id);
 
         // جاي من نوتيفيكشن "تم اختيار اللاعب" — اعرض احتفال لمرة واحدة، وامسح الـ query param عشان الريفريش ميعيدهوش
         if (this.route.snapshot.queryParamMap.get('celebrate') === 'selected' && p?.status === 'selected') {
@@ -931,9 +945,10 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
   }
 
   // Non-observed statuses apply immediately; "observed" waits for the observer selection to be saved
-  onStatusSelect(): void {
-    if (this.draftStatus === 'observed') return;
-    this.commitStatus(this.draftStatus);
+  onStatusSelect(next: PlayerStatus): void {
+    this.draftStatus.set(next);
+    if (next === 'observed') return;
+    this.commitStatus(next);
   }
 
   toggleObserver(id: string): void {
@@ -990,7 +1005,7 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
           // رد /status مش بيعمل populate لـcoach/createdBy — بندمج الحالة والأوبزيرفرز
           // بس عشان الكشاف (scout) يفضل محسوب صح من البيانات اللي اتحملت أول مرة.
           this.player.update(prev => prev ? { ...prev, status: updated.status, observers: updated.observers } : updated);
-          this.draftStatus = updated.status;
+          this.draftStatus.set(updated.status);
           this.selectedObservers.set(new Set(this.followerIds(this.player())));
         }
         this.observersPanelOpen.set(false);
@@ -1009,7 +1024,9 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
   }
 
   // أسماء المتابعين (كل الأوبزيرفرز ما عدا الكشاف)
-  followerNames(): string {
+  // ⚠️ كانت دالة متندهة من القالب **5 مرات** — يعني 5 `Map` جديدة بتتبني وترتمي
+  // في كل دورة تغيير. computed بتبني الـMap مرة لما اللاعب أو الأوبزيرفرز يتغيروا.
+  readonly followerNames = computed(() => {
     const scoutId = this.scout()?.id;
     const byId = new Map(this.observers().map(o => [o._id, o.name]));
     return (this.player()?.observers ?? [])
@@ -1017,7 +1034,7 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
       .filter(o => o.id !== scoutId && o.name)
       .map(o => o.name)
       .join(', ');
-  }
+  });
 
   doDelete(): void {
     const id = this.player()?._id;
@@ -1093,8 +1110,11 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
     return this.auth.isAdmin() && !!this.player() && !this.scout() && !this.player()!.isProfessional;
   }
 
-  playerFields() {
-    const p = this.player()!;
+  // مصفوفة جديدة + 8 لـ11 ترجمة + `new Date()` — كانت بتتعمل كل دورة تغيير
+  readonly playerFields = computed(() => {
+    const p = this.player();
+    if (!p) return [];
+    this.i18nTick();   // الترجمة جوه computed محتاجة اعتماد صريح على تغيّر اللغة
     const fields: { label: string; value: string }[] = [
       { label: this.translate.instant('PLAYERS.DETAIL.NATIONALITY'), value: p.nationality },
       { label: this.translate.instant('PLAYERS.DETAIL.HEIGHT'), value: p.height ? `${p.height} cm` : '—' },
@@ -1127,5 +1147,5 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
         : '—',
     });
     return fields;
-  }
+  });
 }

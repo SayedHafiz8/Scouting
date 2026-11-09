@@ -1,16 +1,17 @@
-import { Component, input, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, computed } from '@angular/core';
 
 interface RadarPoint { x: number; y: number; }
 
 @Component({
   selector: 'app-radar-chart',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <svg [attr.viewBox]="'0 0 ' + size + ' ' + size" [attr.width]="size" [attr.height]="size" class="w-full h-full">
       <!-- Background grid -->
-      @for (level of gridLevels; track level) {
+      @for (ring of gridRings(); track ring.level) {
         <polygon
-          [attr.points]="gridPoints(level)"
+          [attr.points]="ring.points"
           fill="none"
           stroke="var(--border-color)"
           stroke-width="1"
@@ -39,7 +40,10 @@ interface RadarPoint { x: number; y: number; }
       />
 
       <!-- Data dots -->
-      @for (pt of dataPointCoords(); track pt.x; let i = $index) {
+      <!-- ⚠️ كان track pt.x — ولما كل التقييمات صفر كل النقط بتقع على المركز،
+           فـ15 نقطة بنفس المفتاح (NG0955) وAngular بيعيد بناء الـDOM بدل ما
+           يحدّثه. المحاور ثابتة الترتيب فالفهرس هو المفتاح الصح هنا. -->
+      @for (pt of dataPointCoords(); track $index; let i = $index) {
         <circle
           [attr.cx]="pt.x"
           [attr.cy]="pt.y"
@@ -98,15 +102,20 @@ export class RadarChartComponent {
     return axes.map((_, i) => this.polar(this.angleFor(i, axes.length), this.radius + 16));
   });
 
-  gridPoints(level: number): string {
+  // ⚠️ كانت دالة جوه @for — خمس حلقات × فرد الـ15 محور، في كل دورة تغيير،
+  // على رسمة شكلها مابيتغيرش إلا لما الداتا نفسها تتغير.
+  readonly gridRings = computed(() => {
     const axes = this.axes();
-    if (!axes.length) return '';
-    const r = this.radius * level;
-    return axes.map((_, i) => {
-      const pt = this.polar(this.angleFor(i, axes.length), r);
-      return `${pt.x},${pt.y}`;
-    }).join(' ');
-  }
+    return this.gridLevels.map(level => {
+      if (!axes.length) return { level, points: '' };
+      const r = this.radius * level;
+      const points = axes.map((_, i) => {
+        const pt = this.polar(this.angleFor(i, axes.length), r);
+        return `${pt.x},${pt.y}`;
+      }).join(' ');
+      return { level, points };
+    });
+  });
 
   dataPointCoords = computed(() => {
     const axes = this.axes();

@@ -176,6 +176,25 @@ describe('GET /api/v1/players', () => {
     expect(res.body.data.documents.length).toBe(2);
   });
 
+  // ⚠️ الترتيب الافتراضي كان غايب فالقايمة كانت بترجع _id تصاعدي (الأقدم أولاً)
+  // واللاعب الجديد بيروح آخر صفحة. الافتراضي بقى -createdAt فالأحدث بيظهر الأول.
+  it('⚠️ lists the newest player first by default', async () => {
+    const { token } = await createCoach();
+
+    await createPlayer(token, { name: 'First Added' });
+    await new Promise((r) => setTimeout(r, 10)); // createdAt مختلف
+    await createPlayer(token, { name: 'Second Added' });
+    await new Promise((r) => setTimeout(r, 10));
+    await createPlayer(token, { name: 'Newest Added' });
+
+    const res = await request(app)
+      .get('/api/v1/players')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.documents[0].name).toBe('Newest Added');
+  });
+
   // §9 — ?coach=none بيلمّ اللاعبين اللي كوتشهم اتمسح نهائياً. من غيره الأدمن
   // مالوش أي طريقة يلاقيهم عشان يعيّنلهم كوتش من PATCH /players/:id/coach.
   describe('?coach=none — orphaned players lens', () => {

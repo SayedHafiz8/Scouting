@@ -336,47 +336,47 @@ function currentSeason(): string {
                   </tr>
                 </thead>
                 <tbody>
-                  @for (m of matches(); track m._id) {
-                    <tr [class]="'border-b last:border-0' + (isPastMatch(m) ? ' cursor-pointer hover:opacity-80' : '')" style="border-color:var(--border-subtle)"
-                        (click)="isPastMatch(m) && toggleMatchReports(m)">
-                      <td class="px-3 py-3 whitespace-nowrap" style="color:var(--text-secondary)">{{ m.matchDate | date:'mediumDate' }}</td>
+                  @for (row of matchRows(); track row.id) {
+                    <tr [class]="'border-b last:border-0' + (row.isPast ? ' cursor-pointer hover:opacity-80' : '')" style="border-color:var(--border-subtle)"
+                        (click)="row.isPast && toggleMatchReports(row.match)">
+                      <td class="px-3 py-3 whitespace-nowrap" style="color:var(--text-secondary)">{{ row.matchDate | date:'mediumDate' }}</td>
                       <td class="px-3 py-3 font-medium" style="color:var(--text-primary)">
-                        {{ teamName(m.homeTeam) }} <span style="color:var(--text-muted)">vs</span> {{ teamName(m.awayTeam) }}
-                        @if (m.status === 'completed' && m.result) {
-                          <span class="ms-1.5 text-xs font-semibold" style="color:var(--text-muted)">({{ m.result.homeScore }}–{{ m.result.awayScore }})</span>
+                        {{ row.homeTeamName }} <span style="color:var(--text-muted)">vs</span> {{ row.awayTeamName }}
+                        @if (row.resultText) {
+                          <span class="ms-1.5 text-xs font-semibold" style="color:var(--text-muted)">({{ row.resultText }})</span>
                         }
-                        @if (isPastMatch(m)) {
-                          <svg class="inline-block w-3 h-3 ms-1.5 align-middle transition-transform" [class.rotate-180]="expandedMatchId() === m._id"
+                        @if (row.isPast) {
+                          <svg class="inline-block w-3 h-3 ms-1.5 align-middle transition-transform" [class.rotate-180]="expandedMatchId() === row.id"
                                fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <polyline points="6 9 12 15 18 9"/>
                           </svg>
                         }
                         @if (auth.isAdmin()) {
-                          @if (matchAttendees(m).length === 0) {
+                          @if (row.attendees.length === 0) {
                             <p class="text-[11px] mt-1 font-normal" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.NO_ATTENDEES' | translate }}</p>
                           } @else {
                             <p class="text-[11px] mt-1 font-normal flex items-center gap-1 flex-wrap" style="color:var(--text-muted)" (click)="$event.stopPropagation()">
                               <svg class="w-3 h-3 flex-shrink-0" style="color:#22c55e" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                               </svg>
-                              @for (a of matchAttendees(m); track a._id; let last = $last) {
-                                <a [routerLink]="attendeeLink(a)" class="hover:underline" style="color:#16a34a" (click)="$event.stopPropagation()">{{ a.name }}</a>@if (!last) {<span>،</span>}
+                              @for (a of row.attendees; track a._id; let last = $last) {
+                                <a [routerLink]="a.link" class="hover:underline" style="color:#16a34a" (click)="$event.stopPropagation()">{{ a.name }}</a>@if (!last) {<span>،</span>}
                               }
                             </p>
                           }
                         }
                       </td>
-                      <td class="px-3 py-3" style="color:var(--text-secondary)">{{ m.venue || '—' }}</td>
+                      <td class="px-3 py-3" style="color:var(--text-secondary)">{{ row.venue }}</td>
                       @if (auth.isAdmin()) {
                         <td class="px-3 py-3 text-right whitespace-nowrap" (click)="$event.stopPropagation()">
-                          @if (!isPastMatch(m)) {
-                            <button type="button" class="btn btn-ghost btn-icon btn-sm" [attr.aria-label]="'COMMON.EDIT' | translate" (click)="openEditMatchForm(m)">
+                          @if (!row.isPast) {
+                            <button type="button" class="btn btn-ghost btn-icon btn-sm" [attr.aria-label]="'COMMON.EDIT' | translate" (click)="openEditMatchForm(row.match)">
                               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                               </svg>
                             </button>
-                            <button type="button" class="btn btn-ghost btn-icon btn-sm text-danger-500" [attr.aria-label]="'COMMON.DELETE' | translate" (click)="matchDeleteTarget.set(m)">
+                            <button type="button" class="btn btn-ghost btn-icon btn-sm text-danger-500" [attr.aria-label]="'COMMON.DELETE' | translate" (click)="matchDeleteTarget.set(row.match)">
                               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
                               </svg>
@@ -387,7 +387,7 @@ function currentSeason(): string {
                         </td>
                       }
                     </tr>
-                    @if (expandedMatchId() === m._id) {
+                    @if (expandedMatchId() === row.id) {
                       <tr>
                         <td [attr.colspan]="4" class="px-4 py-4" style="background:var(--bg-secondary)">
                           <div class="flex gap-1 mb-3" (click)="$event.stopPropagation()">
@@ -513,68 +513,6 @@ function currentSeason(): string {
       />
     }
   `,
-  styles: [`
-    /* Collapsible attendees picker header */
-    .attendee-toggle {
-      min-height: 40px;
-      padding-top: 8px;
-      padding-bottom: 8px;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-    }
-    .attendee-toggle:hover {
-      background: rgba(34,197,94,0.06);
-    }
-    .attendee-toggle:focus-visible {
-      outline: 2px solid #22c55e;
-      outline-offset: -2px;
-    }
-
-    /* Attendees selectable list — one row per coach/observer */
-    .attendee-row {
-      min-height: 44px;
-      cursor: pointer;
-      background: transparent;
-      border: none;
-      border-radius: 0;
-    }
-    .attendee-row:hover {
-      background: rgba(34,197,94,0.08);
-    }
-    .attendee-row:focus-visible {
-      outline: 2px solid #22c55e;
-      outline-offset: -2px;
-    }
-    .attendee-row-selected {
-      background: rgba(34,197,94,0.12);
-    }
-    .attendee-row-selected:hover {
-      background: rgba(34,197,94,0.16);
-    }
-    .attendee-check {
-      width: 20px;
-      height: 20px;
-      border-radius: 9999px;
-      border: 2px solid rgba(34,197,94,0.35);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
-    }
-    .attendee-check svg {
-      width: 12px;
-      height: 12px;
-    }
-    .attendee-check-on {
-      background: #22c55e;
-      border-color: #22c55e;
-      transform: scale(1.05);
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .attendee-check { transition: none; }
-    }
-  `]
 })
 export class AgeGroupDetailComponent implements OnInit {
   private readonly http = inject(HttpClient);
@@ -598,6 +536,36 @@ export class AgeGroupDetailComponent implements OnInit {
   newTeamClubName = '';
 
   readonly matches = signal<SeasonMatch[]>([]);
+
+  // ⚠️ صف جاهز للعرض — كل القيم المشتقة محسوبة مرة لما matches() تتغير، مش كل
+  // دورة تغيير. القالب كان بينده isPastMatch(m) (new Date×3 لكل صف) و
+  // matchAttendees(m) (مصفوفة جديدة لكل صف، ومتندهة مرتين) و attendeeLink لكل
+  // حاضر — جوه @for. نفس نمط my-matches.matchRows().
+  readonly matchRows = computed(() =>
+    this.matches().map(m => {
+      const attendees = (m.attendees ?? [])
+        .filter((a): a is User => typeof a !== 'string')
+        .map(a => ({
+          _id: a._id,
+          name: a.name,
+          link: a.role === 'observer' ? ['/observers', a._id] : ['/users', a._id],
+        }));
+      return {
+        match: m,
+        id: m._id,
+        matchDate: m.matchDate,
+        homeTeamName: this.teamName(m.homeTeam),
+        awayTeamName: this.teamName(m.awayTeam),
+        venue: m.venue || '—',
+        isPast: new Date(m.matchDate).getTime() < Date.now(),
+        resultText: m.status === 'completed' && m.result
+          ? `${m.result.homeScore}–${m.result.awayScore}`
+          : null,
+        attendees,
+      };
+    })
+  );
+
   readonly matchesLoading = signal(true);
   readonly matchesPagination = signal<Pagination | null>(null);
   readonly matchesPage = signal(1);
@@ -717,18 +685,8 @@ export class AgeGroupDetailComponent implements OnInit {
     return typeof team === 'string' ? team : team.name;
   }
 
-  // scouts self-enroll — the admin's match list shows who's attending each match
-  matchAttendees(m: SeasonMatch): User[] {
-    return (m.attendees ?? []).filter((a): a is User => typeof a !== 'string');
-  }
-
-  attendeeLink(u: User): string[] {
-    return u.role === 'observer' ? ['/observers', u._id] : ['/users', u._id];
-  }
-
-  isPastMatch(m: SeasonMatch): boolean {
-    return new Date(m.matchDate).getTime() < Date.now();
-  }
+  // الاشتقاقات دي (الحاضرين، الروابط، isPast) اتنقلت لـmatchRows() المحسوبة —
+  // كانت بتتنده جوه @for في كل دورة تغيير.
 
   toggleMatchReports(m: SeasonMatch): void {
     if (this.expandedMatchId() === m._id) {

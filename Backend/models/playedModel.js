@@ -271,7 +271,12 @@ playerSchema.pre('save', function () {
 });
 
 // Database indexes
-playerSchema.index({ coach: 1, createdAt:-1 });
+// `_id: -1` في آخر كل اندكس بيخدم ترتيب: ApiFeature.sort() بيضيف `_id` كفاصل
+// تعادل لكل ترتيب، فمفتاح الترتيب الحقيقي على السلك هو {createdAt:-1, _id:-1}.
+// اندكس آخر مفتاح فيه createdAt من غير _id مش قادر يلبّي ده — التعادلات بترجع
+// بترتيب RecordId، فالمخطِّط بيحط مرحلة SORT حاجزة (جلب كل المطابق قبل الصفحة
+// الأولى). نفس التغيير الموجود في seasonMatchModel {matchDate, _id}.
+playerSchema.index({ coach: 1, createdAt: -1, _id: -1 });
 // §11 — البحث بالبادئة. multikey على searchTokens: استعلام
 // { searchTokens: /^moh/ } بياخد حدود index حقيقية (case-sensitive على حقل
 // مطبّع سلفاً) بدل الـCOLLSCAN اللي كان بيعمله الـ$regex الـcase-insensitive.
@@ -286,9 +291,11 @@ playerSchema.index({ searchTokens: 1 });
 // هنا هو الـprefix. التكلفة: مدخل لكل كلمة لكل لاعب — وإنشاء اللاعبين عملية
 // بشرية نادرة، مش كتابة عالية التردد.
 playerSchema.index({ coach: 1, searchTokens: 1 });
-// فلترة بالمركز والقدم المفضلة
+// فلترة بالمركز
 playerSchema.index({ coach: 1, position: 1 });
-playerSchema.index({ coach: 1, preferredFoot: 1 });
+// {coach, preferredFoot} اتشال: اندكس ميت — preferredFoot معلن في PlayerFilters
+// بس currentFilters() في الفرونت مابيبعتهوش أبدًا (بيظهر في فورم اللاعب والتفاصيل
+// بس، مش كفلتر قايمة). كان بيدفع تكلفة كتابة على كل insert/update بعائد صفر.
 // فلترة/تجميع بالفئة العمرية (coach path)
 // يغطي: list {coach, ageGroup, status?} + counts {coach} group-by ageGroup (prefix coach,ageGroup)
 playerSchema.index({ coach: 1, ageGroup: 1, status: 1 });
@@ -327,7 +334,7 @@ playerSchema.index({ team: 1 }, { sparse: true });
 // يتجنّب الـblocking sort، فبيمشي على الفهرس كله ويرمي اللي مش بتاع الكشاف —
 // مقيس: فحص 25,040 مفتاح عشان يرجّع 50 لما مستندات الكشاف مش الأحدث. مع الجزء
 // ده الاستعلام بيبقى مغطّى بالكامل: فحص 50 لـ50.
-playerSchema.index({ createdBy: 1, createdAt: -1 });
+playerSchema.index({ createdBy: 1, createdAt: -1, _id: -1 });  // _id فاصل تعادل لترتيب createdAt
 
 // observer-matches-and-players — نفس منطق الـindex فوق بالظبط، لنفس السبب:
 // أوبزيرفرز بقوا يملكوا لاعبين (observers[] بتحتوي على معرّفهم) والترتيب
@@ -337,7 +344,7 @@ playerSchema.index({ createdBy: 1, createdAt: -1 });
 // الإضافة docsExamined 6,000 (COLLSCAN)؛ بعدها 50 لـ50 (FETCH مغطّى بالكامل
 // على الفهرس). الفهرس ده معلن في المخطط بس — تطبيقه على قاعدة بيانات حقيقية
 // عن طريق scripts/syncAllIndexes.js قرارك، مش شيء بينفّذ هنا (CLAUDE.md).
-playerSchema.index({ observers: 1, createdAt: -1 });
+playerSchema.index({ observers: 1, createdAt: -1, _id: -1 });  // _id فاصل تعادل لترتيب createdAt
 
 
 

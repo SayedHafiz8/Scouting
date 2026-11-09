@@ -87,24 +87,28 @@ describe('proScout files a report on its own professional player', () => {
     expect(saved.matchDate.getTime()).toBe(match.matchDate.getTime());
   });
 
-  it('a training report needs no fixture at all', async () => {
+  // طلب مالك 2026-09 — التدريب والودية اتلغوا. اللاعب المحترف مالوش فئة عمرية
+  // يختارها، فمساره اليدوي بقى "المنافس وحده" من غير matchType خاص.
+  it('rejects the retired matchType values', async () => {
     const player = await professionalPlayerWithTeam();
 
-    const res = await request(app)
-      .post(`/api/v1/players/${player._id}/reports`)
-      .set(...auth(scout.token))
-      .send({ ...reportPayload(), matchType: 'training' });
+    for (const matchType of ['training', 'friendly']) {
+      const res = await request(app)
+        .post(`/api/v1/players/${player._id}/reports`)
+        .set(...auth(scout.token))
+        .send({ ...reportPayload(), matchType, awayTeam: awayTeam._id.toString() });
 
-    expect(res.status).toBe(201);
+      expect(res.status).toBe(400);
+    }
   });
 
-  it('a friendly report names the opponent and needs no fixture', async () => {
+  it('names the opponent with no fixture at all — the player\'s own club is filled in server-side', async () => {
     const player = await professionalPlayerWithTeam();
 
     const res = await request(app)
       .post(`/api/v1/players/${player._id}/reports`)
       .set(...auth(scout.token))
-      .send({ ...reportPayload(), matchType: 'friendly', awayTeam: awayTeam._id.toString() });
+      .send({ ...reportPayload(), awayTeam: awayTeam._id.toString() });
 
     expect(res.status).toBe(201);
     const saved = await ScoutingReport.findById(res.body.data.document._id);
@@ -237,7 +241,9 @@ describe('proScout files a report on its own professional player', () => {
       .send({ ...reportPayload(), matchType: 'official', seasonMatch: past._id.toString() });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toMatch(/scheduled match/i);
+    // الرسالة بقت أدق بعد ما النافذة اتوسّعت لـ"النهاردة أو امبارح": مباراة
+    // الأسبوع اللي فات بترفض صراحةً كمباراة قديمة، مش كـ"مفيش مباراة النهاردة".
+    expect(res.body.message).toMatch(/too old/i);
   });
 
   it('reads its own professional report back', async () => {

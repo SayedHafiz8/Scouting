@@ -64,10 +64,11 @@ describe("audit-database — regression cover for the five findings", () => {
             const declared = Player.schema.indexes().map(([key]) => key);
             const names = declared.map((k) => Object.keys(k).join(","));
 
-            // createdBy لازم يكون الـprefix — ده البند نفسه، مش تفصيلة ترتيب
+            // createdBy لازم يكون الـprefix — ده البند نفسه، مش تفصيلة ترتيب.
+            // `_id` اتضاف كفاصل تعادل لترتيب createdAt (نفس تطوّر العقد في I2).
             const scopeIndex = declared.find((k) => Object.keys(k)[0] === "createdBy");
             expect(scopeIndex, "no index has createdBy as its first key").toBeTruthy();
-            expect(Object.keys(scopeIndex)).toEqual(["createdBy", "createdAt"]);
+            expect(Object.keys(scopeIndex)).toEqual(["createdBy", "createdAt", "_id"]);
 
             // الشكل القديم (Stage 2) اتلغى في المرحلة 11 — الـindex بتاعه مايرجعش
             expect(names).not.toContain("team,createdBy");
@@ -137,7 +138,8 @@ describe("audit-database — regression cover for the five findings", () => {
                 await Player.find(scope).sort({ createdAt: -1 }).limit(50).explain("executionStats")
             );
             expect(list.isCollscan).toBe(false);
-            expect(list.indexes).toContain("createdBy_1_createdAt_-1");
+            // اسم الاندكس بقى فيه _id فاصل التعادل في الآخر
+            expect(list.indexes).toContain("createdBy_1_createdAt_-1__id_-1");
             // مغطّى بالكامل: مافيش مستند بيتقرا وبيترمي
             expect(list.docsExamined).toBe(list.nReturned);
 
@@ -483,8 +485,8 @@ describe("audit-database — regression cover for the five findings", () => {
             expect(names).toContain("player,seasonMatch,type,status");
             // الكرونز — partial على status:"processing"
             expect(names).toContain("type,updatedAt");
-            // قايمة ميديا اللاعب + الترتيب الافتراضي
-            expect(names).toContain("player,createdAt");
+            // قايمة ميديا اللاعب + الترتيب الافتراضي (_id فاصل تعادل لـcreatedAt)
+            expect(names).toContain("player,createdAt,_id");
         });
 
         it("the readyCount query still plans onto an index after the drops", async () => {

@@ -561,6 +561,46 @@ describe('GET/PATCH/DELETE /api/v1/seasonMatches/:id', () => {
     expect(res.body.data.document.awayTeam.name).toBe('away_team_premier');
   });
 
+  // ⚠️ الـpopulate التلقائي (pre(/^find/) hook) اتشال وبقى صريح في مسارات
+  // القراءة. دول التستات اللي بيقفلوا إن المسارات اللي **بترجع مستند بعد كتابة**
+  // لسه بترجّع فرق populated — الفرونت (my-matches) بيستبدل صف القايمة بالرد ده
+  // ويعرض homeTeam.name، فلو رجع ObjectId خام الصف بيتكسر.
+  it('⚠️ list returns populated team names (no auto-populate hook anymore)', async () => {
+    const { token } = await createAdmin();
+    const { ageGroupA, home, away } = await setupFixtures();
+    await createMatch(token, matchPayload({
+      ageGroup: ageGroupA._id.toString(),
+      homeTeam: home._id.toString(),
+      awayTeam: away._id.toString(),
+    }));
+
+    const res = await request(app)
+      .get('/api/v1/seasonMatches')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.documents[0].homeTeam.name).toBe('home_team_premier');
+    expect(res.body.data.documents[0].awayTeam.name).toBe('away_team_premier');
+  });
+
+  it('⚠️ attend returns the match with populated teams', async () => {
+    const { token: adminToken } = await createAdmin();
+    const { token: coachToken } = await createCoach();
+    const { ageGroupA, home, away } = await setupFixtures();
+
+    const created = await createMatch(adminToken, matchPayload({
+      ageGroup: ageGroupA._id.toString(),
+      homeTeam: home._id.toString(),
+      awayTeam: away._id.toString(),
+    }));
+
+    const res = await attend(coachToken, created.body.data.document._id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.document.homeTeam.name).toBe('home_team_premier');
+    expect(res.body.data.document.awayTeam.name).toBe('away_team_premier');
+  });
+
   it('admin edits a match (venue); stamps updatedBy', async () => {
     const { token, user } = await createAdmin();
     const { ageGroupA, home, away } = await setupFixtures();

@@ -1,4 +1,5 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, DestroyRef, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
@@ -371,6 +372,7 @@ interface MediaRow {
 })
 export class MyMatchesComponent implements OnInit {
   readonly auth = inject(AuthService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly seasonMatchService = inject(SeasonMatchService);
   private readonly playerService = inject(PlayerService);
   private readonly teamService = inject(TeamService);
@@ -556,7 +558,7 @@ export class MyMatchesComponent implements OnInit {
 
   load(): void {
     this.loading.set(true);
-    this.seasonMatchService.getAll(this.buildFilters()).subscribe({
+    this.seasonMatchService.getAll(this.buildFilters()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (res) => {
         const documents = res.data?.documents ?? [];
         const numberOfPages = res.pagination?.numberOfPages ?? 1;
@@ -592,7 +594,7 @@ export class MyMatchesComponent implements OnInit {
       page: 1,
       limit: 1,
       'matchDate[lt]': todayStart.toISOString(),
-    }).subscribe({
+    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (res) => {
         const pastCount = res.pagination?.numberOfPages ?? 0;
         this.page.set(Math.floor(pastCount / MyMatchesComponent.PAGE_SIZE) + 1);
@@ -608,7 +610,7 @@ export class MyMatchesComponent implements OnInit {
   // from the same round trip — a fixture's populated `ageGroup` (see
   // seasonMatchModel.js's pre-find populate) is enough, no extra request per group.
   private loadAllSeasons(): void {
-    this.seasonMatchService.getAll({ limit: 200 }).subscribe(res => {
+    this.seasonMatchService.getAll({ limit: 200 }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(res => {
       const docs = res.data?.documents ?? [];
       this.allSeasons.set(Array.from(new Set(docs.map(m => m.season))));
 
@@ -667,7 +669,7 @@ export class MyMatchesComponent implements OnInit {
       ? this.seasonMatchService.unattend(m._id)
       : this.seasonMatchService.attend(m._id);
     this.attendBusyId.set(m._id);
-    op.subscribe({
+    op.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (res) => {
         const updated = res.data?.document;
         if (updated) this.matches.update(list => list.map(x => x._id === updated._id ? updated : x));
@@ -679,7 +681,7 @@ export class MyMatchesComponent implements OnInit {
 
   private loadObservedRows(): void {
     this.observedLoading.set(true);
-    this.playerService.getAll({ status: 'observed', limit: 100 }).subscribe({
+    this.playerService.getAll({ status: 'observed', limit: 100 }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (res) => {
         const players = res.data?.documents ?? [];
         if (players.length === 0) {
@@ -792,7 +794,7 @@ export class MyMatchesComponent implements OnInit {
       ? { status: this.resultForm.status, result: { homeScore: this.resultForm.homeScore, awayScore: this.resultForm.awayScore } }
       : { status: this.resultForm.status };
 
-    this.seasonMatchService.updateStatus(m._id, payload).subscribe({
+    this.seasonMatchService.updateStatus(m._id, payload).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (res) => {
         const updated = res.data?.document;
         if (updated) this.matches.update(list => list.map(x => x._id === updated._id ? updated : x));
@@ -812,7 +814,7 @@ export class MyMatchesComponent implements OnInit {
     this.expandedMatchId.set(m._id);
     this.matchDetailTab.set('reports');
     this.matchReportsLoading.set(true);
-    this.seasonMatchService.getOne(m._id).subscribe({
+    this.seasonMatchService.getOne(m._id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (res) => {
         this.matchReports.set(res.data?.document.reports ?? []);
         this.matchMedia.set(res.data?.document.media ?? []);
