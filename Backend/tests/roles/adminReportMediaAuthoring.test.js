@@ -456,3 +456,108 @@ describe('Orphaned report/media (author permanently deleted) — 403, not 500', 
         expect(res.status).toBe(403);
     });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  admin-manual-match-info (طلب مالك 2026-11)
+//
+//  الأدمن بيرفع التقارير بعد مدة من المباراة، فهو اللي بيدخل الفرقتين وتاريخ
+//  المباراة بنفسه — مفيش ربط بجدول المواسم في مساره ومفيش نافذة زمنية.
+//  الضمانة اللي الربط كان موجود عشانها (matchDate = تاريخ المباراة الحقيقي مش
+//  تاريخ الإنشاء) بقت متحقّقة من المصدر: الأدمن بيبعت التاريخ والسيرفر بيتحقق
+//  إنه مش في المستقبل. والرخصة دي للأدمن **وحده**.
+// ══════════════════════════════════════════════════════════════════════════════
+describe('Admin enters the two teams and the match date manually', () => {
+    beforeEach(seedAgeGroups);
+
+    // لاعب له فريق بس **مفيش** مباراة في الجدول — الحالة اللي كانت بترجع 400
+    // ("No scheduled match for this player's team today")
+    async function playerWithTeamNoFixture(adminToken) {
+        const created = await request(app)
+            .post('/api/v1/players')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send(playerPayload());
+        const player = created.body.data.document;
+        const p = await Player.findById(player._id).select('ageGroup');
+        const teamIds = await defaultTeamIds(p.ageGroup);
+        await Player.findByIdAndUpdate(player._id, { team: teamIds.homeTeam });
+        return { player, teamIds };
+    }
+
+    const tenDaysAgo = () => {
+        const d = new Date();
+        d.setUTCDate(d.getUTCDate() - 10);
+        return d.toISOString().slice(0, 10);
+    };
+
+    it('records the report under the date the admin sent, not the creation date', async () => {
+        const { token: adminToken } = await createAdmin();
+        const { player, teamIds } = await playerWithTeamNoFixture(adminToken);
+        const played = tenDaysAgo();
+
+        const res = await request(app)
+            .post(`/api/v1/players/${player._id}/reports`)
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send(reportPayload({ ...teamIds, matchDate: played }));
+
+        expect(res.status).toBe(201);
+        const doc = res.body.data.document;
+        expect(new Date(doc.matchDate).toISOString().slice(0, 10)).toBe(played);
+        // مفيش ربط بالجدول — الفرق جايّة من اللي الأدمن اختاره
+        expect(doc.seasonMatch ?? null).toBeNull();
+        const stored = await ScoutingReport.findById(doc._id).select('homeTeam awayTeam');
+        expect(stored.homeTeam.toString()).toBe(teamIds.homeTeam);
+        expect(stored.awayTeam.toString()).toBe(teamIds.awayTeam);
+    });
+
+    it('accepts a free-text opposing team instead of a registered one', async () => {
+        const { token: adminToken } = await createAdmin();
+        const { player, teamIds } = await playerWithTeamNoFixture(adminToken);
+
+        const res = await request(app)
+            .post(`/api/v1/players/${player._id}/reports`)
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send(
+                reportPayload({
+                    homeTeam: teamIds.homeTeam,
+                    awayTeamName: 'Unlisted FC',
+                    matchDate: tenDaysAgo(),
+                })
+            );
+
+        expect(res.status).toBe(201);
+        expect(res.body.data.document.awayTeamName).toBe('Unlisted FC');
+    });
+
+    it('rejects a match date in the future', async () => {
+        const { token: adminToken } = await createAdmin();
+        const { player, teamIds } = await playerWithTeamNoFixture(adminToken);
+        const tomorrow = new Date();
+        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+        const res = await request(app)
+            .post(`/api/v1/players/${player._id}/reports`)
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send(reportPayload({ ...teamIds, matchDate: tomorrow.toISOString().slice(0, 10) }));
+
+        expect(res.status).toBe(400);
+    });
+
+    // الرخصة للأدمن وحده: القفل القديم باقي على باقي الرولات زي ما هو
+    it('still refuses a matchDate sent by a coach', async () => {
+        const { token: adminToken } = await createAdmin();
+        const coach = await createCoach();
+        const created = await request(app)
+            .post('/api/v1/players')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send(playerPayload({ coach: coach.user._id.toString() }));
+        const player = created.body.data.document;
+        const teamIds = await reportSetup(player._id);
+
+        const res = await request(app)
+            .post(`/api/v1/players/${player._id}/reports`)
+            .set('Authorization', `Bearer ${coach.token}`)
+            .send(reportPayload({ ...teamIds, matchDate: tenDaysAgo() }));
+
+        expect(res.status).toBe(400);
+    });
+});

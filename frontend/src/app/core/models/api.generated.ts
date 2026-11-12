@@ -1186,10 +1186,17 @@ export interface paths {
                         physical: components["schemas"]["PhysicalSkills"];
                         mental: components["schemas"]["MentalSkills"];
                         notes?: string;
+                        /**
+                         * Format: date
+                         * @description Admin only. The date the match was actually played — an admin files reports some time after the match, so it enters both teams and this date itself instead of being linked to a fixture. Rejected for every other role (the server uses the creation date, or the linked match's date). Cannot be in the future.
+                         */
+                        matchDate?: string;
                         /** @description Admin only. Id of an observer already assigned to this player (in its `observers` array) — the report is authored as that observer instead of the admin. */
                         assignedObserver?: string;
                         /** @description Admin only. Id of the proScout who owns this player (its `createdBy`) — the report is authored as that proScout instead of the admin. Mutually exclusive with assignedObserver. */
                         assignedProScout?: string;
+                        /** @description Admin only. Id of this player's own coach — the report is authored as that coach instead of the admin. Mutually exclusive with assignedObserver / assignedProScout. When the report is linked to a seasonMatch, the person it is filed on behalf of is also recorded in that match's `attendees`. */
+                        assignedCoach?: string;
                     };
                 };
             };
