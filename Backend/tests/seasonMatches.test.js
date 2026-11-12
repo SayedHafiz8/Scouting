@@ -1122,54 +1122,73 @@ describe('POST/DELETE /api/v1/seasonMatches/:id/attend', () => {
     expect(res.status).toBe(403);
   });
 
-  it('cannot self-enroll once the match day has arrived (400)', async () => {
+  // نافذة الحضور اتوسّعت بيوم واحد (طلب المالك 2026-11-12): يوم المباراة نفسه بقى
+  // مسموح، والماتش اللي عدّى تاريخه لسه مرفوض. التستين دول بيثبتوا الحدّين —
+  // ناحية المسموح وناحية المرفوض — عشان التوسيع مايزحفش لأكتر من كده.
+  //
+  // التواريخ مبنية بـ Date.UTC عن قصد (CLAUDE.md): النسخة القديمة من التست كانت
+  // بتستخدم setHours المحلي، وهو بيزح اليوم بفرق توقيت السيرفر.
+  const utcMidnightDaysFromToday = (days) => {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + days * 86400000);
+  };
+
+  it("can self-enroll on the match day itself, but not on a match that's already been played", async () => {
     const { user: admin } = await createAdmin();
-    const { token: coachToken } = await createCoach();
+    const { token: coachToken, user: coach } = await createCoach();
     const { ageGroupA, home, away } = await setupFixtures();
 
-    // matchDate = today → the attendance cutoff (start of match day) has already passed
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todaysMatch = await SeasonMatch.create({
+    const makeMatch = (matchDate) => SeasonMatch.create({
       ageGroup: ageGroupA._id,
       season: matchPayload().season,
       league: 'premier',
-      matchDate: today,
+      matchDate,
       homeTeam: home._id,
       awayTeam: away._id,
       createdBy: admin._id,
     });
 
-    const res = await attend(coachToken, todaysMatch._id.toString());
-    expect(res.status).toBe(400);
+    // يوم المباراة نفسه — مسموح (ده اللي اتوسّع)
+    const todaysMatch = await makeMatch(utcMidnightDaysFromToday(0));
+    const joined = await attend(coachToken, todaysMatch._id.toString());
+    expect(joined.status).toBe(200);
+    expect(joined.body.data.document.attendees.map((a) => String(a._id ?? a))).toContain(String(coach._id));
+
+    // ماتش عدّى تاريخه — مرفوض، ومفيش أي حضور بيتسجل
+    const pastMatch = await makeMatch(utcMidnightDaysFromToday(-3));
+    const refused = await attend(coachToken, pastMatch._id.toString());
+    expect(refused.status).toBe(400);
+    const refetched = await SeasonMatch.findById(pastMatch._id).setOptions({ skipPopulate: true });
+    expect(refetched.attendees ?? []).toHaveLength(0);
   });
 
-  it('cannot cancel attendance once the match day has arrived, even if already attending (400)', async () => {
+  it('can cancel attendance on the match day itself, but not after the match has been played', async () => {
     const { user: admin } = await createAdmin();
     const { token: coachToken, user: coach } = await createCoach();
     const { ageGroupA, home, away } = await setupFixtures();
 
-    // enroll while it's still the day before, then simulate match day arriving
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const upcoming = await SeasonMatch.create({
+    const makeAttendedMatch = (matchDate) => SeasonMatch.create({
       ageGroup: ageGroupA._id,
       season: matchPayload().season,
       league: 'premier',
-      matchDate: tomorrow,
+      matchDate,
       homeTeam: home._id,
       awayTeam: away._id,
       attendees: [coach._id],
       createdBy: admin._id,
     });
 
-    // push matchDate back to today directly in the DB to simulate the day arriving
-    await SeasonMatch.findByIdAndUpdate(upcoming._id, {
-      matchDate: new Date(new Date().setHours(0, 0, 0, 0)),
-    });
+    const todaysMatch = await makeAttendedMatch(utcMidnightDaysFromToday(0));
+    const left = await unattend(coachToken, todaysMatch._id.toString());
+    expect(left.status).toBe(200);
+    expect(left.body.data.document.attendees.map((a) => String(a._id ?? a))).not.toContain(String(coach._id));
 
-    const res = await unattend(coachToken, upcoming._id.toString());
-    expect(res.status).toBe(400);
+    // بعد ما الماتش يعدي، الحضور المسجّل بيتثبّت — لا بيتضاف ولا بيتشال
+    const pastMatch = await makeAttendedMatch(utcMidnightDaysFromToday(-3));
+    const refused = await unattend(coachToken, pastMatch._id.toString());
+    expect(refused.status).toBe(400);
+    const refetched = await SeasonMatch.findById(pastMatch._id).setOptions({ skipPopulate: true });
+    expect(refetched.attendees.map(String)).toContain(String(coach._id));
   });
 });
 

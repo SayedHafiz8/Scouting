@@ -2451,7 +2451,7 @@
     },
     "/seasonMatches/{id}/attend": {
       "post": {
-        "summary": "Scout self-enrolls to attend this match (coach/observer/proScout)",
+        "summary": "Scout self-enrolls to attend this match (coach/observer/proScout). Allowed until the end of the match day — a future fixture or one played today. A match whose date has already passed is refused (400): attendance is a commitment to go, not a retroactive claim.\n",
         "tags": [
           "SeasonMatches"
         ],
@@ -2486,7 +2486,7 @@
         }
       },
       "delete": {
-        "summary": "Scout removes self from this match's attendees (coach/observer/proScout)",
+        "summary": "Scout removes self from this match's attendees (coach/observer/proScout). Allowed until the end of the match day, like the attend endpoint.\n",
         "tags": [
           "SeasonMatches"
         ],

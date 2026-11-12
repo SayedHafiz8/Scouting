@@ -162,30 +162,38 @@ interface MediaRow {
                       <td class="px-4 py-3.5" style="color:var(--text-secondary)">{{ row.ageGroupLabel }}</td>
                     }
                     <td class="px-4 py-3.5" style="color:var(--text-secondary)">{{ row.match.venue || '—' }}</td>
+                    <!-- زرار الحضور بقى بيظهر مع زرار النتيجة في نفس الخلية، مش بدلاً منه:
+                         الحضور متاح في أي يوم دلوقتي، فلو اتخفى يوم الماتش (وهو اليوم اللي
+                         زرار النتيجة بيظهر فيه) الكشاف الحاضر مكانش هيقدر يلغي حضوره خالص. -->
                     <td class="px-4 py-3.5 text-right" (click)="$event.stopPropagation()">
-                      @if (row.canEnterResult) {
-                        <button type="button" class="btn btn-ghost btn-sm inline-flex items-center gap-1.5" (click)="openResultForm(row.match)">
-                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
-                          {{ (row.match.status === 'completed' ? 'SEASON_MATCHES.EDIT_RESULT' : 'SEASON_MATCHES.ENTER_RESULT') | translate }}
-                        </button>
-                      } @else if (!auth.isAdmin() && row.match.status !== 'cancelled' && row.canToggleAttend) {
-                        <button type="button" class="btn btn-sm" [disabled]="attendBusyId() === row.match._id"
-                                [class]="row.isAttending ? 'btn-secondary' : 'btn-primary'" (click)="toggleAttend(row.match)">
-                          {{ (row.isAttending ? 'SEASON_MATCHES.UNATTEND' : 'SEASON_MATCHES.ATTEND') | translate }}
-                        </button>
-                      } @else if (!auth.isAdmin() && row.match.status !== 'cancelled') {
-                        <span class="text-xs" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.ATTENDANCE_LOCKED' | translate }}</span>
-                      } @else if (auth.isAdmin()) {
-                        <span class="text-xs inline-flex items-center gap-1" style="color:var(--text-muted)">
-                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
-                          {{ row.attendeeCount }}
-                        </span>
-                      } @else {
-                        <span class="text-xs" style="color:var(--text-muted)">—</span>
-                      }
+                      <div class="flex flex-wrap items-center justify-end gap-2">
+                        @if (row.canEnterResult) {
+                          <button type="button" class="btn btn-ghost btn-sm inline-flex items-center gap-1.5" (click)="openResultForm(row.match)">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                            {{ (row.match.status === 'completed' ? 'SEASON_MATCHES.EDIT_RESULT' : 'SEASON_MATCHES.ENTER_RESULT') | translate }}
+                          </button>
+                        }
+                        @if (!auth.isAdmin()) {
+                          @if (row.canToggleAttend) {
+                            <button type="button" class="btn btn-sm" [disabled]="attendBusyId() === row.match._id"
+                                    [class]="row.isAttending ? 'btn-secondary' : 'btn-primary'" (click)="toggleAttend(row.match)">
+                              {{ (row.isAttending ? 'SEASON_MATCHES.UNATTEND' : 'SEASON_MATCHES.ATTEND') | translate }}
+                            </button>
+                          } @else if (row.match.status !== 'cancelled' && !row.canEnterResult) {
+                            <span class="text-xs" style="color:var(--text-muted)">{{ 'SEASON_MATCHES.ATTENDANCE_LOCKED' | translate }}</span>
+                          } @else if (!row.canEnterResult) {
+                            <span class="text-xs" style="color:var(--text-muted)">—</span>
+                          }
+                        } @else if (!row.canEnterResult) {
+                          <span class="text-xs inline-flex items-center gap-1" style="color:var(--text-muted)">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+                            {{ row.attendeeCount }}
+                          </span>
+                        }
+                      </div>
                     </td>
                   </tr>
                   @if (resultMatchId() === row.match._id) {
@@ -768,11 +776,17 @@ export class MyMatchesComponent implements OnInit {
     return now >= dayStart.getTime() && now < dayEnd.getTime();
   }
 
-  // الحضور/الإلغاء متاح لحد آخر اليوم اللي قبل يوم الماتش بس — نفس قاعدة الباك اند
+  // الحضور/الإلغاء متاح لحد آخر **يوم المباراة** — يعني ماتش جاي أو ماتش
+  // النهاردة؛ وماتش عدّى تاريخه خلاص مايتحضرش (طلب المالك 2026-11-12). نفس قاعدة
+  // matchDayNotOver في الباك اند بالظبط.
+  //
+  // matchDate متخزّن منتصف ليل UTC، فنهاية يومه = + 24 ساعة بالظبط. مابنستخدمش
+  // setHours المحلي هنا (زي ما كان قبل كده) لأنه بيزح النافذة بفرق توقيت الجهاز
+  // عن السيرفر، فكان ممكن يعرض الزرار والسيرفر يرفض — أو العكس.
   canToggleAttend(m: SeasonMatch): boolean {
-    const dayStart = new Date(m.matchDate);
-    dayStart.setHours(0, 0, 0, 0);
-    return Date.now() < dayStart.getTime();
+    if (m.status === 'cancelled') return false;
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    return Date.now() < new Date(m.matchDate).getTime() + DAY_MS;
   }
 
   openResultForm(m: SeasonMatch): void {

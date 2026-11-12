@@ -163,7 +163,11 @@ import { ROLES } from "../constants/roles.js";
  *
  * /seasonMatches/{id}/attend:
  *   post:
- *     summary: Scout self-enrolls to attend this match (coach/observer/proScout)
+ *     summary: >
+ *       Scout self-enrolls to attend this match (coach/observer/proScout).
+ *       Allowed until the end of the match day — a future fixture or one
+ *       played today. A match whose date has already passed is refused (400):
+ *       attendance is a commitment to go, not a retroactive claim.
  *     tags: [SeasonMatches]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -177,7 +181,9 @@ import { ROLES } from "../constants/roles.js";
  *       403: { description: Match is outside the caller's scope (proScout) }
  *       404: { description: Not found }
  *   delete:
- *     summary: Scout removes self from this match's attendees (coach/observer/proScout)
+ *     summary: >
+ *       Scout removes self from this match's attendees (coach/observer/proScout).
+ *       Allowed until the end of the match day, like the attend endpoint.
  *     tags: [SeasonMatches]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -215,6 +221,11 @@ seasonMatchRouter.route('/:id/status')
 // المرحلة 6 مع checkSeasonMatchScope — نفس حارس GET /:id بالظبط، مش نسخة
 // تانية منه — عشان يمنعه من الحضور على مباراة برّة نطاقه (كان مفيش أي حارس
 // نطاق على المسارين دول قبل كده، Principle IV).
+//
+// نافذة اليوم اتوسّعت بيوم (طلب المالك 2026-11-12) — يوم المباراة نفسه بقى
+// مسموح، والماتش اللي عدّى تاريخه مرفوض. الشرح الكامل جوه seasonMatchController.
+// حارس النطاق هنا **مابتغيّرش**: proScout لسه مقصور على دوري المحترفين، والأدمن
+// لسه مش في allowedTo (مش كشاف — بيسجّل حضور غيره من مسار التقرير).
 seasonMatchRouter.route('/:id/attend')
     .post(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkSeasonMatchScope, attendMatch)
     .delete(protect, allowedTo(ROLES.COACH, ROLES.OBSERVER, ROLES.PRO_SCOUT), checkSeasonMatchScope, unattendMatch);
