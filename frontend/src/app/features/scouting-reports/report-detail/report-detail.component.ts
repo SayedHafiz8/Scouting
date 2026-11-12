@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ScoutingReportService } from '../services/scouting-report.service';
@@ -9,11 +10,12 @@ import { ScoutingReport } from '../../../core/models/scouting-report.model';
 import { RatingBarComponent } from '../../../shared/components/rating-bar/rating-bar.component';
 import { RadarChartComponent } from '../../../shared/components/radar-chart/radar-chart.component';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
+import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 
 @Component({
     selector: 'app-report-detail',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DatePipe, TranslatePipe, RatingBarComponent, RadarChartComponent, SkeletonLoaderComponent],
+    imports: [DatePipe, TranslatePipe, RatingBarComponent, RadarChartComponent, SkeletonLoaderComponent, ConfirmDialogComponent],
     template: `
     <div class="max-w-4xl mx-auto space-y-5">
 
@@ -56,7 +58,21 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
               <!-- زرار التعديل اتشال: كان بيوجّه لـ['../edit'] واللي بيتحلّ لـ
                    reports/edit فبيطابق reports/:reportId بـreportId='edit' ويرجع
                    صفحة فاضية — الراوت ده مش موجود أصلاً. التقارير للقراءة بعد
-                   الإنشاء، والأدمن وحده بيمسح. (قرار المالك 2026-11) -->
+                   الإنشاء، والأدمن وحده بيمسح. (قرار المالك 2026-11)
+
+                   الحذف: الأدمن يقدر يمسح **أي** تقرير، مش تقاريره هو بس —
+                   DELETE /scouting/:id أدمن-أونلي ومن غير أي حارس ملكية، فالزرار
+                   هنا مطابق للسيرفر بالظبط (مقابل زرار التعديل في القايمة اللي
+                   محدود بـisAuthoredByMe زي denyAdminEditingOthersReport). -->
+              @if (auth.isAdmin()) {
+                <button class="btn btn-ghost btn-icon text-danger-500 flex-shrink-0"
+                        [title]="'COMMON.DELETE' | translate"
+                        (click)="confirmDelete.set(true)">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                  </svg>
+                </button>
+              }
             </div>
 
             <!-- Technical -->
@@ -113,16 +129,31 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
         </div>
       }
     </div>
+
+    @if (confirmDelete()) {
+      <app-confirm-dialog
+        [title]="'REPORTS.DELETE_TITLE' | translate"
+        [message]="'REPORTS.DELETE_MSG' | translate"
+        [confirmLabel]="'COMMON.DELETE' | translate"
+        [danger]="true"
+        (confirmed)="doDelete()"
+        (cancelled)="confirmDelete.set(false)"
+      />
+    }
   `
 })
 export class ReportDetailComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly reportService = inject(ScoutingReportService);
   private readonly breadcrumbContext = inject(BreadcrumbContextService);
+  private readonly destroyRef = inject(DestroyRef);
   readonly auth = inject(AuthService);
 
   readonly report = signal<ScoutingReport | null>(null);
   readonly loading = signal(true);
+  readonly confirmDelete = signal(false);
+  readonly deleting = signal(false);
 
   private get playerId(): string {
     return this.route.snapshot.pathFromRoot
@@ -149,6 +180,26 @@ export class ReportDetailComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.breadcrumbContext.clearReportAuthor();
+  }
+
+  // الأدمن يمسح أي تقرير — DELETE /scouting/:id أدمن-أونلي ومن غير حارس ملكية.
+  // بعد المسح بنرجع لقايمة تقارير اللاعب: الصفحة دي بقى مستندها مش موجود.
+  doDelete(): void {
+    const id = this.report()?._id;
+    if (!id || this.deleting()) return;
+    this.deleting.set(true);
+    this.reportService.delete(this.playerId, id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.confirmDelete.set(false);
+          this.router.navigate(['/players', this.playerId, 'reports']);
+        },
+        error: () => {
+          this.deleting.set(false);
+          this.confirmDelete.set(false);
+        },
+      });
   }
 
   coachName(): string {

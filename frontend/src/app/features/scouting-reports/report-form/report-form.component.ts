@@ -152,7 +152,7 @@ const MENTAL_FIELDS: RatingField[] = [
                    from the player's own observers[] (already loaded with the player, no
                    extra request) — matches the server's requirement that assignedObserver
                    must already be assigned to this player. -->
-              @if (auth.isAdmin() && (playerObservers().length > 0 || playerProScout())) {
+              @if (auth.isAdmin() && (playerObservers().length > 0 || playerProScout() || playerCoach())) {
                 <div class="space-y-1.5 mb-2">
                   <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
                     {{ 'REPORTS.FORM.FILE_ON_BEHALF_OF' | translate }}
@@ -162,6 +162,9 @@ const MENTAL_FIELDS: RatingField[] = [
                     <option value="">{{ 'REPORTS.FORM.FILE_ON_BEHALF_OF_SELF' | translate }}</option>
                     @if (playerProScout(); as ps) {
                       <option [value]="ps._id">{{ ps.name }} — {{ 'PLAYERS.DETAIL.PROSCOUT' | translate }}</option>
+                    }
+                    @if (playerCoach(); as c) {
+                      <option [value]="c._id">{{ c.name }} — {{ 'PLAYERS.DETAIL.COACH' | translate }}</option>
                     }
                     @for (o of playerObservers(); track o._id) {
                       <option [value]="o._id">{{ o.name }}</option>
@@ -307,7 +310,97 @@ const MENTAL_FIELDS: RatingField[] = [
                 </div>
               }
 
-              @if (!hasTeam()) {
+              @if (adminManualMatch()) {
+                <!-- admin-manual-match-info (طلب مالك 2026-11) — الأدمن بيرفع
+                     التقارير بعد مدة من المباراة، فهو اللي بيدخل الفرقتين وتاريخ
+                     المباراة. مفيش ربط بجدول المواسم في المسار ده خالص. -->
+                <div class="space-y-2.5">
+                  <!-- التاريخ أول حقل: هو اللي بيحدد المباريات المتاحة تحته -->
+                  <div class="space-y-1.5">
+                    <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                      {{ 'REPORTS.FORM.MATCH_DATE' | translate }}
+                    </label>
+                    <!-- max: مباراة في المستقبل مرفوضة من السيرفر كمان (createValidate) -->
+                    <input type="date" formControlName="matchDate" class="form-input" [max]="today()" />
+                    <p class="text-[11px]" style="color:var(--text-muted)">{{ 'REPORTS.FORM.ADMIN_MANUAL_HINT' | translate }}</p>
+                    @if (submitted() && !form.get('matchDate')?.value) {
+                      <p class="field-error">{{ 'REPORTS.FORM.DATE_ERR' | translate }}</p>
+                    }
+                  </div>
+
+                  @if (adminMatchesLoading()) {
+                    <p class="text-[11px]" style="color:var(--text-muted)">{{ 'REPORTS.FORM.ADMIN_MATCH_LOADING' | translate }}</p>
+                  } @else if (adminMatchOptions().length > 0) {
+                    <!-- فيه مباراة لفريقه في اليوم ده — الربط بيها بياخد الفرق
+                         والتاريخ الحقيقي من الجدول، وبيسجّل اللي بيتكتب بالنيابة
+                         عنه إنه حضرها -->
+                    <div class="space-y-1.5">
+                      <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                        {{ 'REPORTS.FORM.SEASON_MATCH' | translate }}
+                      </label>
+                      <select [ngModel]="adminSelectedMatch()" (ngModelChange)="onAdminMatchChange($event)"
+                              [ngModelOptions]="{standalone: true}" class="form-input">
+                        <option value="">{{ 'REPORTS.FORM.NO_SEASON_MATCH' | translate }}</option>
+                        @for (m of adminMatchOptions(); track m._id) {
+                          <option [value]="m._id">{{ m.label }}</option>
+                        }
+                      </select>
+                      <p class="text-[11px]" style="color:var(--text-muted)">{{ 'REPORTS.FORM.ADMIN_MATCH_HINT' | translate }}</p>
+                    </div>
+                  }
+
+                  @if (!adminSelectedMatch()) {
+                  <div class="flex items-end gap-3">
+                    <div class="flex-1 space-y-1.5">
+                      <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                        {{ 'REPORTS.FORM.HOME_TEAM' | translate }}
+                      </label>
+                      <select [ngModel]="homeIsOther() ? OTHER_TEAM : form.get('homeTeam')?.value"
+                              (ngModelChange)="onTeamSelectChange('home', $event)"
+                              [ngModelOptions]="{standalone: true}" class="form-input">
+                        <option value="">{{ 'REPORTS.FORM.SELECT_TEAM' | translate }}</option>
+                        @for (t of teamOptions(); track t._id) {
+                          <option [value]="t._id">{{ t.name }}</option>
+                        }
+                        <option [value]="OTHER_TEAM">{{ 'REPORTS.FORM.TEAM_NOT_LISTED' | translate }}</option>
+                      </select>
+                      @if (homeIsOther()) {
+                        <input type="text" formControlName="homeTeamName" class="form-input"
+                               [placeholder]="'REPORTS.FORM.TEAM_NAME_PH' | translate" />
+                      }
+                    </div>
+
+                    <div class="flex items-center justify-center font-black text-xs shrink-0"
+                         style="width:34px;height:42px;color:var(--text-muted)">VS</div>
+
+                    <div class="flex-1 space-y-1.5">
+                      <label class="block text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">
+                        {{ 'REPORTS.FORM.AWAY_TEAM' | translate }}
+                      </label>
+                      <select [ngModel]="awayIsOther() ? OTHER_TEAM : form.get('awayTeam')?.value"
+                              (ngModelChange)="onTeamSelectChange('away', $event)"
+                              [ngModelOptions]="{standalone: true}" class="form-input">
+                        <option value="">{{ 'REPORTS.FORM.SELECT_TEAM' | translate }}</option>
+                        @for (t of teamOptions(); track t._id) {
+                          <option [value]="t._id">{{ t.name }}</option>
+                        }
+                        <option [value]="OTHER_TEAM">{{ 'REPORTS.FORM.TEAM_NOT_LISTED' | translate }}</option>
+                      </select>
+                      @if (awayIsOther()) {
+                        <input type="text" formControlName="awayTeamName" class="form-input"
+                               [placeholder]="'REPORTS.FORM.TEAM_NAME_PH' | translate" />
+                      }
+                    </div>
+                  </div>
+
+                  @if (submitted() && !adminTeamsValid()) {
+                    <p class="field-error">{{ 'REPORTS.FORM.TEAMS_ERR' | translate }}</p>
+                  }
+                  }
+                </div>
+              }
+
+              @if (!adminManualMatch() && !hasTeam()) {
                 <!-- اللاعب مش متسجل في أي فريق — مفيش جدول مباريات نربطه بيه، فالإدخال يدوي (اختيار أو كتابة اسم) -->
                 <div class="flex items-end gap-3">
                   <div class="flex-1 space-y-1.5">
@@ -639,14 +732,30 @@ export class ReportFormComponent implements OnInit {
   // المحترف هو الاستثناء الوحيد اللي القايمة باقية عنده: مبارياته متباعدة
   // وبيكتب تقريره بعدها بأيام، فاختيار المباراة هو مساره الأساسي (نفس الرخصة
   // المطبَّقة على السيرفر في resolveMatchTypeFields).
+  //
+  // admin-manual-match-info (طلب مالك 2026-11) — الأدمن برّه كل ده: بيرفع تقاريره
+  // بعد مدة من المباراة فبيدخل الفرقتين وتاريخ المباراة بنفسه، ومفيش ربط بالجدول
+  // خالص في مساره (نفس الاستثناء مطبَّق على السيرفر في resolveMatchTypeFields).
+  readonly adminManualMatch = computed(() => this.auth.isAdmin());
+
+  // admin-manual-match-info — التاريخ هو أول حقل في القسم: الأدمن بيدخله،
+  // وبنجيب مباريات فريق اللاعب في اليوم ده. لو فيه مباراة بيختارها (التقرير
+  // بيترتبط بيها وبيتسجل حضور اللي بيكتب بالنيابة عنه)، ولو مافيش بيدخل
+  // الفرقتين يدوي زي ما هو.
+  readonly adminMatchOptions = signal<{ _id: string; label: string }[]>([]);
+  readonly adminSelectedMatch = signal('');
+  readonly adminMatchesLoading = signal(false);
+  // كوتش اللاعب — بقى هدف "بالنيابة عن" زي الأوبزيرفر والمتابع
+  readonly playerCoach = signal<{ _id: string; name: string } | null>(null);
+
   readonly showFixturePicker = computed(() =>
-    this.isProfessional() && this.seasonMatchOptionsLoaded() && this.seasonMatchOptions().length > 0
+    !this.adminManualMatch() && this.isProfessional() && this.seasonMatchOptionsLoaded() && this.seasonMatchOptions().length > 0
   );
 
   // المباراة المرتبطة تلقائي — نص للعرض بس
   readonly linkedMatchLabel = signal('');
   readonly showLinkedMatch = computed(() =>
-    !this.isProfessional() && !!this.selectedSeasonMatch() && !!this.linkedMatchLabel()
+    !this.adminManualMatch() && !this.isProfessional() && !!this.selectedSeasonMatch() && !!this.linkedMatchLabel()
   );
 
   // طلب مالك 2026-09 — التدريب والودية اتلغوا. لما مايكونش فيه مباراة من الجدول
@@ -661,7 +770,7 @@ export class ReportFormComponent implements OnInit {
   // ما يختاروا واحدة. الكوتش/الأوبزيرفر زي ما هو بالظبط: قايمته النهاردة بس، فلو
   // فيه ماتش لازم يربط بيه.
   readonly showOpponentPicker = computed(() =>
-    this.hasTeam() && this.seasonMatchOptionsLoaded() && !this.selectedSeasonMatch()
+    !this.adminManualMatch() && this.hasTeam() && this.seasonMatchOptionsLoaded() && !this.selectedSeasonMatch()
   );
 
   readonly showAgeGroupPicker = computed(() => this.showOpponentPicker() && !this.isProfessional());
@@ -693,6 +802,8 @@ export class ReportFormComponent implements OnInit {
   readonly ageGroupInputsLoading = signal(false);
 
   readonly matchInputsReady = computed(() => {
+    // admin-manual-match-info — مساره مستقل: قايمة الفرق هي كل اللي بيستناها
+    if (this.adminManualMatch()) return this.playerLoaded() && this.teamOptionsLoaded();
     if (!this.playerLoaded() || !this.seasonMatchOptionsLoaded()) return false;
     if (this.ageGroupInputsPending()) return false;
     // قايمة الفئات مطلوبة بس لو الاختيار ده هو اللي هيتعرض — المحترف واللاعب
@@ -724,6 +835,9 @@ export class ReportFormComponent implements OnInit {
     homeTeamName: [''],
     awayTeam: [''],
     awayTeamName: [''],
+    // admin-manual-match-info — الأدمن وحده بيبعت التاريخ (السيرفر بيقفله على
+    // باقي الرولات)، فالحقل ده ظاهر في مساره بس
+    matchDate: [''],
     notes: [''],
     technical: this.fb.group({
       turning: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
@@ -791,6 +905,14 @@ export class ReportFormComponent implements OnInit {
       physical: build('physical', PHYSICAL_FIELDS),
       mental: build('mental', MENTAL_FIELDS),
     };
+  });
+
+  // admin-manual-match-info — الطرفين لازم يكونوا متحددين (اختيار أو اسم حر)
+  readonly adminTeamsValid = computed(() => {
+    const v = this.formValues();
+    const homeOk = this.homeIsOther() ? !!v.homeTeamName : !!v.homeTeam;
+    const awayOk = this.awayIsOther() ? !!v.awayTeamName : !!v.awayTeam;
+    return homeOk && awayOk;
   });
 
   readonly categoryColors = computed(() => {
@@ -942,10 +1064,49 @@ export class ReportFormComponent implements OnInit {
             player.observers.filter((o: any) => o && typeof o === 'object' && o._id)
           );
         }
+        // admin-manual-match-info — كوتش اللاعب (populated {_id,name,email} من
+        // نفس الـgetOne؛ الأوبزيرفر مابيشوفهوش أصلاً — maskCoachForObserver)
+        const coach = player?.coach;
+        if (this.auth.isAdmin() && coach && typeof coach === 'object' && coach._id) {
+          this.playerCoach.set({ _id: coach._id, name: coach.name });
+        }
+
         const creator = player?.createdBy;
         if (this.auth.isAdmin() && creator && typeof creator === 'object' && creator.role === 'proScout') {
           this.playerProScout.set({ _id: creator._id, name: creator.name });
           this.assignedObserver.set(creator._id);
+        }
+
+        // admin-manual-match-info (طلب مالك 2026-11) — الأدمن بيدخل الفرقتين
+        // والتاريخ بنفسه، فمساره محتاج قايمة الفرق **بس**: مفيش طلب مباريات
+        // (GET /seasonMatches اتشال من مساره تماماً)، ومفيش اختيار فئة.
+        // التاريخ الافتراضي = النهاردة، والطرف الأول = فريق اللاعب لو متسجل.
+        if (this.auth.isAdmin()) {
+          this.seasonMatchOptionsLoaded.set(true);
+          if (teamId) this.form.patchValue({ homeTeam: teamId });
+
+          // الاشتراك **قبل** تحديد التاريخ الافتراضي عن قصد: patchValue بيرمي
+          // valueChanges، فتحميل مباريات اليوم الافتراضي بيحصل من نفس المسار
+          // اللي أي تغيير يدوي بيمشي فيه — مفيش نداء تحميل مكرر ولا فرع تاني.
+          this.form.get('matchDate')!.valueChanges
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(d => this.loadAdminMatches(d ?? ''));
+          this.form.patchValue({ matchDate: this.today() });
+
+          const teams$ = isProfessional
+            ? this.teamService.getAll(undefined, 'professional').pipe(
+                map(res => res.data?.documents ?? []),
+                catchError(() => of<Team[]>([])),
+              )
+            : ageGroupId
+              ? this.teamsFor(ageGroupId)
+              : of<Team[]>([]);
+
+          teams$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(teams => {
+            this.teamOptions.set(teams);
+            this.teamOptionsLoaded.set(true);
+          });
+          return;
         }
 
         // لاعب ناشئ من غير فئة عمرية = حالة مالهاش نطاق نحمّل بيه، زي ما كانت
@@ -1035,6 +1196,71 @@ export class ReportFormComponent implements OnInit {
         }
 
         this.seasonMatchOptionsLoaded.set(true);
+  }
+
+  // admin-manual-match-info (طلب مالك 2026-11) — مباريات فريق اللاعب في اليوم
+  // اللي الأدمن دخله. مفيش قيد على قِدم التاريخ: ده بالظبط الغرض — بيسجّل تقارير
+  // على مباريات قديمة (السيرفر بيسمح للأدمن من غير نافذة زمنية في
+  // resolveMatchTypeFields، وبيرفض المستقبل بس).
+  //
+  // القاعدة (قرار المالك): **مباراة فريق اللاعب في اليوم ده وبس**. ولو اللاعب
+  // مالوش فريق مسجّل، مفيش مباريات تتعرض خالص — ولا طلب يتبعت أصلاً.
+  //
+  // ⚠️ الاستعلام بالتاريخ **وحده** — مش مفلتر بفئة. فلتر الفئة كان بيخفي مباراة
+  // فريقه نفسها لو المباراة مسجّلة على فئة غير فئة اللاعب، وهي الحالة اللي خلت
+  // القايمة تطلع فاضية. فلتر اليوم الواحد ضيّق أصلاً ومخدوم بفهرس
+  // (matchDate_1__id_1)، والأدمن نطاقه الجدول كامل، والتصفية على الفريق بتحصل
+  // في الذاكرة تحت.
+  private loadAdminMatches(date: string): void {
+    this.adminSelectedMatch.set('');
+    this.adminMatchOptions.set([]);
+
+    if (!date || !this.playerTeamId) {
+      this.adminMatchesLoading.set(false);
+      return;
+    }
+
+    this.adminMatchesLoading.set(true);
+    // <input type="date"> بيدي 'YYYY-MM-DD'، والنافذة هنا يوم UTC كامل — نفس
+    // اتفاقية التواريخ في المشروع (matchDate متخزّن منتصف ليل UTC).
+    // limit=200 هو سقف السيرفر (ApiFeature.MAX_LIMIT) — يوم واحد عمره ما يوصله.
+    this.seasonMatchService.getAll({
+      sort: '-matchDate',
+      limit: 200,
+      'matchDate[gte]': `${date}T00:00:00.000Z`,
+      'matchDate[lte]': `${date}T23:59:59.999Z`,
+    })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: res => {
+          // تبديل سريع للتاريخ ممكن يرجّع استجابة قديمة بعد الجديدة — بنتجاهلها
+          if (this.form.get('matchDate')?.value !== date) return;
+          this.adminMatchOptions.set(this.ownTeamMatches(res.data?.documents ?? []));
+          this.adminMatchesLoading.set(false);
+        },
+        error: () => this.adminMatchesLoading.set(false),
+      });
+  }
+
+  // مباريات فريق اللاعب وحده — نفس الشرط اللي السيرفر بيفرضه بالظبط
+  // (involvesPlayerTeam في resolveMatchTypeFields)، فمفيش اختيار بيتعرض وبعدين
+  // يترفض بـ400.
+  private ownTeamMatches(docs: SeasonMatch[]): { _id: string; label: string }[] {
+    return docs
+      .filter(
+        m => this.teamId(m.homeTeam) === this.playerTeamId || this.teamId(m.awayTeam) === this.playerTeamId
+      )
+      .map(m => ({ _id: m._id, label: this.matchOptionLabel(m) }));
+  }
+
+  // اختيار مباراة من الجدول — الفرق بتتاخد منها على السيرفر، فالإدخال اليدوي
+  // بيتفضّى عشان ما يتسجّلش في صمت جنب المباراة
+  onAdminMatchChange(id: string): void {
+    this.adminSelectedMatch.set(id);
+    if (!id) return;
+    this.homeIsOther.set(false);
+    this.awayIsOther.set(false);
+    this.form.patchValue({ homeTeam: '', homeTeamName: '', awayTeam: '', awayTeamName: '' });
   }
 
   private teamName(team: SeasonMatch['homeTeam']): string {
@@ -1241,7 +1467,12 @@ export class ReportFormComponent implements OnInit {
 
     // نفس التفريع الثلاثي بتاع القالب بالظبط: مباراة مختارة، ولا تدريب/ودية،
     // ولا إدخال يدوي للاعب من غير فريق.
-    if (this.selectedSeasonMatch()) {
+    if (this.adminManualMatch()) {
+      // admin-manual-match-info — التاريخ مطلوب دايماً؛ والفرقتين مطلوبين بس
+      // لما مايكونش فيه مباراة من الجدول متختارة (ساعتها الفرق بتيجي منها)
+      if (!this.form.get('matchDate')?.value) return;
+      if (!this.adminSelectedMatch() && !this.adminTeamsValid()) return;
+    } else if (this.selectedSeasonMatch()) {
       // مفيش مطلوب زيادة — المباراة بتملأ الفرق والتاريخ من السيرفر
     } else if (this.showOpponentPicker()) {
       if (this.showAgeGroupPicker() && !this.playedWithAgeGroup()) return;
@@ -1257,7 +1488,8 @@ export class ReportFormComponent implements OnInit {
     this.loading.set(true);
 
     const v = this.form.getRawValue();
-    // matchDate is set server-side (creation date, or the linked match's date) — never sent by the client
+    // matchDate is set server-side (creation date, or the linked match's date) —
+    // never sent by the client, except on the admin's manual path below.
     const payload: Record<string, unknown> = {
       notes: v.notes,
       technical: v.technical,
@@ -1265,7 +1497,21 @@ export class ReportFormComponent implements OnInit {
       mental: v.mental,
     };
 
-    if (this.selectedSeasonMatch()) {
+    if (this.adminManualMatch()) {
+      payload['matchType'] = 'official';
+      if (this.adminSelectedMatch()) {
+        // مباراة من الجدول — السيرفر بياخد منها الفرق وmatchDate الحقيقي
+        // (resolveSeasonMatchToBody)، فمابنبعتش تاريخ هو هيستبدله.
+        payload['seasonMatch'] = this.adminSelectedMatch();
+      } else {
+        // admin-manual-match-info — الأدمن وحده بيبعت matchDate (مقفول على باقي
+        // الرولات في createValidate). القيمة 'YYYY-MM-DD' من <input type="date">
+        // بتتفسّر منتصف ليل UTC على السيرفر — نفس اتفاقية كل التواريخ في المشروع.
+        payload['matchDate'] = v.matchDate;
+        if (this.homeIsOther()) payload['homeTeamName'] = v.homeTeamName; else payload['homeTeam'] = v.homeTeam;
+        if (this.awayIsOther()) payload['awayTeamName'] = v.awayTeamName; else payload['awayTeam'] = v.awayTeam;
+      }
+    } else if (this.selectedSeasonMatch()) {
       // مباراة من الجدول — السيرفر بياخد منها الفرق وmatchDate الحقيقي.
       // matchType بيتبعت official صراحةً عشان المحترف اللي بيختار مباراة قديمة
       // يعدّي من فرع الـproScout في resolveMatchTypeFields مش من فرع النهارده.
@@ -1292,8 +1538,14 @@ export class ReportFormComponent implements OnInit {
     // admin-assign-players-reports-media — only ever attached for an admin on
     // create, and only when a specific observer was chosen (empty = self).
     if (this.auth.isAdmin() && this.assignedObserver()) {
-      const isProScout = this.assignedObserver() === this.playerProScout()?._id;
-      payload[isProScout ? 'assignedProScout' : 'assignedObserver'] = this.assignedObserver();
+      // الـid المختار بيرجع لواحد من تلاتة — كل واحد ليه حقل مختلف على السيرفر
+      // (وفحص ملكية مختلف: أوبزيرفر معيَّن / مالك اللاعب / كوتش اللاعب)
+      const id = this.assignedObserver();
+      const field =
+        id === this.playerProScout()?._id ? 'assignedProScout'
+        : id === this.playerCoach()?._id ? 'assignedCoach'
+        : 'assignedObserver';
+      payload[field] = id;
     }
 
     // بلا takeUntilDestroyed عن قصد: الحفظ لازم يكمّل حتى لو الكومبوننت اتدمّر

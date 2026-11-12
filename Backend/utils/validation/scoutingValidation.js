@@ -6,6 +6,7 @@ import Player from "../../models/playedModel.js";
 import Team from "../../models/teamModel.js";
 import SeasonMatch from "../../models/seasonMatchModel.js";
 import { ROLES } from "../../constants/roles.js";
+import { utcDayRange } from "../time.js";
 
 // طلب مالك 2026-09 — استبدال كامل لمجموعة الفيلدز (راجع scoutingReportModel.js
 // لتفاصيل القرار). القوائم دي مصدر الحقيقة اللي createValidate/updateValidate تحتها بترجع منه.
@@ -167,8 +168,29 @@ const teamBelongsToReportAgeGroup = (fieldName) =>
 export const createValidate = [
     lockField('player'),
 
-    // matchDate بيتحدد من السيرفر (تاريخ الإنشاء، أو تاريخ المباراة لو متربط بـ seasonMatch) — ممنوع من العميل
-    lockField("matchDate"),
+    // matchDate بيتحدد من السيرفر (تاريخ الإنشاء، أو تاريخ المباراة لو متربط بـ
+    // seasonMatch) — ممنوع من العميل لكل الرولات ما عدا الأدمن.
+    //
+    // admin-manual-match-info (طلب مالك 2026-11) — الأدمن بيرفع التقارير بعد مدة
+    // من المباراة، فهو بيدخل الفرقتين وتاريخ المباراة بنفسه. القيد اللي القفل ده
+    // موجود عشانه (إن matchDate مايبقاش تاريخ الإنشاء لمباراة قديمة) بيتحقق هنا
+    // بشكل مباشر بدل ما يتحقق بالتبعية: التاريخ لازم يكون تاريخ فعلي ومش في
+    // المستقبل. والترتيب على الراوت بيخلي seasonMatch لو موجودة تتقدّم عليه
+    // (resolveSeasonMatchToBody بيكتب matchDate من المباراة بعد ده).
+    lockFieldExceptAdmin("matchDate"),
+    body("matchDate")
+        .optional()
+        .isISO8601()
+        .withMessage("Invalid matchDate format")
+        .bail()
+        .custom((val) => {
+            // المقارنة بنهاية اليوم بالـUTC: تاريخ النهاردة (اللي العميل بيبعته
+            // منتصف ليل UTC من <input type="date">) يفضل مقبول طول اليوم.
+            if (new Date(val) >= utcDayRange(new Date()).end) {
+                throw new Error("matchDate cannot be in the future");
+            }
+            return true;
+        }),
 
     // طلب مالك 2026-09 — "friendly"/"training" ماعادش بيتقبلوا من العميل (باقيين
     // في المخطط للتقارير القديمة بس). كل تقرير جديد official.
@@ -208,6 +230,11 @@ export const createValidate = [
     body("assignedObserver").optional().isMongoId().withMessage("Invalid assignedObserver id"),
     lockFieldExceptAdmin("assignedProScout"),
     body("assignedProScout").optional().isMongoId().withMessage("Invalid assignedProScout id"),
+    // admin-manual-match-info (طلب مالك 2026-11) — الكوتش بقى هدف "بالنيابة عن"
+    // زي الأوبزيرفر والمتابع بالظبط: لازم يكون كوتش اللاعب ده فعلاً (الفحص في
+    // الكنترولر)، والقيمة مقفولة على كل رول غير الأدمن.
+    lockFieldExceptAdmin("assignedCoach"),
+    body("assignedCoach").optional().isMongoId().withMessage("Invalid assignedCoach id"),
 
     validatorMiddleware,
 ];

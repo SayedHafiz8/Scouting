@@ -276,8 +276,17 @@ import { PlayerSelectedCelebrationComponent } from './player-selected-celebratio
             <div class="px-5 pb-5 pt-3 space-y-2" style="border-top:1px solid var(--border-subtle)">
               <!-- PATCH /players/:id بيقبل الكوتش والأوبزيرفر والـproScout،
                    وcheckPlayerOwnership بيقصر كل واحد على لاعبيه. الزرار كان
-                   على الكوتش وحده، فالتانيين مكانش قدامهم مدخل للتعديل من هنا. -->
-              @if (auth.isCoach() || auth.isObserver() || auth.isProScout()) {
+                   على الكوتش وحده، فالتانيين مكانش قدامهم مدخل للتعديل من هنا.
+
+                   الأدمن اتضاف (قرار المالك 2026-11): بيقدر يعدّل **أي** لاعب —
+                   checkPlayerOwnership بيعمل short-circuit له على السيرفر، وقايمة
+                   اللاعبين بتوريه الزرار ده أصلاً (canEditPlayers)، فالصفحة دي
+                   كانت المكان الوحيد اللي مكانش فيه مدخل للتعديل. وplayer-form
+                   عندها مسار أدمن صريح في وضع التعديل (initEditMode).
+                   ⚠️ حقول الملكية (coach/observers/proScout) مش هنا عن قصد —
+                   updateValidate بيقفلها على كل الرولات بما فيهم الأدمن، وليها
+                   إندبوينتس مخصوصة في الأزرار اللي تحت. -->
+              @if (auth.isCoach() || auth.isObserver() || auth.isProScout() || auth.isAdmin()) {
                 <a [routerLink]="['/players', player()!._id, 'edit']" class="btn btn-secondary btn-sm w-full">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>

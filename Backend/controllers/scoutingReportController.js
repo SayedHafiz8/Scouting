@@ -37,8 +37,13 @@ const reportPopulate = [
 
 export const setPlayerToBody = (req, res, next) => {
     req.body.player = req.params.playerId;
-    // التاريخ = تاريخ إنشاء الريبورت (من السيرفر) — مش بيتحدد من العميل ولا بيتغير
-    req.body.matchDate = new Date();
+    // التاريخ = تاريخ إنشاء الريبورت (من السيرفر) — مش بيتحدد من العميل ولا بيتغير.
+    //
+    // admin-manual-match-info (طلب مالك 2026-11) — الاستثناء الوحيد هو الأدمن:
+    // بيرفع تقارير بعد مدة من المباراة فبيبعت تاريخها بنفسه. غير الأدمن مابيقدرش
+    // يوصل هنا بـmatchDate أصلاً — lockFieldExceptAdmin في createValidate (اللي
+    // بيشتغل **قبل** الميدلوير ده على الراوت) بيرفض الطلب بـ400.
+    req.body.matchDate = req.body.matchDate ? new Date(req.body.matchDate) : new Date();
     next();
 };
 
@@ -66,6 +71,29 @@ export const resolveMatchTypeFields = asyncHandler(async (req, res, next) => {
     const player =
         req.playerDoc ??
         (await Player.findById(req.params.playerId).select("team isProfessional"));
+
+    // admin-manual-match-info (طلب مالك 2026-11) — الأدمن بيرفع التقارير بعد مدة
+    // من المباراة (على نفسه أو بالنيابة عن كوتش/أوبزيرفر/متابع)، فبيدخل الفرقتين
+    // وتاريخ المباراة بنفسه. المسار ده بيعدّي على كل منطق الربط بالجدول: مفيش بحث
+    // عن مباراة النهاردة، ومفيش اختيار فئة، ومفيش نافذة زمنية.
+    //
+    // الضمانة اللي الربط بالجدول كان موجود عشانها — إن matchDate يبقى تاريخ
+    // المباراة الحقيقي مش تاريخ الإنشاء — متحقّقة هنا من المصدر: الأدمن بيبعت
+    // التاريخ صراحةً، وcreateValidate بيرفضه لو مش تاريخ صحيح أو في المستقبل.
+    // ومحدود بالأدمن وحده عن قصد: أي رول تاني بيوصل هنا بـmatchDate بيترفض بـ400
+    // من lockFieldExceptAdmin قبل ما يعدّي.
+    //
+    // شرط !seasonMatch مقصود: لو الأدمن اختار مباراة من الجدول (مسار المحترف
+    // مثلاً)، الفروع اللي تحت هي اللي بتتولاها وبتاخد منها الفرق والتاريخ.
+    if (
+        req.user.role === ROLES.ADMIN &&
+        !req.body.seasonMatch &&
+        req.body.matchDate &&
+        (req.body.homeTeam || req.body.homeTeamName) &&
+        (req.body.awayTeam || req.body.awayTeamName)
+    ) {
+        return next();
+    }
 
     // الكشاف قال صراحةً إن اللاعب لعب مع فئة عمرية معينة النهاردة (ممكن تكون غير
     // فئته هو — لاعب 2011 بيلعب مع 2010). بيتقدّم على البحث عن ماتش النهاردة تحت
@@ -281,6 +309,9 @@ export const create = asyncHandler(async (req, res, next) => {
     // scoutingValidation.js بيمنع أي رول تاني من إرساله أصلاً).
     let effectiveAuthor = req.user._id;
     let authorIsObserver = req.user.role === ROLES.OBSERVER;
+    // admin-manual-match-info — مين اللي الأدمن بيكتب **بالنيابة عنه** (null لو
+    // بيكتب لنفسه). بيتستخدم تحت لتسجيل حضوره المباراة المرتبطة بالتقرير.
+    let assignedAuthor = null;
 
     if (req.user.role === ROLES.ADMIN && req.body.assignedObserver) {
         // لازم يبقى أوبزيرفر معيَّن فعلاً على اللاعب ده — من غير الفحص ده التقرير
@@ -303,13 +334,14 @@ export const create = asyncHandler(async (req, res, next) => {
 
         effectiveAuthor = observerUser._id;
         authorIsObserver = true;
+        assignedAuthor = observerUser._id;
     }
 
     // نفس الفكرة للاعب المحترف: مالكه هو الـproScout اللي في createdBy، فالأدمن
     // يقدر يكتب التقرير باسمه عشان يظهر في تقاريره هو (getAll بيفلتر غير الأدمن على coach = me).
     if (req.user.role === ROLES.ADMIN && req.body.assignedProScout) {
-        if (req.body.assignedObserver) {
-            return next(new AppError("Choose either an observer or a proScout, not both", 400));
+        if (req.body.assignedObserver || req.body.assignedCoach) {
+            return next(new AppError("Choose only one person to file this report on behalf of", 400));
         }
         // perf — نفس مستند checkPlayerOwnership (createdBy ضمن الـselect بتاعه)
         const player =
@@ -324,9 +356,36 @@ export const create = asyncHandler(async (req, res, next) => {
         }
 
         effectiveAuthor = scoutUser._id;
+        assignedAuthor = scoutUser._id;
+    }
+
+    // admin-manual-match-info (طلب مالك 2026-11) — نفس الفكرة للكوتش: الأدمن بيدخل
+    // بيانات التقرير بالنيابة عن كوتش اللاعب، فالتقرير بيتسجل باسمه ويظهر في
+    // تقاريره هو. الشرط إنه كوتش اللاعب ده فعلاً — زي شرط "الأوبزيرفر معيَّن على
+    // اللاعب" بالظبط، ولنفس السبب: مؤلف مش صاحب اللاعب = بيانات ميتة مالهاش صاحب
+    // يقدر يوصلها (checkPlayerOwnership/checkReportOwnership هيردوا 403).
+    if (req.user.role === ROLES.ADMIN && req.body.assignedCoach) {
+        if (req.body.assignedObserver) {
+            return next(new AppError("Choose only one person to file this report on behalf of", 400));
+        }
+        // perf — نفس مستند checkPlayerOwnership (coach ضمن الـselect بتاعه)
+        const player =
+            req.playerDoc ?? (await Player.findById(req.params.playerId).select("coach"));
+        if (player?.coach?.toString() !== req.body.assignedCoach.toString()) {
+            return next(new AppError("The selected coach is not this player's coach", 400));
+        }
+
+        const coachUser = await User.findOne({ _id: req.body.assignedCoach, role: ROLES.COACH }).select("_id");
+        if (!coachUser) {
+            return next(new AppError("The selected coach is not a valid active coach", 400));
+        }
+
+        effectiveAuthor = coachUser._id;
+        assignedAuthor = coachUser._id;
     }
     delete req.body.assignedObserver;
     delete req.body.assignedProScout;
+    delete req.body.assignedCoach;
 
     // منع تكرار (player, coach, seasonMatch) — المؤشر الفريد في الموديل بيرفضه
     // برسالة واضحة بس في production (errorMiddleware.dublicateKeyHandler)؛ في
@@ -344,6 +403,23 @@ export const create = asyncHandler(async (req, res, next) => {
 
     req.body.coach = effectiveAuthor;
     const created = await ScoutingReport.create(req.body);
+
+    // admin-manual-match-info (طلب مالك 2026-11) — التقرير مربوط بمباراة من الجدول
+    // والأدمن كتبه بالنيابة عن كوتش/أوبزيرفر/متابع: يبقى الشخص ده حضر المباراة دي
+    // فعلاً، فبيتسجل في attendees بتاعتها. ده نفس الحقل اللي عدّاد "المباريات
+    // الحاضرها" في الداشبورد والتقييمات الشهرية بيقروا منه، فمن غير التسجيل ده
+    // كان التقرير بيتولد من مباراة الشخص رسميًا مش حاضرها.
+    //
+    // $addToSet مش push: الأدمن ممكن يرفع أكتر من تقرير على نفس المباراة (لاعبين
+    // مختلفين) بنفس المؤلف، وده مايكرّرهوش. وبعد الإنشاء مش قبله عن قصد — تقرير
+    // مرفوض مايسجّلش حضور.
+    if (assignedAuthor && req.body.seasonMatch) {
+        await SeasonMatch.updateOne(
+            { _id: req.body.seasonMatch },
+            { $addToSet: { attendees: assignedAuthor } }
+        );
+    }
+
     const document = await ScoutingReport.findById(created._id).populate(reportPopulate);
 
     // عدد التقارير فى الداشبورد بتاع الكاتب (كوتش أو أوبزيرفر) بيتحدث لايف.
