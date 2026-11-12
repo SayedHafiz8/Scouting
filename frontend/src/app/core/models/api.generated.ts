@@ -1044,7 +1044,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Scout self-enrolls to attend this match (coach/observer/proScout) */
+        /** Scout self-enrolls to attend this match (coach/observer/proScout). Allowed until the end of the match day — a future fixture or one played today. A match whose date has already passed is refused (400): attendance is a commitment to go, not a retroactive claim. */
         post: {
             parameters: {
                 query?: never;
@@ -1086,7 +1086,7 @@ export interface paths {
                 };
             };
         };
-        /** Scout removes self from this match's attendees (coach/observer/proScout) */
+        /** Scout removes self from this match's attendees (coach/observer/proScout). Allowed until the end of the match day, like the attend endpoint. */
         delete: {
             parameters: {
                 query?: never;

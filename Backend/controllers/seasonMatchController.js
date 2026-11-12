@@ -242,12 +242,23 @@ export const updateMatchStatus = asyncHandler(async (req, res, next) => {
     });
 });
 
-// الحضور/الإلغاء متاح لحد آخر اليوم اللي قبل يوم الماتش بس — بعد ما يوم الماتش يبدأ بيتقفل خالص
-// (نفس نمط مقارنة start-of-day المستخدم في matchDateNotPast للاتساق)
-const isBeforeMatchDay = (matchDate) => {
-    // audit-backend C3 — بداية يوم المباراة بتوقيت UTC (utils/time.js)
-    return Date.now() < utcDayRange(matchDate).start.getTime();
-};
+// نافذة الحضور اتوسّعت بيوم واحد بس (طلب المالك 2026-11-12): القيد القديم
+// (isBeforeMatchDay) كان بيقفل الحضور من أول لحظة في يوم المباراة، فالكشاف اللي
+// بيسجّل حضوره الصبح لماتش بعد الضهر كان بيترفض. دلوقتي **يوم المباراة نفسه
+// مسموح**، يعني التسجيل متاح لحد آخر يوم المباراة.
+//
+// الحضور بأثر رجعي **مرفوض صراحةً**: ماتش عدّى تاريخه خلاص مايتحضرش — الحضور
+// تعهّد بإنك هتروح، مش إقرار بعد الواقعة. ده القيد المقصود، مش أثر جانبي:
+// التسجيل المتأخر كان هيخلي أي حد يضيف نفسه لأي ماتش قديم ويظهر في عدّادات
+// "الماتشات اللي حضرها" في الداشبورد والتقييمات الشهرية.
+//
+// الأدمن هو الاستثناء الوحيد، ومن مسار تاني تماماً: scoutingReportController
+// بيسجّل حضور الشخص اللي الأدمن بيرفع التقرير بداله، على ماتش قديم — ده إدخال
+// إداري موثّق (الأدمن بيرفع التقارير بعد مدة)، مش تسجيل ذاتي.
+//
+// audit-backend C3 — نهاية يوم المباراة بتوقيت UTC (utils/time.js). matchDate
+// متخزّن منتصف ليل UTC، فالمقارنة لازم تبقى بنفس المقياس.
+const matchDayNotOver = (matchDate) => Date.now() < utcDayRange(matchDate).end.getTime();
 
 // @desc    Scout self-enrolls to attend a match (adds self to attendees)
 // @route   POST api/v1/seasonMatches/:id/attend
@@ -260,8 +271,8 @@ export const attendMatch = asyncHandler(async (req, res, next) => {
     if (match.status === "cancelled") {
         return next(new AppError("You cannot attend a cancelled match", 400));
     }
-    if (!isBeforeMatchDay(match.matchDate)) {
-        return next(new AppError("Attendance can only be registered before the match day", 400));
+    if (!matchDayNotOver(match.matchDate)) {
+        return next(new AppError("Attendance cannot be registered for a match that has already been played", 400));
     }
 
     const document = await populateMatchDisplay(
@@ -283,8 +294,8 @@ export const unattendMatch = asyncHandler(async (req, res, next) => {
     if (!match) {
         return next(new AppError(`No document for this Id: ${req.params.id}`, 404));
     }
-    if (!isBeforeMatchDay(match.matchDate)) {
-        return next(new AppError("Attendance can only be cancelled before the match day", 400));
+    if (!matchDayNotOver(match.matchDate)) {
+        return next(new AppError("Attendance cannot be cancelled for a match that has already been played", 400));
     }
 
     const document = await populateMatchDisplay(

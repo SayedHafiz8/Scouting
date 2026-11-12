@@ -87,15 +87,23 @@ describe('POST/DELETE /seasonMatches/:id/attend — proScout', () => {
     expect(refetched.attendees ?? []).toHaveLength(0);
   });
 
-  it('G-3: attending on/after match day is refused (400) even for an in-scope match', async () => {
+  // G-3 اتعدّل (طلب المالك 2026-11-12): نافذة الحضور بقت لحد آخر يوم المباراة، فيوم
+  // المباراة نفسه بقى مسموح — لكن بعد ما الماتش يعدي لسه مرفوض. التست بيثبت
+  // الحدّين في نفس المسار عشان التوسيع مايتقرأش غلط.
+  it('G-3: attending on the match day is allowed (200), after it is refused (400)', async () => {
     const scout = await createProScout();
     const { proMatch } = await proMatchFixtures(new Date('2026-03-01T00:00:00.000Z'));
 
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-03-01T09:00:00.000Z'));
     try {
-      const res = await attend(scout.token, proMatch._id);
-      expect(res.status).toBe(400);
+      vi.setSystemTime(new Date('2026-03-01T09:00:00.000Z'));
+      const onDay = await attend(scout.token, proMatch._id);
+      expect(onDay.status).toBe(200);
+      expect(onDay.body.data.document.attendees.map((a) => String(a._id ?? a))).toContain(String(scout.user._id));
+
+      vi.setSystemTime(new Date('2026-03-02T09:00:00.000Z'));
+      const afterDay = await attend(scout.token, proMatch._id);
+      expect(afterDay.status).toBe(400);
     } finally {
       vi.useRealTimers();
     }
@@ -129,17 +137,24 @@ describe('POST/DELETE /seasonMatches/:id/attend — proScout', () => {
     expect(res.status).toBe(403);
   });
 
-  it('G-8: unattending on/after match day is refused (400)', async () => {
+  // G-8 اتعدّل لنفس السبب اللي في G-3 فوق
+  it('G-8: unattending on the match day is allowed (200), after it is refused (400)', async () => {
     const scout = await createProScout();
     const { proMatch } = await proMatchFixtures(new Date('2026-03-01T00:00:00.000Z'));
 
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-02-28T09:00:00.000Z'));
     try {
+      vi.setSystemTime(new Date('2026-02-28T09:00:00.000Z'));
       await attend(scout.token, proMatch._id);
+
       vi.setSystemTime(new Date('2026-03-01T09:00:00.000Z'));
-      const res = await unattend(scout.token, proMatch._id);
-      expect(res.status).toBe(400);
+      const onDay = await unattend(scout.token, proMatch._id);
+      expect(onDay.status).toBe(200);
+      expect(onDay.body.data.document.attendees.map((a) => String(a._id ?? a))).not.toContain(String(scout.user._id));
+
+      vi.setSystemTime(new Date('2026-03-02T09:00:00.000Z'));
+      const afterDay = await unattend(scout.token, proMatch._id);
+      expect(afterDay.status).toBe(400);
     } finally {
       vi.useRealTimers();
     }
