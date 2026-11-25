@@ -130,39 +130,113 @@ const options = {
           },
         },
 
-        TechnicalSkills: {
+        // ─── بنود تقييم التقرير: 10 مجموعات / 31 بند، كل بند 1→10 ─────────────
+        // طلب مالك 2026-11-18. التعريف المرجعي في Backend/constants/reportMetrics.js
+        // (الموديل والفاليديشن والإحصائيات بيشتقوا منه)، والسكيمات دي مكتوبة
+        // بالإيد عن قصد: الوصف العربي لكل بند هو النص اللي المالك طلبه بالحرف،
+        // وهو اللي بيوصل لأنواع الفرونت المولّدة من الـspec.
+        DecisionMakingRatings: {
           type: "object",
-          required: ["turning", "dribbling", "tackling", "twoFooted", "longPassing", "shortPassing", "heading"],
+          required: ["positioningAndPossession", "interceptingWithoutTackling"],
           properties: {
-            turning:      { type: "number", minimum: 1, maximum: 10, description: "الارتداد" },
-            dribbling:    { type: "number", minimum: 1, maximum: 10, description: "المراوغة" },
-            tackling:     { type: "number", minimum: 1, maximum: 10, description: "استخلاص الكرة" },
-            twoFooted:    { type: "number", minimum: 1, maximum: 10, description: "اللعب بالقدمين" },
-            longPassing:  { type: "number", minimum: 1, maximum: 10, description: "التمريرات الطويلة الصحيحة" },
-            shortPassing: { type: "number", minimum: 1, maximum: 10, description: "التمريرات القصيرة الصحيحة" },
-            heading:      { type: "number", minimum: 1, maximum: 10, description: "اللعب بالرأس" },
+            positioningAndPossession:   { type: "number", minimum: 1, maximum: 10, description: "يتمركز جيدًا ويستحوذ على الكرة كثيرًا" },
+            interceptingWithoutTackling:{ type: "number", minimum: 1, maximum: 10, description: "يقطع الكرات دون التحام" },
           },
         },
 
-        PhysicalSkills: {
+        SelfMotivationRatings: {
           type: "object",
-          required: ["shortSprints", "longSprints", "agility", "aerialDuels", "groundDuels"],
+          required: ["consistency", "winningBallBack", "coachability"],
           properties: {
-            shortSprints: { type: "number", minimum: 1, maximum: 10, description: "اسبرنتات قصيرة" },
-            longSprints:  { type: "number", minimum: 1, maximum: 10, description: "اسبرنتات طويلة" },
-            agility:      { type: "number", minimum: 1, maximum: 10, description: "الرشاقة والمرونة" },
-            aerialDuels:  { type: "number", minimum: 1, maximum: 10, description: "الالتحامات الهوائية" },
-            groundDuels:  { type: "number", minimum: 1, maximum: 10, description: "الالتحامات الأرضية" },
+            consistency:     { type: "number", minimum: 1, maximum: 10, description: "ثابت المستوى في كل الظروف" },
+            winningBallBack: { type: "number", minimum: 1, maximum: 10, description: "يستعيد الكرة فور فقدانها" },
+            coachability:    { type: "number", minimum: 1, maximum: 10, description: "يتقبل التوجيه ويتكيّف بسرعة" },
           },
         },
 
-        MentalSkills: {
+        TechnicalSkillsRatings: {
           type: "object",
-          required: ["vision", "personality", "movement"],
+          required: [
+            "firstTouch", "twoFooted", "shieldingUnderPressure", "beatingOpponent",
+            "longPassing", "shortPassing", "heading",
+          ],
           properties: {
-            vision:      { type: "number", minimum: 1, maximum: 10, description: "الرؤية داخل الملعب" },
-            personality: { type: "number", minimum: 1, maximum: 10, description: "الشخصية في الملعب" },
-            movement:    { type: "number", minimum: 1, maximum: 10, description: "التحركات" },
+            firstTouch:             { type: "number", minimum: 1, maximum: 10, description: "لمسة أولى سريعة وفعّالة" },
+            twoFooted:              { type: "number", minimum: 1, maximum: 10, description: "يجيد اللعب بالقدمين" },
+            shieldingUnderPressure: { type: "number", minimum: 1, maximum: 10, description: "يحمي الكرة تحت الضغط" },
+            beatingOpponent:        { type: "number", minimum: 1, maximum: 10, description: "يتجاوز المنافس بالمراوغة أو التمرير" },
+            // اتضافوا 2026-11-25
+            longPassing:            { type: "number", minimum: 1, maximum: 10, description: "التمريرات الطويلة الصحيحة" },
+            shortPassing:           { type: "number", minimum: 1, maximum: 10, description: "التمريرات القصيرة الصحيحة" },
+            heading:                { type: "number", minimum: 1, maximum: 10, description: "اللعب بالرأس" },
+          },
+        },
+
+        PhysicalAbilitiesRatings: {
+          type: "object",
+          required: ["pace", "agility", "dynamism", "bodyUseInDuels"],
+          properties: {
+            pace:           { type: "number", minimum: 1, maximum: 10, description: "سريع" },
+            agility:        { type: "number", minimum: 1, maximum: 10, description: "رشيق وسريع تغيير الاتجاه" },
+            dynamism:       { type: "number", minimum: 1, maximum: 10, description: "ديناميكي ويقطع مسافات كبيرة" },
+            bodyUseInDuels: { type: "number", minimum: 1, maximum: 10, description: "يستخدم جسمه بفاعلية في الالتحامات" },
+          },
+        },
+
+        PersonalityRatings: {
+          type: "object",
+          required: ["leadership", "motivatingTeammates", "teamwork"],
+          properties: {
+            leadership:          { type: "number", minimum: 1, maximum: 10, description: "قيادي" },
+            motivatingTeammates: { type: "number", minimum: 1, maximum: 10, description: "يحفّز زملاءه" },
+            teamwork:            { type: "number", minimum: 1, maximum: 10, description: "قوي في العمل الجماعي" },
+          },
+        },
+
+        SpecialDefendingRatings: {
+          type: "object",
+          required: ["blockingShots", "strongInDuels", "preventingPenetration"],
+          properties: {
+            blockingShots:         { type: "number", minimum: 1, maximum: 10, description: "صد التسديدات" },
+            strongInDuels:         { type: "number", minimum: 1, maximum: 10, description: "قوي في الالتحامات" },
+            preventingPenetration: { type: "number", minimum: 1, maximum: 10, description: "يمنع الاختراق في العمق" },
+          },
+        },
+
+        SpecialAttackingRatings: {
+          type: "object",
+          required: ["buildUpPlay", "creatingGoals", "scoringGoals"],
+          properties: {
+            buildUpPlay:   { type: "number", minimum: 1, maximum: 10, description: "بناء اللعب" },
+            creatingGoals: { type: "number", minimum: 1, maximum: 10, description: "صناعة الأهداف" },
+            scoringGoals:  { type: "number", minimum: 1, maximum: 10, description: "تسجيل الأهداف" },
+          },
+        },
+
+        WorkEthicRatings: {
+          type: "object",
+          required: ["maximumEffort", "continuousImprovement", "purposeAndDedication"],
+          properties: {
+            maximumEffort:         { type: "number", minimum: 1, maximum: 10, description: "يسعى لأقصى أداء" },
+            continuousImprovement: { type: "number", minimum: 1, maximum: 10, description: "يرغب في التطور المستمر" },
+            purposeAndDedication:  { type: "number", minimum: 1, maximum: 10, description: "واضح الهدف ومتفانٍ" },
+          },
+        },
+
+        OnFieldLeadershipRatings: {
+          type: "object",
+          required: ["inspiringLeader", "teamSpirit"],
+          properties: {
+            inspiringLeader: { type: "number", minimum: 1, maximum: 10, description: "قيادي يلهم زملاءه" },
+            teamSpirit:      { type: "number", minimum: 1, maximum: 10, description: "يلعب بروح الفريق" },
+          },
+        },
+
+        WinningMentalityRatings: {
+          type: "object",
+          required: ["fullCommitment"],
+          properties: {
+            fullCommitment: { type: "number", minimum: 1, maximum: 10, description: "يقدّم أقصى ما لديه في كل تدريب ومباراة" },
           },
         },
 
@@ -178,10 +252,20 @@ const options = {
             playedWithAgeGroup: { type: "string", nullable: true, description: "The age group the player actually played with, when the report is not tied to a scheduled match — a player may turn out for an older age group. The opposing team is then picked from that age group's teams, or typed free-text when it has none." },
             homeTeam:      { type: "string" },
             awayTeam:      { type: "string" },
-            technical:     { $ref: "#/components/schemas/TechnicalSkills" },
-            physical:      { $ref: "#/components/schemas/PhysicalSkills" },
-            mental:        { $ref: "#/components/schemas/MentalSkills" },
-            overallRating: { type: "number", minimum: 1, maximum: 10 },
+            decisionMaking:    { $ref: "#/components/schemas/DecisionMakingRatings" },
+            selfMotivation:    { $ref: "#/components/schemas/SelfMotivationRatings" },
+            technicalSkills:   { $ref: "#/components/schemas/TechnicalSkillsRatings" },
+            physicalAbilities: { $ref: "#/components/schemas/PhysicalAbilitiesRatings" },
+            personality:       { $ref: "#/components/schemas/PersonalityRatings" },
+            specialDefending:  { $ref: "#/components/schemas/SpecialDefendingRatings" },
+            specialAttacking:  { $ref: "#/components/schemas/SpecialAttackingRatings" },
+            workEthic:         { $ref: "#/components/schemas/WorkEthicRatings" },
+            onFieldLeadership: { $ref: "#/components/schemas/OnFieldLeadershipRatings" },
+            winningMentality:  { $ref: "#/components/schemas/WinningMentalityRatings" },
+            overallRating: {
+              type: "number", minimum: 1, maximum: 10,
+              description: "Average of all 31 metrics, 1–10. Reports filed between 2026-11-18 and 2026-11-25 were rated 1–5, so their averages read low against newer ones; reports from before 2026-11-18 use a retired metric set entirely.",
+            },
             notes:         { type: "string" },
             createdAt:     { type: "string", format: "date-time" },
             updatedAt:     { type: "string", format: "date-time" },
@@ -335,27 +419,54 @@ const options = {
           },
         },
 
+        // مسطّح بمستوى واحد عن قصد (مش متداخل تحت المجموعات) — الواجهة بتقرأه
+        // كـ Record<string, number>. أسماء البنود فريدة على مستوى المجموعات
+        // كلها، وفي حارس على ده في Backend/constants/reportMetrics.js.
         ReportStatistics: {
           type: "object",
           properties: {
             totalReports:   { type: "integer" },
             lastReport:     { type: "string", format: "date-time" },
             overallRating:  { type: "number" },
-            turning:        { type: "number" },
-            dribbling:      { type: "number" },
-            tackling:       { type: "number" },
-            twoFooted:      { type: "number" },
-            longPassing:    { type: "number" },
-            shortPassing:   { type: "number" },
-            heading:        { type: "number" },
-            shortSprints:   { type: "number" },
-            longSprints:    { type: "number" },
+
+            // اتخاذ القرار
+            positioningAndPossession:    { type: "number" },
+            interceptingWithoutTackling: { type: "number" },
+            // الدافعية الذاتية
+            consistency:     { type: "number" },
+            winningBallBack: { type: "number" },
+            coachability:    { type: "number" },
+            // المهارات الفنية
+            firstTouch:             { type: "number" },
+            twoFooted:              { type: "number" },
+            shieldingUnderPressure: { type: "number" },
+            beatingOpponent:        { type: "number" },
+            // القدرات البدنية
+            pace:           { type: "number" },
             agility:        { type: "number" },
-            aerialDuels:    { type: "number" },
-            groundDuels:    { type: "number" },
-            vision:         { type: "number" },
-            personality:    { type: "number" },
-            movement:       { type: "number" },
+            dynamism:       { type: "number" },
+            bodyUseInDuels: { type: "number" },
+            // الشخصية
+            leadership:          { type: "number" },
+            motivatingTeammates: { type: "number" },
+            teamwork:            { type: "number" },
+            // القدرات الخاصة – الدفاع
+            blockingShots:         { type: "number" },
+            strongInDuels:         { type: "number" },
+            preventingPenetration: { type: "number" },
+            // القدرات الخاصة – الهجوم
+            buildUpPlay:   { type: "number" },
+            creatingGoals: { type: "number" },
+            scoringGoals:  { type: "number" },
+            // أخلاقيات العمل
+            maximumEffort:         { type: "number" },
+            continuousImprovement: { type: "number" },
+            purposeAndDedication:  { type: "number" },
+            // التوجيه داخل الملعب
+            inspiringLeader: { type: "number" },
+            teamSpirit:      { type: "number" },
+            // عقلية الفوز
+            fullCommitment: { type: "number" },
           },
         },
 

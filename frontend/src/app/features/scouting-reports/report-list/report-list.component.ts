@@ -13,6 +13,7 @@ import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loa
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { RadarChartComponent } from '../../../shared/components/radar-chart/radar-chart.component';
+import { REPORT_METRIC_GROUPS, REPORT_METRICS_FLAT, RATING_MAX, ratingColorOf } from '../report-metrics';
 
 type AuthorRole = 'coach' | 'observer' | 'proScout';
 
@@ -32,32 +33,18 @@ interface ReportRow {
     notes: string | undefined;
 }
 
-const SKILL_META: { key: keyof ReportStatistics; labelKey: string; color: string }[] = [
-    { key: 'turning', labelKey: 'REPORTS.FORM.TURNING', color: '#22c55e' },
-    { key: 'dribbling', labelKey: 'REPORTS.FORM.DRIBBLING', color: '#22c55e' },
-    { key: 'tackling', labelKey: 'REPORTS.FORM.TACKLING', color: '#22c55e' },
-    { key: 'twoFooted', labelKey: 'REPORTS.FORM.TWO_FOOTED', color: '#22c55e' },
-    { key: 'longPassing', labelKey: 'REPORTS.FORM.LONG_PASSING', color: '#22c55e' },
-    { key: 'shortPassing', labelKey: 'REPORTS.FORM.SHORT_PASSING', color: '#22c55e' },
-    { key: 'heading', labelKey: 'REPORTS.FORM.HEADING', color: '#22c55e' },
-    { key: 'shortSprints', labelKey: 'REPORTS.FORM.SHORT_SPRINTS', color: '#38bdf8' },
-    { key: 'longSprints', labelKey: 'REPORTS.FORM.LONG_SPRINTS', color: '#38bdf8' },
-    { key: 'agility', labelKey: 'REPORTS.FORM.AGILITY', color: '#38bdf8' },
-    { key: 'aerialDuels', labelKey: 'REPORTS.FORM.AERIAL_DUELS', color: '#38bdf8' },
-    { key: 'groundDuels', labelKey: 'REPORTS.FORM.GROUND_DUELS', color: '#38bdf8' },
-    { key: 'vision', labelKey: 'REPORTS.FORM.VISION', color: '#8b5cf6' },
-    { key: 'personality', labelKey: 'REPORTS.FORM.PERSONALITY', color: '#8b5cf6' },
-    { key: 'movement', labelKey: 'REPORTS.FORM.MOVEMENT', color: '#8b5cf6' },
-];
-
-const CATEGORY_FIELDS: Record<'technical' | 'physical' | 'mental', (keyof ReportStatistics)[]> = {
-    technical: ['turning', 'dribbling', 'tackling', 'twoFooted', 'longPassing', 'shortPassing', 'heading'],
-    physical: ['shortSprints', 'longSprints', 'agility', 'aerialDuels', 'groundDuels'],
-    mental: ['vision', 'personality', 'movement'],
-};
-
-const ratingColorOf = (rating: number | null | undefined): string =>
-    rating == null ? 'var(--text-muted)' : rating >= 8 ? '#22c55e' : rating >= 5 ? '#f59e0b' : '#f43f5e';
+// طلب مالك 2026-11-18 — الليستتين اللي كانوا هنا (SKILL_META / CATEGORY_FIELDS)
+// بقوا مشتقّين من report-metrics.ts: نفس المجموعات والبنود اللي الفورم وصفحة
+// التفاصيل بيستخدموهم، فمستحيل يفرقوا عن بعض أو عن السيرفر.
+//
+// مخرج /statistics مسطّح بمستوى واحد (ReportStatistics)، فاسم البند هو المفتاح
+// مباشرةً — من غير مجموعة.
+const SKILL_META: { key: keyof ReportStatistics; labelKey: string; color: string }[] =
+    REPORT_METRICS_FLAT.map(({ group, metric }) => ({
+        key: metric.key as keyof ReportStatistics,
+        labelKey: metric.label,
+        color: group.color,
+    }));
 
 const ratingStyleOf = (rating: number): string => {
     const color = ratingColorOf(rating);
@@ -306,41 +293,26 @@ const teamLabel = (team: ScoutingReport['homeTeam']): string =>
             <div class="overall-ring" [style]="overallRingStyle()">
               <div>
                 <div class="text-xl font-black leading-none tabular-nums">{{ statistics()!.overallRating }}</div>
-                <div class="text-[10px] font-medium mt-0.5" style="color:var(--text-muted)">/ 10</div>
+                <div class="text-[10px] font-medium mt-0.5" style="color:var(--text-muted)">/ {{ ratingMax }}</div>
               </div>
             </div>
             <p class="text-[11px] mt-2.5" style="color:var(--text-muted)">
               {{ 'PLAYERS.DETAIL.STATS_SUBTITLE' | translate:{count: statistics()!.totalReports} }}
             </p>
 
+            <!-- متوسط كل مجموعة من الـ10 — لفّة واحدة بدل 3 بلوكات مكتوبة بالإيد -->
             <div class="mt-4 space-y-2.5 text-left">
-              <div>
-                <div class="flex justify-between items-center mb-1">
-                  <span class="text-[11px] font-semibold" style="color:#22c55e">{{ 'REPORTS.FORM.TECHNICAL' | translate }}</span>
-                  <span class="text-[11px] font-bold tabular-nums" style="color:#22c55e">{{ categoryAverages().technical.text }}</span>
+              @for (cat of categoryAverages(); track cat.key) {
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-[11px] font-semibold" [style.color]="cat.color">{{ cat.label | translate }}</span>
+                    <span class="text-[11px] font-bold tabular-nums" [style.color]="cat.color">{{ cat.text }}</span>
+                  </div>
+                  <div class="h-1 rounded-full" [style.background]="cat.trackColor">
+                    <div class="cat-bar-fill" [style.background]="cat.color" [style.width.%]="cat.percent"></div>
+                  </div>
                 </div>
-                <div class="h-1 rounded-full" style="background:rgba(34,197,94,0.12)">
-                  <div class="cat-bar-fill" style="background:#22c55e" [style.width.%]="categoryAverages().technical.num * 10"></div>
-                </div>
-              </div>
-              <div>
-                <div class="flex justify-between items-center mb-1">
-                  <span class="text-[11px] font-semibold" style="color:#38bdf8">{{ 'REPORTS.FORM.PHYSICAL' | translate }}</span>
-                  <span class="text-[11px] font-bold tabular-nums" style="color:#38bdf8">{{ categoryAverages().physical.text }}</span>
-                </div>
-                <div class="h-1 rounded-full" style="background:rgba(56,189,248,0.12)">
-                  <div class="cat-bar-fill" style="background:#38bdf8" [style.width.%]="categoryAverages().physical.num * 10"></div>
-                </div>
-              </div>
-              <div>
-                <div class="flex justify-between items-center mb-1">
-                  <span class="text-[11px] font-semibold" style="color:#8b5cf6">{{ 'REPORTS.FORM.MENTAL' | translate }}</span>
-                  <span class="text-[11px] font-bold tabular-nums" style="color:#8b5cf6">{{ categoryAverages().mental.text }}</span>
-                </div>
-                <div class="h-1 rounded-full" style="background:rgba(139,92,246,0.12)">
-                  <div class="cat-bar-fill" style="background:#8b5cf6" [style.width.%]="categoryAverages().mental.num * 10"></div>
-                </div>
-              </div>
+              }
             </div>
           </div>
 
@@ -348,7 +320,7 @@ const teamLabel = (team: ScoutingReport['homeTeam']): string =>
             <p class="text-xs font-semibold uppercase tracking-widest mb-2 text-center" style="color:var(--text-muted)">
               {{ 'REPORTS.FORM.RADAR' | translate }}
             </p>
-            <app-radar-chart [data]="radarData()" />
+            <app-radar-chart [data]="radarData()" [max]="ratingMax" />
 
             <!-- متوسط كل مهارة على حدة (مش بس متوسط الفئة) -->
             <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-3 pt-3" style="border-top:1px solid var(--border-subtle)">
@@ -470,28 +442,42 @@ export class ReportListComponent implements OnInit {
     return `border-color:${color}; color:${color}`;
   });
 
+  readonly ratingMax = RATING_MAX;
+
+  // الرادار بيعرض **متوسط كل مجموعة** (10 محاور) بدل الـ31 بند — 31 لافتة
+  // على رسمة 240px مابتتقراش. المحور بياخد اختصار المجموعة (group.short).
+  //
+  // ⚠️ مرجع جديد هنا = إعادة حساب هندسة الرادار كلها. الـcomputed بتخلي
+  // المرجع ثابت طول ما الإحصائيات ما اتغيرتش.
   readonly radarData = computed<Record<string, number>>(() => {
-    const s = this.statistics();
-    if (!s) return {};
-    // ⚠️ مرجع جديد هنا = إعادة حساب هندسة الرادار كلها. الـcomputed بتخلي
-    // المرجع ثابت طول ما الإحصائيات ما اتغيرتش.
+    const cats = this.categoryAverages();
     const out: Record<string, number> = {};
-    for (const sk of SKILL_META) out[sk.key] = (s[sk.key] as number) ?? 0;
+    for (const cat of cats) out[cat.short] = cat.num;
     return out;
   });
 
-  readonly categoryAverages = computed<Record<'technical' | 'physical' | 'mental', { num: number; text: string }>>(() => {
+  readonly categoryAverages = computed(() => {
     const s = this.statistics();
-    const of = (cat: 'technical' | 'physical' | 'mental') => {
-      if (!s) return { num: 0, text: '—' };
-      const values = CATEGORY_FIELDS[cat].map(f => s[f] as number).filter(v => v != null);
-      const num = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-      return { num, text: num.toFixed(1) };
-    };
-    return { technical: of('technical'), physical: of('physical'), mental: of('mental') };
+    return REPORT_METRIC_GROUPS.map(group => {
+      const values = s
+        ? group.metrics.map(m => s[m.key as keyof ReportStatistics] as number).filter(v => v != null && v > 0)
+        : [];
+      const num = values.length ? +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(2) : 0;
+      return {
+        key: group.key,
+        short: group.short,
+        label: group.label,
+        color: group.color,
+        // نفس درجة الخفوت اللي كانت مكتوبة بالإيد لكل لون (rgba 0.12)
+        trackColor: `${group.color}1f`,
+        num,
+        text: num ? num.toFixed(1) : '—',
+        percent: (num / RATING_MAX) * 100,
+      };
+    });
   });
 
-  // متوسط كل مهارة من الـ 15 لوحدها (مش بس متوسط الفئة) — بتتحط تحت الـ radar chart
+  // متوسط كل بند من الـ28 لوحده (مش بس متوسط المجموعة) — بيتحط تحت الـ radar chart
   readonly skillAverages = computed(() => {
     const s = this.statistics();
     if (!s) return [];

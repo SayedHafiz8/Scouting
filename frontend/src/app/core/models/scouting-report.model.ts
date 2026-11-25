@@ -7,9 +7,20 @@ import type { AgeGroup } from './age-group.model';
 
 type _Schema = components['schemas']['ScoutingReport'];
 
-export type TechnicalSkills = Required<components['schemas']['TechnicalSkills']>;
-export type PhysicalSkills = Required<components['schemas']['PhysicalSkills']>;
-export type MentalSkills = Required<components['schemas']['MentalSkills']>;
+// طلب مالك 2026-11-18 — 10 مجموعات بدل technical/physical/mental، و2026-11-25
+// — 31 بند والسلّم 1→10. التعريف المرجعي: features/scouting-reports/report-metrics.ts
+// (وعلى السيرفر Backend/constants/reportMetrics.js). الأنواع دي مولّدة من
+// openapi.json فمستحيل تفرق عن السيرفر.
+export type DecisionMakingRatings = Required<components['schemas']['DecisionMakingRatings']>;
+export type SelfMotivationRatings = Required<components['schemas']['SelfMotivationRatings']>;
+export type TechnicalSkillsRatings = Required<components['schemas']['TechnicalSkillsRatings']>;
+export type PhysicalAbilitiesRatings = Required<components['schemas']['PhysicalAbilitiesRatings']>;
+export type PersonalityRatings = Required<components['schemas']['PersonalityRatings']>;
+export type SpecialDefendingRatings = Required<components['schemas']['SpecialDefendingRatings']>;
+export type SpecialAttackingRatings = Required<components['schemas']['SpecialAttackingRatings']>;
+export type WorkEthicRatings = Required<components['schemas']['WorkEthicRatings']>;
+export type OnFieldLeadershipRatings = Required<components['schemas']['OnFieldLeadershipRatings']>;
+export type WinningMentalityRatings = Required<components['schemas']['WinningMentalityRatings']>;
 export type ReportStatistics = Required<components['schemas']['ReportStatistics']>;
 
 export type ReportMatchType = 'official' | 'friendly' | 'training';
@@ -28,9 +39,20 @@ export interface ScoutingReport {
   // الفئة العمرية اللي اللاعب لعب معاها لما التقرير مش مربوط بمباراة من الجدول —
   // ممكن تكون غير فئته هو (لاعب بيلعب مع فئة أكبر)
   playedWithAgeGroup?: AgeGroup | string | null;
-  technical: TechnicalSkills;
-  physical: PhysicalSkills;
-  mental: MentalSkills;
+  // ⚠️ التقارير اللي اتكتبت قبل 2026-11-18 مالهاش المجموعات دي خالص (استبدال
+  // بلا migration بقرار المالك)، فبترجع من السيرفر غايبة — عشان كده كلها
+  // اختيارية هنا. العرض بيتعامل مع الغايب كصفر/"—" بدل ما يكراش.
+  decisionMaking?: DecisionMakingRatings;
+  selfMotivation?: SelfMotivationRatings;
+  technicalSkills?: TechnicalSkillsRatings;
+  physicalAbilities?: PhysicalAbilitiesRatings;
+  personality?: PersonalityRatings;
+  specialDefending?: SpecialDefendingRatings;
+  specialAttacking?: SpecialAttackingRatings;
+  workEthic?: WorkEthicRatings;
+  onFieldLeadership?: OnFieldLeadershipRatings;
+  winningMentality?: WinningMentalityRatings;
+  /** متوسط الـ31 بند، 1→10. تقارير أسبوع 2026-11-18→25 قيمتها على سلّم 1→5. */
   overallRating: number;
   notes?: string;
   createdAt: string;

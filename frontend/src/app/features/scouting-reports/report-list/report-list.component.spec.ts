@@ -27,8 +27,9 @@ function makeUser(role: UserRole): User {
 function makeReport(id = 'r1', coach: { _id: string; name: string } = { _id: 'u1', name: 'Test User' }) {
   return {
     _id: id, player: 'p1', coach,
-    overallRating: 7, matchDate: '2026-09-01T00:00:00.000Z',
-    technical: {}, physical: {}, mental: {},
+    // قيمة جوه السلّم الحالي. مجموعات التقييم مش محتاجة قيم هنا —
+    // التستات دي بتفحص القايمة والصلاحيات، مش أرقام التقييم.
+    overallRating: 4, matchDate: '2026-09-01T00:00:00.000Z',
     createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
   };
 }

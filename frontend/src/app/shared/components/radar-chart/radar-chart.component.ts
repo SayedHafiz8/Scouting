@@ -69,6 +69,11 @@ interface RadarPoint { x: number; y: number; }
 export class RadarChartComponent {
   readonly data = input<Record<string, number>>({});
 
+  // أقصى قيمة على المحور. بيتبعت صريح من كل مكان بيستخدم الرسمة بدل ما يبقى
+  // مدفون جوه الحساب — سلّم بنود التقرير اتغيّر مرتين في أسبوع، والقيمة اللي
+  // كانت مدفونة (/10) كانت لازم تتصطاد بالـgrep كل مرة.
+  readonly max = input<number>(10);
+
   readonly size = 240;
   readonly center = 120;
   readonly radius = 85;
@@ -119,8 +124,9 @@ export class RadarChartComponent {
 
   dataPointCoords = computed(() => {
     const axes = this.axes();
+    const max = this.max() || 1;   // حارس قسمة على صفر
     return axes.map((axis, i) => {
-      const r = (axis.value / 10) * this.radius;
+      const r = Math.min(axis.value / max, 1) * this.radius;
       return this.polar(this.angleFor(i, axes.length), r);
     });
   });
@@ -129,13 +135,11 @@ export class RadarChartComponent {
     return this.dataPointCoords().map(p => `${p.x},${p.y}`).join(' ');
   });
 
+  // الرسمة بتاخد **متوسط كل مجموعة** (10 محاور) بدل الـ31 بند — 31 لافتة
+  // على رسمة 240px كانت هتبقى غير مقروءة. المنادي بيبعت اختصار المحور جاهز
+  // (group.short في report-metrics.ts)، فمفيش خريطة أسماء مدفونة هنا؛ وأي
+  // مفتاح تاني بيتقصّر لأول 4 حروف زي ما كان.
   private shortLabel(label: string): string {
-    const map: Record<string, string> = {
-      turning: 'Turn', dribbling: 'Drib', tackling: 'Tack', twoFooted: '2Ftd',
-      longPassing: 'LPass', shortPassing: 'SPass', heading: 'Head',
-      shortSprints: 'SSpr', longSprints: 'LSpr', agility: 'Agil', aerialDuels: 'AirD', groundDuels: 'GrdD',
-      vision: 'Vis', personality: 'Pers', movement: 'Move',
-    };
-    return map[label] ?? label.slice(0, 4);
+    return label.length <= 5 ? label : label.slice(0, 4);
   }
 }

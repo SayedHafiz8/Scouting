@@ -71,7 +71,20 @@ test('coach submits a scouting report and it appears in the report list', async 
     .selectOption({ label: 'Team not in the list (type its name)' });
   await matchInfoCard.locator('input[type="text"]').nth(1).fill('Away FC');
 
-  // All 12 skill sliders default to 5 — no need to change them
+  // ⚠️ التعليق القديم كان بيقول "الـ12 سلايدر الافتراضي 5 فمش محتاجين نغيّرهم" —
+  // وده بقى غلط من فترة: البنود بتبدأ **صفر** وكلها مطلوبة (Validators.min(1))،
+  // فـsubmit() بيرجع من غير ما ينده السيرفر لو مااتملّتش. وبقوا 31 بند في 10
+  // مجموعات على سلّم 1→10 (طلب مالك 2026-11-18 و2026-11-25).
+  //
+  // بنملّي كل بند بـ4 (زرار الـ"4" في كل صف — مرة واحدة بالظبط في كل صف، سواء
+  // كانت الأزرار 5 أو 10). العدد مابيتكتبش بالإيد هنا عشان إضافة بند جديد
+  // ماتكسّرش التست.
+  const pips = page.locator('button.pip', { hasText: /^4$/ });
+  const pipCount = await pips.count();
+  expect(pipCount).toBeGreaterThan(0);
+  for (let i = 0; i < pipCount; i++) {
+    await pips.nth(i).click();
+  }
 
   await page.getByRole('button', { name: 'Save Report' }).click();
 
@@ -95,5 +108,6 @@ test('report statistics update after the first report', async ({ page }) => {
   expect(res.ok()).toBeTruthy();
   const body = await res.json();
   expect(body.data.statistics.totalReports).toBeGreaterThan(0);
-  expect(body.data.statistics.overallRating).toBe(5); // all sliders at default 5
+  // التست اللي فوق ملّى كل البنود بـ4، فمتوسط الـ31 بند = 4 (سلّم 1→10)
+  expect(body.data.statistics.overallRating).toBe(4);
 });

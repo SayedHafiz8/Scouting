@@ -12,7 +12,7 @@ import {
     checkMediaOwnership,
     checkSeasonMatchAttendee,
 } from '../middlewares/ownership.js';
-import { seedAgeGroups, dobForAge } from './helpers/factory.js';
+import { seedAgeGroups, dobForAge, reportRatings } from './helpers/factory.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  Unit contract for middlewares/ownership.js (US1 — Role Foundation Hardening).
@@ -91,9 +91,7 @@ describe('ownership guards — default-deny for an unknown role', () => {
             player: player._id,
             coach: coachId,
             matchDate: new Date(),
-            technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-            physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-            mental: { vision: 7, personality: 8, movement: 9 },
+            ...reportRatings(),
         });
 
         const req = mockReq({

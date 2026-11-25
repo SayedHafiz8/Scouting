@@ -32,6 +32,7 @@ import {
     setupPlayerMatchDay,
     coachEvaluationPayload,
     observerEvaluationPayload,
+    reportRatings,
     seedAgeGroups,
 } from "./helpers/factory.js";
 
@@ -110,9 +111,7 @@ describe("§12 — deleting a coach", () => {
             homeTeam: teams.homeTeam,
             awayTeam: teams.awayTeam,
             notes: "Good game",
-            technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-            physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-            mental: { vision: 7, personality: 8, movement: 9 },
+            ...reportRatings(),
         });
 
         await forceDelete(adminToken, coach._id);
@@ -213,9 +212,7 @@ describe("§12 — deleting an observer", () => {
             homeTeam: teams.homeTeam,
             awayTeam: teams.awayTeam,
             notes: "Observer's view",
-            technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-            physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-            mental: { vision: 7, personality: 8, movement: 9 },
+            ...reportRatings(),
         });
 
         await forceDelete(adminToken, observer._id);
@@ -294,9 +291,7 @@ describe("§12 — clearing refs cannot collide on the unique indexes", () => {
             homeTeam: teams.homeTeam,
             awayTeam: teams.awayTeam,
             notes: "Same match, two scouts",
-            technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-            physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-            mental: { vision: 7, personality: 8, movement: 9 },
+            ...reportRatings(),
         };
         await ScoutingReport.create({ ...base, coach: coachA._id });
         await ScoutingReport.create({ ...base, coach: coachB._id });
@@ -332,9 +327,7 @@ describe("§12 — clearing refs cannot collide on the unique indexes", () => {
             homeTeam: teams.homeTeam,
             awayTeam: teams.awayTeam,
             notes: "First",
-            technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-            physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-            mental: { vision: 7, personality: 8, movement: 9 },
+            ...reportRatings(),
         };
         await ScoutingReport.create(doc);
 

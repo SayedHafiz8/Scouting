@@ -1182,9 +1182,16 @@ export interface paths {
                         homeTeam: string;
                         /** @description Away team name */
                         awayTeam: string;
-                        technical: components["schemas"]["TechnicalSkills"];
-                        physical: components["schemas"]["PhysicalSkills"];
-                        mental: components["schemas"]["MentalSkills"];
+                        decisionMaking: components["schemas"]["DecisionMakingRatings"];
+                        selfMotivation: components["schemas"]["SelfMotivationRatings"];
+                        technicalSkills: components["schemas"]["TechnicalSkillsRatings"];
+                        physicalAbilities: components["schemas"]["PhysicalAbilitiesRatings"];
+                        personality: components["schemas"]["PersonalityRatings"];
+                        specialDefending: components["schemas"]["SpecialDefendingRatings"];
+                        specialAttacking: components["schemas"]["SpecialAttackingRatings"];
+                        workEthic: components["schemas"]["WorkEthicRatings"];
+                        onFieldLeadership: components["schemas"]["OnFieldLeadershipRatings"];
+                        winningMentality: components["schemas"]["WinningMentalityRatings"];
                         notes?: string;
                         /**
                          * Format: date
@@ -1201,7 +1208,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Report created — overallRating auto-calculated as average of 12 metrics */
+                /** @description Report created — overallRating auto-calculated as the average of all 31 metrics (1–10) */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1351,9 +1358,16 @@ export interface paths {
                     "application/json": {
                         homeTeam?: string;
                         awayTeam?: string;
-                        technical?: components["schemas"]["TechnicalSkills"];
-                        physical?: components["schemas"]["PhysicalSkills"];
-                        mental?: components["schemas"]["MentalSkills"];
+                        decisionMaking?: components["schemas"]["DecisionMakingRatings"];
+                        selfMotivation?: components["schemas"]["SelfMotivationRatings"];
+                        technicalSkills?: components["schemas"]["TechnicalSkillsRatings"];
+                        physicalAbilities?: components["schemas"]["PhysicalAbilitiesRatings"];
+                        personality?: components["schemas"]["PersonalityRatings"];
+                        specialDefending?: components["schemas"]["SpecialDefendingRatings"];
+                        specialAttacking?: components["schemas"]["SpecialAttackingRatings"];
+                        workEthic?: components["schemas"]["WorkEthicRatings"];
+                        onFieldLeadership?: components["schemas"]["OnFieldLeadershipRatings"];
+                        winningMentality?: components["schemas"]["WinningMentalityRatings"];
                         notes?: string;
                     };
                 };
@@ -4052,15 +4066,29 @@ export interface components {
             /** Format: date-time */
             updatedAt?: string;
         };
-        TechnicalSkills: {
-            /** @description الارتداد */
-            turning: number;
-            /** @description المراوغة */
-            dribbling: number;
-            /** @description استخلاص الكرة */
-            tackling: number;
-            /** @description اللعب بالقدمين */
+        DecisionMakingRatings: {
+            /** @description يتمركز جيدًا ويستحوذ على الكرة كثيرًا */
+            positioningAndPossession: number;
+            /** @description يقطع الكرات دون التحام */
+            interceptingWithoutTackling: number;
+        };
+        SelfMotivationRatings: {
+            /** @description ثابت المستوى في كل الظروف */
+            consistency: number;
+            /** @description يستعيد الكرة فور فقدانها */
+            winningBallBack: number;
+            /** @description يتقبل التوجيه ويتكيّف بسرعة */
+            coachability: number;
+        };
+        TechnicalSkillsRatings: {
+            /** @description لمسة أولى سريعة وفعّالة */
+            firstTouch: number;
+            /** @description يجيد اللعب بالقدمين */
             twoFooted: number;
+            /** @description يحمي الكرة تحت الضغط */
+            shieldingUnderPressure: number;
+            /** @description يتجاوز المنافس بالمراوغة أو التمرير */
+            beatingOpponent: number;
             /** @description التمريرات الطويلة الصحيحة */
             longPassing: number;
             /** @description التمريرات القصيرة الصحيحة */
@@ -4068,25 +4096,57 @@ export interface components {
             /** @description اللعب بالرأس */
             heading: number;
         };
-        PhysicalSkills: {
-            /** @description اسبرنتات قصيرة */
-            shortSprints: number;
-            /** @description اسبرنتات طويلة */
-            longSprints: number;
-            /** @description الرشاقة والمرونة */
+        PhysicalAbilitiesRatings: {
+            /** @description سريع */
+            pace: number;
+            /** @description رشيق وسريع تغيير الاتجاه */
             agility: number;
-            /** @description الالتحامات الهوائية */
-            aerialDuels: number;
-            /** @description الالتحامات الأرضية */
-            groundDuels: number;
+            /** @description ديناميكي ويقطع مسافات كبيرة */
+            dynamism: number;
+            /** @description يستخدم جسمه بفاعلية في الالتحامات */
+            bodyUseInDuels: number;
         };
-        MentalSkills: {
-            /** @description الرؤية داخل الملعب */
-            vision: number;
-            /** @description الشخصية في الملعب */
-            personality: number;
-            /** @description التحركات */
-            movement: number;
+        PersonalityRatings: {
+            /** @description قيادي */
+            leadership: number;
+            /** @description يحفّز زملاءه */
+            motivatingTeammates: number;
+            /** @description قوي في العمل الجماعي */
+            teamwork: number;
+        };
+        SpecialDefendingRatings: {
+            /** @description صد التسديدات */
+            blockingShots: number;
+            /** @description قوي في الالتحامات */
+            strongInDuels: number;
+            /** @description يمنع الاختراق في العمق */
+            preventingPenetration: number;
+        };
+        SpecialAttackingRatings: {
+            /** @description بناء اللعب */
+            buildUpPlay: number;
+            /** @description صناعة الأهداف */
+            creatingGoals: number;
+            /** @description تسجيل الأهداف */
+            scoringGoals: number;
+        };
+        WorkEthicRatings: {
+            /** @description يسعى لأقصى أداء */
+            maximumEffort: number;
+            /** @description يرغب في التطور المستمر */
+            continuousImprovement: number;
+            /** @description واضح الهدف ومتفانٍ */
+            purposeAndDedication: number;
+        };
+        OnFieldLeadershipRatings: {
+            /** @description قيادي يلهم زملاءه */
+            inspiringLeader: number;
+            /** @description يلعب بروح الفريق */
+            teamSpirit: number;
+        };
+        WinningMentalityRatings: {
+            /** @description يقدّم أقصى ما لديه في كل تدريب ومباراة */
+            fullCommitment: number;
         };
         ScoutingReport: {
             _id?: string;
@@ -4109,9 +4169,17 @@ export interface components {
             playedWithAgeGroup?: string | null;
             homeTeam?: string;
             awayTeam?: string;
-            technical?: components["schemas"]["TechnicalSkills"];
-            physical?: components["schemas"]["PhysicalSkills"];
-            mental?: components["schemas"]["MentalSkills"];
+            decisionMaking?: components["schemas"]["DecisionMakingRatings"];
+            selfMotivation?: components["schemas"]["SelfMotivationRatings"];
+            technicalSkills?: components["schemas"]["TechnicalSkillsRatings"];
+            physicalAbilities?: components["schemas"]["PhysicalAbilitiesRatings"];
+            personality?: components["schemas"]["PersonalityRatings"];
+            specialDefending?: components["schemas"]["SpecialDefendingRatings"];
+            specialAttacking?: components["schemas"]["SpecialAttackingRatings"];
+            workEthic?: components["schemas"]["WorkEthicRatings"];
+            onFieldLeadership?: components["schemas"]["OnFieldLeadershipRatings"];
+            winningMentality?: components["schemas"]["WinningMentalityRatings"];
+            /** @description Average of all 31 metrics, 1–10. Reports filed between 2026-11-18 and 2026-11-25 were rated 1–5, so their averages read low against newer ones; reports from before 2026-11-18 use a retired metric set entirely. */
             overallRating?: number;
             notes?: string;
             /** Format: date-time */
@@ -4248,21 +4316,34 @@ export interface components {
             /** Format: date-time */
             lastReport?: string;
             overallRating?: number;
-            turning?: number;
-            dribbling?: number;
-            tackling?: number;
+            positioningAndPossession?: number;
+            interceptingWithoutTackling?: number;
+            consistency?: number;
+            winningBallBack?: number;
+            coachability?: number;
+            firstTouch?: number;
             twoFooted?: number;
-            longPassing?: number;
-            shortPassing?: number;
-            heading?: number;
-            shortSprints?: number;
-            longSprints?: number;
+            shieldingUnderPressure?: number;
+            beatingOpponent?: number;
+            pace?: number;
             agility?: number;
-            aerialDuels?: number;
-            groundDuels?: number;
-            vision?: number;
-            personality?: number;
-            movement?: number;
+            dynamism?: number;
+            bodyUseInDuels?: number;
+            leadership?: number;
+            motivatingTeammates?: number;
+            teamwork?: number;
+            blockingShots?: number;
+            strongInDuels?: number;
+            preventingPenetration?: number;
+            buildUpPlay?: number;
+            creatingGoals?: number;
+            scoringGoals?: number;
+            maximumEffort?: number;
+            continuousImprovement?: number;
+            purposeAndDedication?: number;
+            inspiringLeader?: number;
+            teamSpirit?: number;
+            fullCommitment?: number;
         };
         Pagination: {
             currentPage?: number;

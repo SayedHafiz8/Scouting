@@ -79,6 +79,14 @@ Route files compose all three, e.g. `protect, allowedTo("coach"), checkPlayerOwn
 
 `models/playedModel.js` derives `ageGroup` from `dateOfBirth` in both `pre('save')` and `pre('findOneAndUpdate')`, throwing if the birth year is outside 2007–2019 or no matching `AgeGroup` doc exists. Tests use `seedAgeGroups()` from `tests/helpers/factory.js` for this reason.
 
+### Scouting-report metrics
+
+**`Backend/constants/reportMetrics.js` is the single source of truth: 10 groups / 31 metrics, each rated 1–10.** The schema fields, both express-validator chains, and the `/statistics` aggregation stages are all derived from it, so adding a metric is one line there. Its mirror on the client is `frontend/src/app/features/scouting-reports/report-metrics.ts` (same keys, plus i18n keys and colors) — the form, the detail page and the report list all loop over that one list, and the Arabic/English labels live in `REPORTS.GROUPS.*` / `REPORTS.METRICS.*` in both i18n files. The flat `/statistics` response means **every metric name must be unique across groups**; `reportMetrics.js` throws at import if that is violated.
+
+The metric set has been replaced wholesale three times (2026-09; 2026-11-18, which also moved the scale to 1–5; 2026-11-25, which added three technical metrics and moved the scale back to 1–10), each time by owner decision and **deliberately without a migration**. Old reports keep their old fields and their old `overallRating` in the database, and read back with the current groups empty (Mongoose strict mode drops paths that are not in the schema). Consequences to keep in mind rather than "fix": reports filed in the 1–5 week carry averages that read low beside newer ones, a player whose reports straddle a replacement has an average mixing scales, and the report detail page shows a legacy notice instead of rating bars for pre-2026-11-18 reports. `calcOverallRating` ignores non-numeric metrics for exactly this reason — summing a legacy document's missing fields would write `NaN`.
+
+Because both scales and the metric list come from that one file, a scale or metric change is a small edit — but note two sharp edges it does not cover: a test or payload that overrides a whole rating group replaces the object, so it must list **every** field in that group, and `overallRating`'s `max` tightening (not widening) is what would reject previously-valid stored values.
+
 ### Media pipeline (Bunny CDN)
 
 Video and images never transit the VPS at scale:

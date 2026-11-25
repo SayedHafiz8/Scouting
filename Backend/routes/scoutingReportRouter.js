@@ -66,7 +66,7 @@
  *         application/json:
  *           schema:
  *             type: object
- *             required: [homeTeam, awayTeam, technical, physical, mental]
+ *             required: [homeTeam, awayTeam, decisionMaking, selfMotivation, technicalSkills, physicalAbilities, personality, specialDefending, specialAttacking, workEthic, onFieldLeadership, winningMentality]
  *             properties:
  *               homeTeam:
  *                 type: string
@@ -74,12 +74,26 @@
  *               awayTeam:
  *                 type: string
  *                 description: Away team name
- *               technical:
- *                 $ref: '#/components/schemas/TechnicalSkills'
- *               physical:
- *                 $ref: '#/components/schemas/PhysicalSkills'
- *               mental:
- *                 $ref: '#/components/schemas/MentalSkills'
+ *               decisionMaking:
+ *                 $ref: '#/components/schemas/DecisionMakingRatings'
+ *               selfMotivation:
+ *                 $ref: '#/components/schemas/SelfMotivationRatings'
+ *               technicalSkills:
+ *                 $ref: '#/components/schemas/TechnicalSkillsRatings'
+ *               physicalAbilities:
+ *                 $ref: '#/components/schemas/PhysicalAbilitiesRatings'
+ *               personality:
+ *                 $ref: '#/components/schemas/PersonalityRatings'
+ *               specialDefending:
+ *                 $ref: '#/components/schemas/SpecialDefendingRatings'
+ *               specialAttacking:
+ *                 $ref: '#/components/schemas/SpecialAttackingRatings'
+ *               workEthic:
+ *                 $ref: '#/components/schemas/WorkEthicRatings'
+ *               onFieldLeadership:
+ *                 $ref: '#/components/schemas/OnFieldLeadershipRatings'
+ *               winningMentality:
+ *                 $ref: '#/components/schemas/WinningMentalityRatings'
  *               notes:
  *                 type: string
  *               matchDate:
@@ -114,7 +128,7 @@
  *                   behalf of is also recorded in that match's `attendees`.
  *     responses:
  *       201:
- *         description: Report created — overallRating auto-calculated as average of 12 metrics
+ *         description: Report created — overallRating auto-calculated as the average of all 31 metrics (1–10)
  *         content:
  *           application/json:
  *             schema:
@@ -227,12 +241,26 @@
  *                 type: string
  *               awayTeam:
  *                 type: string
- *               technical:
- *                 $ref: '#/components/schemas/TechnicalSkills'
- *               physical:
- *                 $ref: '#/components/schemas/PhysicalSkills'
- *               mental:
- *                 $ref: '#/components/schemas/MentalSkills'
+ *               decisionMaking:
+ *                 $ref: '#/components/schemas/DecisionMakingRatings'
+ *               selfMotivation:
+ *                 $ref: '#/components/schemas/SelfMotivationRatings'
+ *               technicalSkills:
+ *                 $ref: '#/components/schemas/TechnicalSkillsRatings'
+ *               physicalAbilities:
+ *                 $ref: '#/components/schemas/PhysicalAbilitiesRatings'
+ *               personality:
+ *                 $ref: '#/components/schemas/PersonalityRatings'
+ *               specialDefending:
+ *                 $ref: '#/components/schemas/SpecialDefendingRatings'
+ *               specialAttacking:
+ *                 $ref: '#/components/schemas/SpecialAttackingRatings'
+ *               workEthic:
+ *                 $ref: '#/components/schemas/WorkEthicRatings'
+ *               onFieldLeadership:
+ *                 $ref: '#/components/schemas/OnFieldLeadershipRatings'
+ *               winningMentality:
+ *                 $ref: '#/components/schemas/WinningMentalityRatings'
  *               notes:
  *                 type: string
  *     responses:

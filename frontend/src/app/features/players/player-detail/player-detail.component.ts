@@ -8,6 +8,7 @@ import { PlayerService } from '../services/player.service';
 import { UserService } from '../../users/services/user.service';
 import { ScoutingReportService } from '../../scouting-reports/services/scouting-report.service';
 import { ReportStatistics } from '../../../core/models/scouting-report.model';
+import { ratingColorOf } from '../../scouting-reports/report-metrics';
 import { User } from '../../../core/models/user.model';
 import { AuthService } from '../../../core/auth/auth.service';
 import { SocketService } from '../../../core/services/socket.service';
@@ -861,9 +862,14 @@ export class PlayerDetailComponent implements OnInit, OnDestroy {
     });
   }
 
+  // الحدود نسبة من RATING_MAX عن طريق ratingColorOf، مش أرقام ثابتة — سلّم بنود
+  // التقرير اتغيّر مرتين في أسبوع، وكل مرة كانت الأرقام الثابتة بتبوّظ الألوان.
+  //
+  // ⚠️ متوسط لاعب عنده تقارير من الأسبوع اللي كان فيه السلّم 1→5 بيبقى مخلوط
+  // بين سلّمين — بلا migration بقرار المالك. اللون بيفترض السلّم الحالي.
   ratingColor(rating: number | null | undefined): string {
     if (rating == null) return 'var(--text-muted)';
-    return rating >= 8 ? '#22c55e' : rating >= 5 ? '#f59e0b' : '#f43f5e';
+    return ratingColorOf(rating);
   }
 
   private loadObservers(): void {

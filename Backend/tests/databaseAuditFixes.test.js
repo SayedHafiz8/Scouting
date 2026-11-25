@@ -24,6 +24,7 @@ import {
     createTeam,
     defaultTeamIds,
     setupPlayerMatchDay,
+    reportRatings,
     seedAgeGroups,
 } from "./helpers/factory.js";
 
@@ -302,9 +303,7 @@ describe("audit-database — regression cover for the five findings", () => {
                 seasonMatch: match._id,
                 homeTeam: teams.homeTeam,
                 awayTeam: teams.awayTeam,
-                technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-                physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-                mental: { vision: 7, personality: 8, movement: 9 },
+                ...reportRatings(),
             };
 
             await ScoutingReport.create(doc);
@@ -328,9 +327,7 @@ describe("audit-database — regression cover for the five findings", () => {
                 coach: coach._id,
                 matchDate: sameDay,
                 matchType: "official",
-                technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-                physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-                mental: { vision: 7, personality: 8, movement: 9 },
+                ...reportRatings(),
             };
 
             await ScoutingReport.create({ ...base, seasonMatch: matchA._id });
@@ -354,9 +351,7 @@ describe("audit-database — regression cover for the five findings", () => {
                 seasonMatch: null,
                 homeTeam: teams.homeTeam,
                 awayTeam: teams.awayTeam,
-                technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-                physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-                mental: { vision: 7, personality: 8, movement: 9 },
+                ...reportRatings(),
             };
 
             const t = new Date("2026-05-12T09:00:00.000Z");
@@ -378,9 +373,7 @@ describe("audit-database — regression cover for the five findings", () => {
                 matchDate: match.matchDate,
                 matchType: "official",
                 seasonMatch: match._id,
-                technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-                physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-                mental: { vision: 7, personality: 8, movement: 9 },
+                ...reportRatings(),
             };
 
             await ScoutingReport.create({ ...base, coach: coachA._id });

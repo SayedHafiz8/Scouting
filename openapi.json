@@ -323,41 +323,90 @@
           }
         }
       },
-      "TechnicalSkills": {
+      "DecisionMakingRatings": {
         "type": "object",
         "required": [
-          "turning",
-          "dribbling",
-          "tackling",
+          "positioningAndPossession",
+          "interceptingWithoutTackling"
+        ],
+        "properties": {
+          "positioningAndPossession": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يتمركز جيدًا ويستحوذ على الكرة كثيرًا"
+          },
+          "interceptingWithoutTackling": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يقطع الكرات دون التحام"
+          }
+        }
+      },
+      "SelfMotivationRatings": {
+        "type": "object",
+        "required": [
+          "consistency",
+          "winningBallBack",
+          "coachability"
+        ],
+        "properties": {
+          "consistency": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "ثابت المستوى في كل الظروف"
+          },
+          "winningBallBack": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يستعيد الكرة فور فقدانها"
+          },
+          "coachability": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يتقبل التوجيه ويتكيّف بسرعة"
+          }
+        }
+      },
+      "TechnicalSkillsRatings": {
+        "type": "object",
+        "required": [
+          "firstTouch",
           "twoFooted",
+          "shieldingUnderPressure",
+          "beatingOpponent",
           "longPassing",
           "shortPassing",
           "heading"
         ],
         "properties": {
-          "turning": {
+          "firstTouch": {
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "الارتداد"
-          },
-          "dribbling": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 10,
-            "description": "المراوغة"
-          },
-          "tackling": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 10,
-            "description": "استخلاص الكرة"
+            "description": "لمسة أولى سريعة وفعّالة"
           },
           "twoFooted": {
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "اللعب بالقدمين"
+            "description": "يجيد اللعب بالقدمين"
+          },
+          "shieldingUnderPressure": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يحمي الكرة تحت الضغط"
+          },
+          "beatingOpponent": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يتجاوز المنافس بالمراوغة أو التمرير"
           },
           "longPassing": {
             "type": "number",
@@ -379,73 +428,185 @@
           }
         }
       },
-      "PhysicalSkills": {
+      "PhysicalAbilitiesRatings": {
         "type": "object",
         "required": [
-          "shortSprints",
-          "longSprints",
+          "pace",
           "agility",
-          "aerialDuels",
-          "groundDuels"
+          "dynamism",
+          "bodyUseInDuels"
         ],
         "properties": {
-          "shortSprints": {
+          "pace": {
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "اسبرنتات قصيرة"
-          },
-          "longSprints": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 10,
-            "description": "اسبرنتات طويلة"
+            "description": "سريع"
           },
           "agility": {
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "الرشاقة والمرونة"
+            "description": "رشيق وسريع تغيير الاتجاه"
           },
-          "aerialDuels": {
+          "dynamism": {
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "الالتحامات الهوائية"
+            "description": "ديناميكي ويقطع مسافات كبيرة"
           },
-          "groundDuels": {
+          "bodyUseInDuels": {
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "الالتحامات الأرضية"
+            "description": "يستخدم جسمه بفاعلية في الالتحامات"
           }
         }
       },
-      "MentalSkills": {
+      "PersonalityRatings": {
         "type": "object",
         "required": [
-          "vision",
-          "personality",
-          "movement"
+          "leadership",
+          "motivatingTeammates",
+          "teamwork"
         ],
         "properties": {
-          "vision": {
+          "leadership": {
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "الرؤية داخل الملعب"
+            "description": "قيادي"
           },
-          "personality": {
+          "motivatingTeammates": {
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "الشخصية في الملعب"
+            "description": "يحفّز زملاءه"
           },
-          "movement": {
+          "teamwork": {
             "type": "number",
             "minimum": 1,
             "maximum": 10,
-            "description": "التحركات"
+            "description": "قوي في العمل الجماعي"
+          }
+        }
+      },
+      "SpecialDefendingRatings": {
+        "type": "object",
+        "required": [
+          "blockingShots",
+          "strongInDuels",
+          "preventingPenetration"
+        ],
+        "properties": {
+          "blockingShots": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "صد التسديدات"
+          },
+          "strongInDuels": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "قوي في الالتحامات"
+          },
+          "preventingPenetration": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يمنع الاختراق في العمق"
+          }
+        }
+      },
+      "SpecialAttackingRatings": {
+        "type": "object",
+        "required": [
+          "buildUpPlay",
+          "creatingGoals",
+          "scoringGoals"
+        ],
+        "properties": {
+          "buildUpPlay": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "بناء اللعب"
+          },
+          "creatingGoals": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "صناعة الأهداف"
+          },
+          "scoringGoals": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "تسجيل الأهداف"
+          }
+        }
+      },
+      "WorkEthicRatings": {
+        "type": "object",
+        "required": [
+          "maximumEffort",
+          "continuousImprovement",
+          "purposeAndDedication"
+        ],
+        "properties": {
+          "maximumEffort": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يسعى لأقصى أداء"
+          },
+          "continuousImprovement": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يرغب في التطور المستمر"
+          },
+          "purposeAndDedication": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "واضح الهدف ومتفانٍ"
+          }
+        }
+      },
+      "OnFieldLeadershipRatings": {
+        "type": "object",
+        "required": [
+          "inspiringLeader",
+          "teamSpirit"
+        ],
+        "properties": {
+          "inspiringLeader": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "قيادي يلهم زملاءه"
+          },
+          "teamSpirit": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يلعب بروح الفريق"
+          }
+        }
+      },
+      "WinningMentalityRatings": {
+        "type": "object",
+        "required": [
+          "fullCommitment"
+        ],
+        "properties": {
+          "fullCommitment": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "يقدّم أقصى ما لديه في كل تدريب ومباراة"
           }
         }
       },
@@ -504,19 +665,41 @@
           "awayTeam": {
             "type": "string"
           },
-          "technical": {
-            "$ref": "#/components/schemas/TechnicalSkills"
+          "decisionMaking": {
+            "$ref": "#/components/schemas/DecisionMakingRatings"
           },
-          "physical": {
-            "$ref": "#/components/schemas/PhysicalSkills"
+          "selfMotivation": {
+            "$ref": "#/components/schemas/SelfMotivationRatings"
           },
-          "mental": {
-            "$ref": "#/components/schemas/MentalSkills"
+          "technicalSkills": {
+            "$ref": "#/components/schemas/TechnicalSkillsRatings"
+          },
+          "physicalAbilities": {
+            "$ref": "#/components/schemas/PhysicalAbilitiesRatings"
+          },
+          "personality": {
+            "$ref": "#/components/schemas/PersonalityRatings"
+          },
+          "specialDefending": {
+            "$ref": "#/components/schemas/SpecialDefendingRatings"
+          },
+          "specialAttacking": {
+            "$ref": "#/components/schemas/SpecialAttackingRatings"
+          },
+          "workEthic": {
+            "$ref": "#/components/schemas/WorkEthicRatings"
+          },
+          "onFieldLeadership": {
+            "$ref": "#/components/schemas/OnFieldLeadershipRatings"
+          },
+          "winningMentality": {
+            "$ref": "#/components/schemas/WinningMentalityRatings"
           },
           "overallRating": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "description": "Average of all 31 metrics, 1–10. Reports filed between 2026-11-18 and 2026-11-25 were rated 1–5, so their averages read low against newer ones; reports from before 2026-11-18 use a retired metric set entirely."
           },
           "notes": {
             "type": "string"
@@ -881,49 +1064,88 @@
           "overallRating": {
             "type": "number"
           },
-          "turning": {
+          "positioningAndPossession": {
             "type": "number"
           },
-          "dribbling": {
+          "interceptingWithoutTackling": {
             "type": "number"
           },
-          "tackling": {
+          "consistency": {
+            "type": "number"
+          },
+          "winningBallBack": {
+            "type": "number"
+          },
+          "coachability": {
+            "type": "number"
+          },
+          "firstTouch": {
             "type": "number"
           },
           "twoFooted": {
             "type": "number"
           },
-          "longPassing": {
+          "shieldingUnderPressure": {
             "type": "number"
           },
-          "shortPassing": {
+          "beatingOpponent": {
             "type": "number"
           },
-          "heading": {
-            "type": "number"
-          },
-          "shortSprints": {
-            "type": "number"
-          },
-          "longSprints": {
+          "pace": {
             "type": "number"
           },
           "agility": {
             "type": "number"
           },
-          "aerialDuels": {
+          "dynamism": {
             "type": "number"
           },
-          "groundDuels": {
+          "bodyUseInDuels": {
             "type": "number"
           },
-          "vision": {
+          "leadership": {
             "type": "number"
           },
-          "personality": {
+          "motivatingTeammates": {
             "type": "number"
           },
-          "movement": {
+          "teamwork": {
+            "type": "number"
+          },
+          "blockingShots": {
+            "type": "number"
+          },
+          "strongInDuels": {
+            "type": "number"
+          },
+          "preventingPenetration": {
+            "type": "number"
+          },
+          "buildUpPlay": {
+            "type": "number"
+          },
+          "creatingGoals": {
+            "type": "number"
+          },
+          "scoringGoals": {
+            "type": "number"
+          },
+          "maximumEffort": {
+            "type": "number"
+          },
+          "continuousImprovement": {
+            "type": "number"
+          },
+          "purposeAndDedication": {
+            "type": "number"
+          },
+          "inspiringLeader": {
+            "type": "number"
+          },
+          "teamSpirit": {
+            "type": "number"
+          },
+          "fullCommitment": {
             "type": "number"
           }
         }
@@ -2621,9 +2843,16 @@
                 "required": [
                   "homeTeam",
                   "awayTeam",
-                  "technical",
-                  "physical",
-                  "mental"
+                  "decisionMaking",
+                  "selfMotivation",
+                  "technicalSkills",
+                  "physicalAbilities",
+                  "personality",
+                  "specialDefending",
+                  "specialAttacking",
+                  "workEthic",
+                  "onFieldLeadership",
+                  "winningMentality"
                 ],
                 "properties": {
                   "homeTeam": {
@@ -2634,14 +2863,35 @@
                     "type": "string",
                     "description": "Away team name"
                   },
-                  "technical": {
-                    "$ref": "#/components/schemas/TechnicalSkills"
+                  "decisionMaking": {
+                    "$ref": "#/components/schemas/DecisionMakingRatings"
                   },
-                  "physical": {
-                    "$ref": "#/components/schemas/PhysicalSkills"
+                  "selfMotivation": {
+                    "$ref": "#/components/schemas/SelfMotivationRatings"
                   },
-                  "mental": {
-                    "$ref": "#/components/schemas/MentalSkills"
+                  "technicalSkills": {
+                    "$ref": "#/components/schemas/TechnicalSkillsRatings"
+                  },
+                  "physicalAbilities": {
+                    "$ref": "#/components/schemas/PhysicalAbilitiesRatings"
+                  },
+                  "personality": {
+                    "$ref": "#/components/schemas/PersonalityRatings"
+                  },
+                  "specialDefending": {
+                    "$ref": "#/components/schemas/SpecialDefendingRatings"
+                  },
+                  "specialAttacking": {
+                    "$ref": "#/components/schemas/SpecialAttackingRatings"
+                  },
+                  "workEthic": {
+                    "$ref": "#/components/schemas/WorkEthicRatings"
+                  },
+                  "onFieldLeadership": {
+                    "$ref": "#/components/schemas/OnFieldLeadershipRatings"
+                  },
+                  "winningMentality": {
+                    "$ref": "#/components/schemas/WinningMentalityRatings"
                   },
                   "notes": {
                     "type": "string"
@@ -2670,7 +2920,7 @@
         },
         "responses": {
           "201": {
-            "description": "Report created — overallRating auto-calculated as average of 12 metrics",
+            "description": "Report created — overallRating auto-calculated as the average of all 31 metrics (1–10)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2847,14 +3097,35 @@
                   "awayTeam": {
                     "type": "string"
                   },
-                  "technical": {
-                    "$ref": "#/components/schemas/TechnicalSkills"
+                  "decisionMaking": {
+                    "$ref": "#/components/schemas/DecisionMakingRatings"
                   },
-                  "physical": {
-                    "$ref": "#/components/schemas/PhysicalSkills"
+                  "selfMotivation": {
+                    "$ref": "#/components/schemas/SelfMotivationRatings"
                   },
-                  "mental": {
-                    "$ref": "#/components/schemas/MentalSkills"
+                  "technicalSkills": {
+                    "$ref": "#/components/schemas/TechnicalSkillsRatings"
+                  },
+                  "physicalAbilities": {
+                    "$ref": "#/components/schemas/PhysicalAbilitiesRatings"
+                  },
+                  "personality": {
+                    "$ref": "#/components/schemas/PersonalityRatings"
+                  },
+                  "specialDefending": {
+                    "$ref": "#/components/schemas/SpecialDefendingRatings"
+                  },
+                  "specialAttacking": {
+                    "$ref": "#/components/schemas/SpecialAttackingRatings"
+                  },
+                  "workEthic": {
+                    "$ref": "#/components/schemas/WorkEthicRatings"
+                  },
+                  "onFieldLeadership": {
+                    "$ref": "#/components/schemas/OnFieldLeadershipRatings"
+                  },
+                  "winningMentality": {
+                    "$ref": "#/components/schemas/WinningMentalityRatings"
                   },
                   "notes": {
                     "type": "string"
