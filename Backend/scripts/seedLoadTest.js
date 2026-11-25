@@ -53,6 +53,7 @@ import SeasonMatch from "../models/seasonMatchModel.js";
 import CoachEvaluation from "../models/coachEvaluationModel.js";
 import ObserverEvaluation from "../models/observerEvaluationModel.js";
 import { ROLES } from "../constants/roles.js";
+import { REPORT_METRIC_GROUPS } from "../constants/reportMetrics.js";
 
 const SEED_MARKER = "loadtest";
 const MARK = { __seed: SEED_MARKER };
@@ -106,6 +107,8 @@ function confirm(question) {
 // ── deterministic-ish random helpers (no external deps) ─────────────────────
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+// التقييمات الشهرية (كوتش/أوبزيرفر) وبنود تقارير الكشافين — كلهم على سلّم 1→10
+// (بنود التقارير كانت 1→5 لمدة أسبوع، ورجعت 1→10 في 2026-11-25)
 const rating = () => randInt(4, 10);
 
 const POSITIONS = ["GK", "CB", "LB", "RB", "CM", "DM", "AM", "LW", "RW", "ST"];
@@ -123,11 +126,21 @@ const SEASONS = ["2024/2025", "2025/2026"];
 const playerName = () => `${pick(FIRST)} ${pick(LAST)}`;
 const phone = () => `01${randInt(0, 2)}${String(randInt(0, 99999999)).padStart(8, "0")}`;
 
-// نفس المعادلة اللي في pre('save') بتاعة ScoutingReport — متوسط الـ12 تقييم
-function calcOverall(technical, physical, mental) {
-    const all = [...Object.values(technical), ...Object.values(physical), ...Object.values(mental)];
+// نفس المعادلة اللي في pre('save') بتاعة ScoutingReport — متوسط الـ31 بند
+// (كانت 15 قبل 2026-11-18). بتاخد أوبجكت المجموعات كله.
+function calcOverall(ratingGroups) {
+    const all = Object.values(ratingGroups).flatMap((group) => Object.values(group));
     return Number((all.reduce((a, v) => a + v, 0) / all.length).toFixed(2));
 }
+
+// بنود التقرير العشوائية — مبنية من constants/reportMetrics.js فمفيش بند بيتنسى
+const randomReportRatings = () =>
+    Object.fromEntries(
+        Object.entries(REPORT_METRIC_GROUPS).map(([group, fields]) => [
+            group,
+            Object.fromEntries(fields.map((field) => [field, rating()])),
+        ])
+    );
 
 // بيتأكد إن الشكل اللي بنبنيه بإيدينا يعدّي فاليديشن الموديل الحقيقي قبل ما نـ
 // bulk-insert آلاف منه عن طريق الدرايفر (اللي بيتخطى الفاليديشن)
@@ -426,9 +439,7 @@ async function seed() {
             const author = r === REPORTS_PER_PLAYER - 1 && p.observers.length
                 ? p.observers[0]
                 : (p.coach ?? p.createdBy);
-            const technical = { turning: rating(), dribbling: rating(), tackling: rating(), twoFooted: rating(), longPassing: rating(), shortPassing: rating(), heading: rating() };
-            const physical = { shortSprints: rating(), longSprints: rating(), agility: rating(), aerialDuels: rating(), groundDuels: rating() };
-            const mental = { vision: rating(), personality: rating(), movement: rating() };
+            const ratings = randomReportRatings();
             reports.push({
                 _id: oid(),
                 player: p._id,
@@ -440,10 +451,8 @@ async function seed() {
                 awayTeam: null,
                 awayTeamName: null,
                 seasonMatch: r === 0 && linkedMatch ? linkedMatch._id : null,
-                technical,
-                physical,
-                mental,
-                overallRating: calcOverall(technical, physical, mental),
+                ...ratings,
+                overallRating: calcOverall(ratings),
                 notes: `LoadTest report ${r + 1} — solid performance across the pitch`,
                 createdAt: new Date(now - randInt(0, 300) * 86400000),
                 updatedAt: now,

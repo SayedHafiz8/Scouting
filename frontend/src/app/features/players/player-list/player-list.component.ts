@@ -10,6 +10,7 @@ import { environment } from '../../../../environments/environment';
 import { registrationLabel } from '../registration.util';
 import { PlayerService } from '../services/player.service';
 import { ScoutingReportService } from '../../scouting-reports/services/scouting-report.service';
+import { ratingColorOf } from '../../scouting-reports/report-metrics';
 import { TeamService } from '../../teams/services/team.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { Player, PlayerFilters, PlayerPosition, PlayerStatus, PLAYER_POSITIONS } from '../../../core/models/player.model';
@@ -1175,9 +1176,10 @@ export class PlayerListComponent implements OnInit {
     return this.avgRatings()[playerId] ?? null;
   }
 
+  // الحدود نسبة من RATING_MAX مش أرقام ثابتة — السلّم اتغيّر مرتين في أسبوع
   ratingColor(rating: number | null): string {
     if (rating == null) return 'var(--text-muted)';
-    return rating >= 8 ? '#22c55e' : rating >= 5 ? '#f59e0b' : '#f43f5e';
+    return ratingColorOf(rating);
   }
 
   resetAndLoad(): void {

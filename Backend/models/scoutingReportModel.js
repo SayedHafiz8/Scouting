@@ -1,5 +1,24 @@
 import mongoose from "mongoose";
 
+import {
+    REPORT_METRIC_GROUPS,
+    REPORT_GROUP_KEYS,
+    REPORT_METRIC_PAIRS,
+    RATING_MIN,
+    RATING_MAX,
+} from "../constants/reportMetrics.js";
+
+// بند تقييم واحد — نفس التعريف بالظبط لكل الـ31 بند، فمكتوب مرة واحدة.
+// البلوكات المكررة اللي كانت هنا قبل كده بقت 10 سطور بأسماء المجموعات صريحة
+// تحت، وده اللي محتاجين نلاقيه بالـgrep — مش تكرار { type: Number, min, max }.
+const ratingGroup = (fields) =>
+    Object.fromEntries(
+        fields.map((field) => [
+            field,
+            { type: Number, min: RATING_MIN, max: RATING_MAX, required: true },
+        ])
+    );
+
 const scoutingReportSchema = new mongoose.Schema(
     {
         player: {
@@ -73,122 +92,34 @@ const scoutingReportSchema = new mongoose.Schema(
             default: null,
         },
 
-        // ===== Technical Skills =====
-        // طلب مالك 2026-09 — استبدلت المجموعة القديمة (passing/dribbling/shooting/
-        // ballControl) بالكامل. لا توافق رجعي مقصود: تقارير قديمة بالحقول القديمة
-        // بتفضل موجودة في الداتابيز بس مش بتتعرض (Mongoose strict mode بيتجاهل
-        // مسارات مش معرّفة في المخطط وقت القراءة) — قرار مالك صريح "امسح إلي مش
-        // محتاجينه وخلي الموجود عادي"، بلا migration.
-        technical: {
-            turning: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            dribbling: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            tackling: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            twoFooted: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            longPassing: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            shortPassing: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            heading: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-        },
-
-        // ===== Physical Skills =====
-        physical: {
-            shortSprints: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            longSprints: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            agility: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            // طلب مالك 2026-09 — الالتحامات اتقسمت لهوائية وأرضية، كل واحدة تقييم
-            // مستقل. التقارير القديمة فيها physical.duels لسه في الداتابيز بس مش
-            // بتتعرض (Mongoose strict mode)، بلا migration — نفس قرار استبدال
-            // مجموعة الفيلدز فوق.
-            aerialDuels: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            groundDuels: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-        },
-
-        // ===== Mental Skills =====
-        mental: {
-            vision: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            personality: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-            movement: {
-                type: Number,
-                min: 1,
-                max: 10,
-                required: true,
-            },
-        },
+        // ═══ بنود التقييم — 10 مجموعات / 31 بند، كل بند من 1 لـ 10 ═══
+        //
+        // طلب مالك 2026-11-18 — استبدال كامل للمجموعات القديمة (technical /
+        // physical / mental). و2026-11-25 — تلات بنود اتضافوا للمهارات الفنية
+        // والسلّم رجع 1→10. البنود والأسماء في constants/reportMetrics.js، وهو
+        // المصدر الوحيد اللي الفاليديشن والإحصائيات والـswagger بيشتقوا منه كمان.
+        //
+        // ⚠️ بلا migration بقرار المالك: التقارير القديمة بتفضل في الداتابيز
+        // بحقولها القديمة وبـoverallRating على سلّم العشرة، وبتتقرأ بمجموعات
+        // جديدة فاضية (Mongoose strict mode بيتجاهل المسارات غير المعرّفة).
+        decisionMaking: ratingGroup(REPORT_METRIC_GROUPS.decisionMaking),
+        selfMotivation: ratingGroup(REPORT_METRIC_GROUPS.selfMotivation),
+        technicalSkills: ratingGroup(REPORT_METRIC_GROUPS.technicalSkills),
+        physicalAbilities: ratingGroup(REPORT_METRIC_GROUPS.physicalAbilities),
+        personality: ratingGroup(REPORT_METRIC_GROUPS.personality),
+        specialDefending: ratingGroup(REPORT_METRIC_GROUPS.specialDefending),
+        specialAttacking: ratingGroup(REPORT_METRIC_GROUPS.specialAttacking),
+        workEthic: ratingGroup(REPORT_METRIC_GROUPS.workEthic),
+        onFieldLeadership: ratingGroup(REPORT_METRIC_GROUPS.onFieldLeadership),
+        winningMentality: ratingGroup(REPORT_METRIC_GROUPS.winningMentality),
 
         // ===== Overall Rating (يتحسب تلقائي) =====
+        // الحد الأقصى 10 (كان 5 لمدة أسبوع بين 2026-11-18 و2026-11-25). القيم
+        // المخزّنة من الأسبوع ده صالحة — المجال الجديد أوسع، فمفيش تقرير بيترفض.
         overallRating: {
             type: Number,
-            min: 1,
-            max: 10,
+            min: RATING_MIN,
+            max: RATING_MAX,
         },
 
         notes: {
@@ -199,51 +130,42 @@ const scoutingReportSchema = new mongoose.Schema(
 );
 
 // ===== حساب Overall Rating تلقائي قبل الحفظ =====
-function calcOverallRating(doc) {
-    const allScores = [
-        doc.technical.turning,
-        doc.technical.dribbling,
-        doc.technical.tackling,
-        doc.technical.twoFooted,
-        doc.technical.longPassing,
-        doc.technical.shortPassing,
-        doc.technical.heading,
-        doc.physical.shortSprints,
-        doc.physical.longSprints,
-        doc.physical.agility,
-        doc.physical.aerialDuels,
-        doc.physical.groundDuels,
-        doc.mental.vision,
-        doc.mental.personality,
-        doc.mental.movement,
-    ];
+//
+// بياخد أوبجكت فيه الـ10 مجموعات (مستند أو نتيجة دمج) وبيرجّع متوسط الـ31 بند
+// الموجودة فعلاً. بيتجاهل أي بند مش رقم صالح بدل ما يجمعه ويطلّع NaN — ده مهم
+// دلوقتي بالتحديد: التقارير القديمة مالهاش المجموعات الجديدة خالص (بلا
+// migration)، فتعديل واحد منها كان هيكتب overallRating = NaN ويخرب المستند.
+// بيرجّع null لو مفيش ولا بند، والمنادي بيسيب القيمة القديمة زي ما هي.
+function calcOverallRating(source) {
+    const scores = REPORT_METRIC_PAIRS
+        .map(([group, field]) => source?.[group]?.[field])
+        .filter((v) => typeof v === "number" && Number.isFinite(v));
 
-    const sum = allScores.reduce((acc, val) => acc + val, 0);
-    return parseFloat((sum / allScores.length).toFixed(2));
+    if (!scores.length) return null;
+
+    const sum = scores.reduce((acc, val) => acc + val, 0);
+    return parseFloat((sum / scores.length).toFixed(2));
 }
 
 scoutingReportSchema.pre("save", function () {
-    this.overallRating = calcOverallRating(this);
-    
+    const rating = calcOverallRating(this);
+    if (rating !== null) this.overallRating = rating;
 });
 
 scoutingReportSchema.pre("findOneAndUpdate", async function () {
     const update = this.getUpdate();
 
-    const hasNestedUpdate =
-        update.technical || update.physical || update.mental ||
-        Object.keys(update).some(key =>
-            key.startsWith("technical.") ||
-            key.startsWith("physical.") ||
-            key.startsWith("mental.")
-        );
+    // أي مجموعة من الـ10 اتبعتت ككائن، أو أي بند منها بـdot notation
+    const hasNestedUpdate = REPORT_GROUP_KEYS.some(
+        (group) => update[group] || Object.keys(update).some((key) => key.startsWith(`${group}.`))
+    );
 
     if (!hasNestedUpdate) return;
 
-    // .select: الهوك بيحسب متوسط من الـ15 تقييم بس — مكانش محتاج يجيب المستند
-    // كامل (notes وكل الحقول) عشان كده.
+    // .select: الهوك بيحسب متوسط البنود بس — مش محتاج المستند كامل (notes وباقي
+    // الحقول) عشان كده.
     const current = await this.model.findOne(this.getQuery())
-        .select("technical physical mental")
+        .select(REPORT_GROUP_KEYS.join(" "))
         .lean();
     if (!current) return;
 
@@ -256,25 +178,15 @@ scoutingReportSchema.pre("findOneAndUpdate", async function () {
         }
     }
 
-    const merged = {
-        technical: { ...current.technical, ...update.technical, ...flatUpdate.technical },
-        physical:  { ...current.physical,  ...update.physical,  ...flatUpdate.physical  },
-        mental:    { ...current.mental,     ...update.mental,    ...flatUpdate.mental    },
-    };
-
-    const allScores = [
-        merged.technical.turning, merged.technical.dribbling,
-        merged.technical.tackling, merged.technical.twoFooted,
-        merged.technical.longPassing, merged.technical.shortPassing,
-        merged.technical.heading,
-        merged.physical.shortSprints, merged.physical.longSprints,
-        merged.physical.agility, merged.physical.aerialDuels, merged.physical.groundDuels,
-        merged.mental.vision, merged.mental.personality, merged.mental.movement,
-    ];
-
-    update.overallRating = parseFloat(
-        (allScores.reduce((a, v) => a + v, 0) / allScores.length).toFixed(2)
+    const merged = Object.fromEntries(
+        REPORT_GROUP_KEYS.map((group) => [
+            group,
+            { ...current[group], ...update[group], ...flatUpdate[group] },
+        ])
     );
+
+    const rating = calcOverallRating(merged);
+    if (rating !== null) update.overallRating = rating;
 });
 
 // audit-database D1 — الفرادة على **المباراة نفسها**، مش على اليوم.

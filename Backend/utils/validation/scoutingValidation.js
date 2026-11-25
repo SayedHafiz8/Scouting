@@ -7,12 +7,13 @@ import Team from "../../models/teamModel.js";
 import SeasonMatch from "../../models/seasonMatchModel.js";
 import { ROLES } from "../../constants/roles.js";
 import { utcDayRange } from "../time.js";
+import { REPORT_METRIC_PATHS, RATING_MIN, RATING_MAX } from "../../constants/reportMetrics.js";
 
-// طلب مالك 2026-09 — استبدال كامل لمجموعة الفيلدز (راجع scoutingReportModel.js
-// لتفاصيل القرار). القوائم دي مصدر الحقيقة اللي createValidate/updateValidate تحتها بترجع منه.
-const technicalFields = ["turning", "dribbling", "tackling", "twoFooted", "longPassing", "shortPassing", "heading"];
-const physicalFields = ["shortSprints", "longSprints", "agility", "aerialDuels", "groundDuels"];
-const mentalFields = ["vision", "personality", "movement"];
+// طلب مالك 2026-11-18 — استبدال كامل تالت لمجموعة البنود، و2026-11-25 — بقوا
+// 10 مجموعات / 31 بند والسلّم رجع 1→10. القايمة والحدود نفسهم في
+// constants/reportMetrics.js — نفس المصدر اللي الموديل بيبني منه المخطط،
+// فمستحيل يفترقوا.
+const metricPaths = REPORT_METRIC_PATHS;
 
 // rating field (1 -> 10) - مطلوبة (للـ create)
 const requiredRating = (path) =>
@@ -20,15 +21,15 @@ const requiredRating = (path) =>
         .notEmpty()
         .withMessage(`${path} is required`)
         .bail()
-        .isFloat({ min: 1, max: 10 })
-        .withMessage(`${path} must be a number between 1 and 10`);
+        .isFloat({ min: RATING_MIN, max: RATING_MAX })
+        .withMessage(`${path} must be a number between ${RATING_MIN} and ${RATING_MAX}`);
 
 // rating field (1 -> 10) - اختيارية (للـ update)
 const optionalRating = (path) =>
     body(path)
         .optional()
-        .isFloat({ min: 1, max: 10 })
-        .withMessage(`${path} must be a number between 1 and 10`);
+        .isFloat({ min: RATING_MIN, max: RATING_MAX })
+        .withMessage(`${path} must be a number between ${RATING_MIN} and ${RATING_MAX}`);
 
 // فيلد ممنوع يتبعت من العميل خالص (بيتحدد من السيرفر بس)
 const lockField = (field) =>
@@ -209,9 +210,7 @@ export const createValidate = [
 
     teamFieldsRequired,
 
-    ...technicalFields.map((field) => requiredRating(`technical.${field}`)),
-    ...physicalFields.map((field) => requiredRating(`physical.${field}`)),
-    ...mentalFields.map((field) => requiredRating(`mental.${field}`)),
+    ...metricPaths.map((path) => requiredRating(path)),
 
     body("notes")
         .optional()
@@ -253,9 +252,7 @@ export const updateValidate = [
     body("homeTeamName").optional().trim().isLength({ max: 100 }).withMessage("homeTeamName must be less than 100 characters"),
     body("awayTeamName").optional().trim().isLength({ max: 100 }).withMessage("awayTeamName must be less than 100 characters"),
 
-    ...technicalFields.map((field) => optionalRating(`technical.${field}`)),
-    ...physicalFields.map((field) => optionalRating(`physical.${field}`)),
-    ...mentalFields.map((field) => optionalRating(`mental.${field}`)),
+    ...metricPaths.map((path) => optionalRating(path)),
 
     body("notes")
         .optional()

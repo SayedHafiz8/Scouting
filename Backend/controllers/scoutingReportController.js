@@ -14,6 +14,7 @@ import AppError from "../utils/appError.js";
 import { utcDayRange, utcRecentDaysRange } from "../utils/time.js";
 import { ROLES } from "../constants/roles.js";
 import { playerScopeFor } from "../services/scope.js";
+import { REPORT_METRIC_PAIRS, REPORT_METRIC_FIELDS } from "../constants/reportMetrics.js";
 
 // audit-database I2 — وايت ليست الترتيب. matchDate هو الترتيب الوحيد اللي الفرونت
 // بيبعته (report-list.component.ts: sort: "-matchDate")، ومغطّى بـ
@@ -521,62 +522,35 @@ export const getPlayerStatistics = asyncHandler(async (req, res, next) => {
         // فلتر التقارير بتاعة اللاعب ده بس
         { $match: match },
 
-        // احسب المتوسطات
+        // احسب المتوسطات — مرحلة مبنية من constants/reportMetrics.js، فبند جديد
+        // بيظهر هنا تلقائي بلا تعديل. الشكل اللي كان مكتوب بالإيد كان بيوقع من
+        // قايمة البنود بسهولة (متوسط بند مش مذكور = مش موجود في الرد بالصمت).
         {
             $group: {
                 _id: "$player",
                 totalReports: { $sum: 1 },
                 overallRating: { $avg: "$overallRating" },
-
-                // Technical
-                turning:      { $avg: "$technical.turning" },
-                dribbling:    { $avg: "$technical.dribbling" },
-                tackling:     { $avg: "$technical.tackling" },
-                twoFooted:    { $avg: "$technical.twoFooted" },
-                longPassing:  { $avg: "$technical.longPassing" },
-                shortPassing: { $avg: "$technical.shortPassing" },
-                heading:      { $avg: "$technical.heading" },
-
-                // Physical
-                shortSprints: { $avg: "$physical.shortSprints" },
-                longSprints:  { $avg: "$physical.longSprints" },
-                agility:      { $avg: "$physical.agility" },
-                aerialDuels:  { $avg: "$physical.aerialDuels" },
-                groundDuels:  { $avg: "$physical.groundDuels" },
-
-                // Mental
-                vision:      { $avg: "$mental.vision" },
-                personality: { $avg: "$mental.personality" },
-                movement:    { $avg: "$mental.movement" },
+                ...Object.fromEntries(
+                    REPORT_METRIC_PAIRS.map(([group, field]) => [field, { $avg: `$${group}.${field}` }])
+                ),
 
                 // اخر تقرير
                 lastReport: { $max: "$matchDate" },
             },
         },
 
-        // رتب الـ output — فلات زي ما موثّق في swagger (ReportStatistics schema)، مش متداخل
-        // تحت technical/physical/mental
+        // رتب الـ output — فلات زي ما موثّق في swagger (ReportStatistics schema)،
+        // مش متداخل تحت المجموعات. الحارس في reportMetrics.js بيضمن إن أسماء
+        // البنود فريدة فمفيش متوسط بيكتب فوق التاني هنا.
         {
             $project: {
                 _id: 0,
                 totalReports: 1,
                 lastReport: 1,
                 overallRating: { $round: ["$overallRating", 2] },
-                turning:      { $round: ["$turning", 2] },
-                dribbling:    { $round: ["$dribbling", 2] },
-                tackling:     { $round: ["$tackling", 2] },
-                twoFooted:    { $round: ["$twoFooted", 2] },
-                longPassing:  { $round: ["$longPassing", 2] },
-                shortPassing: { $round: ["$shortPassing", 2] },
-                heading:      { $round: ["$heading", 2] },
-                shortSprints: { $round: ["$shortSprints", 2] },
-                longSprints:  { $round: ["$longSprints", 2] },
-                agility:      { $round: ["$agility", 2] },
-                aerialDuels:  { $round: ["$aerialDuels", 2] },
-                groundDuels:  { $round: ["$groundDuels", 2] },
-                vision:       { $round: ["$vision", 2] },
-                personality:  { $round: ["$personality", 2] },
-                movement:     { $round: ["$movement", 2] },
+                ...Object.fromEntries(
+                    REPORT_METRIC_FIELDS.map((field) => [field, { $round: [`$${field}`, 2] }])
+                ),
             },
         },
     ]);
@@ -588,9 +562,7 @@ export const getPlayerStatistics = asyncHandler(async (req, res, next) => {
         totalReports: 0,
         lastReport: null,
         overallRating: 0,
-        turning: 0, dribbling: 0, tackling: 0, twoFooted: 0, longPassing: 0, shortPassing: 0, heading: 0,
-        shortSprints: 0, longSprints: 0, agility: 0, aerialDuels: 0, groundDuels: 0,
-        vision: 0, personality: 0, movement: 0,
+        ...Object.fromEntries(REPORT_METRIC_FIELDS.map((field) => [field, 0])),
     };
 
     res.status(200).json({

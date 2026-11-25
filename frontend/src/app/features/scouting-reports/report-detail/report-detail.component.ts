@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
@@ -11,6 +11,7 @@ import { RatingBarComponent } from '../../../shared/components/rating-bar/rating
 import { RadarChartComponent } from '../../../shared/components/radar-chart/radar-chart.component';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { REPORT_METRIC_GROUPS, RATING_MAX, ratingColorOf } from '../report-metrics';
 
 @Component({
     selector: 'app-report-detail',
@@ -75,41 +76,40 @@ import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialo
               }
             </div>
 
-            <!-- Technical -->
-            <div class="card p-5">
-              <h3 class="text-xs font-semibold uppercase tracking-wide mb-4 text-primary-600">{{ 'REPORTS.DETAIL.TECHNICAL' | translate }}</h3>
-              <div class="space-y-3">
-                <app-rating-bar [label]="'REPORTS.FORM.TURNING' | translate" [value]="report()!.technical.turning" />
-                <app-rating-bar [label]="'REPORTS.FORM.DRIBBLING' | translate" [value]="report()!.technical.dribbling" />
-                <app-rating-bar [label]="'REPORTS.FORM.TACKLING' | translate" [value]="report()!.technical.tackling" />
-                <app-rating-bar [label]="'REPORTS.FORM.TWO_FOOTED' | translate" [value]="report()!.technical.twoFooted" />
-                <app-rating-bar [label]="'REPORTS.FORM.LONG_PASSING' | translate" [value]="report()!.technical.longPassing" />
-                <app-rating-bar [label]="'REPORTS.FORM.SHORT_PASSING' | translate" [value]="report()!.technical.shortPassing" />
-                <app-rating-bar [label]="'REPORTS.FORM.HEADING' | translate" [value]="report()!.technical.heading" />
+            <!-- ══ بنود التقييم: 10 مجموعات / 31 بند، كل بند 1→10 ═════════════
+                 لفّة واحدة على REPORT_METRIC_GROUPS بدل 3 كاردات مكتوبة بالإيد.
+                 الصفوف محسوبة مسبقًا في ratingCards() — مفيش نداء دالة جوه
+                 @for (قاعدة CLAUDE.md: 31 بند × كل دورة تغيير). -->
+            @if (hasRatings()) {
+              @for (card of ratingCards(); track card.key) {
+                @if (card.sectionLabel) {
+                  <h2 class="text-sm font-bold pt-2 ps-1" style="color:var(--text-primary)">
+                    {{ card.sectionLabel | translate }}
+                  </h2>
+                }
+                <div class="card p-5">
+                  <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide" [style.color]="card.color">
+                      {{ card.label | translate }}
+                    </h3>
+                    <span class="text-sm font-black tabular-nums" [style.color]="card.averageColor">
+                      {{ card.averageText }}
+                    </span>
+                  </div>
+                  <div class="space-y-3">
+                    @for (row of card.rows; track row.key) {
+                      <app-rating-bar [label]="row.label | translate" [value]="row.value" [max]="ratingMax" />
+                    }
+                  </div>
+                </div>
+              }
+            } @else {
+              <!-- تقرير اتكتب قبل 2026-11-18 — بنود قديمة اتشالت من النظام بلا
+                   migration (قرار المالك)، فمفيش حاجة تتعرض غير التقييم العام. -->
+              <div class="card p-5">
+                <p class="text-sm" style="color:var(--text-muted)">{{ 'REPORTS.DETAIL.LEGACY_RATINGS' | translate }}</p>
               </div>
-            </div>
-
-            <!-- Physical -->
-            <div class="card p-5">
-              <h3 class="text-xs font-semibold uppercase tracking-wide mb-4 text-accent-600">{{ 'REPORTS.DETAIL.PHYSICAL' | translate }}</h3>
-              <div class="space-y-3">
-                <app-rating-bar [label]="'REPORTS.FORM.SHORT_SPRINTS' | translate" [value]="report()!.physical.shortSprints" />
-                <app-rating-bar [label]="'REPORTS.FORM.LONG_SPRINTS' | translate" [value]="report()!.physical.longSprints" />
-                <app-rating-bar [label]="'REPORTS.FORM.AGILITY' | translate" [value]="report()!.physical.agility" />
-                <app-rating-bar [label]="'REPORTS.FORM.AERIAL_DUELS' | translate" [value]="report()!.physical.aerialDuels" />
-                <app-rating-bar [label]="'REPORTS.FORM.GROUND_DUELS' | translate" [value]="report()!.physical.groundDuels" />
-              </div>
-            </div>
-
-            <!-- Mental -->
-            <div class="card p-5">
-              <h3 class="text-xs font-semibold uppercase tracking-wide mb-4" style="color:#8b5cf6">{{ 'REPORTS.DETAIL.MENTAL' | translate }}</h3>
-              <div class="space-y-3">
-                <app-rating-bar [label]="'REPORTS.FORM.VISION' | translate" [value]="report()!.mental.vision" />
-                <app-rating-bar [label]="'REPORTS.FORM.PERSONALITY' | translate" [value]="report()!.mental.personality" />
-                <app-rating-bar [label]="'REPORTS.FORM.MOVEMENT' | translate" [value]="report()!.mental.movement" />
-              </div>
-            </div>
+            }
 
             @if (report()!.notes) {
               <div class="card p-5">
@@ -119,13 +119,15 @@ import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialo
             }
           </div>
 
-          <!-- Right: radar -->
-          <div>
-            <div class="card p-5 sticky top-5">
-              <h3 class="text-xs font-semibold uppercase tracking-wide mb-4 text-center" style="color:var(--text-muted)">{{ 'REPORTS.DETAIL.RADAR' | translate }}</h3>
-              <app-radar-chart [data]="radarData()" />
+          <!-- Right: radar — متوسط كل مجموعة (10 محاور)، مش الـ31 بند -->
+          @if (hasRatings()) {
+            <div>
+              <div class="card p-5 sticky top-5">
+                <h3 class="text-xs font-semibold uppercase tracking-wide mb-4 text-center" style="color:var(--text-muted)">{{ 'REPORTS.DETAIL.RADAR' | translate }}</h3>
+                <app-radar-chart [data]="radarData()" [max]="ratingMax" />
+              </div>
             </div>
-          </div>
+          }
         </div>
       }
     </div>
@@ -222,22 +224,57 @@ export class ReportDetailComponent implements OnInit, OnDestroy {
     return this.teamName(team) || name || '';
   }
 
-  radarData(): Record<string, number> {
-    const r = this.report();
-    if (!r) return {};
-    return {
-      turning: r.technical.turning, dribbling: r.technical.dribbling,
-      tackling: r.technical.tackling, twoFooted: r.technical.twoFooted,
-      longPassing: r.technical.longPassing, shortPassing: r.technical.shortPassing,
-      heading: r.technical.heading,
-      shortSprints: r.physical.shortSprints, longSprints: r.physical.longSprints,
-      agility: r.physical.agility, aerialDuels: r.physical.aerialDuels, groundDuels: r.physical.groundDuels,
-      vision: r.mental.vision, personality: r.mental.personality, movement: r.mental.movement,
-    };
-  }
+  // ══ بنود التقييم ═══════════════════════════════════════════════════════
+  // الكاردات والصفوف محسوبة مرة واحدة لما التقرير يوصل، مش في كل دورة تغيير —
+  // 31 بند × نداء لكل صف كان بيبقى الحالة اللي CLAUDE.md بتمنعها بالحرف.
 
+  readonly ratingMax = RATING_MAX;
+
+  /** تقرير بالشكل الجديد (فيه مجموعة واحدة على الأقل من الـ10) */
+  readonly hasRatings = computed(() => {
+    const r = this.report() as Record<string, unknown> | null;
+    if (!r) return false;
+    return REPORT_METRIC_GROUPS.some(g => r[g.key] != null);
+  });
+
+  readonly ratingCards = computed(() => {
+    const r = this.report() as unknown as Record<string, Record<string, number> | undefined> | null;
+    if (!r) return [];
+
+    return REPORT_METRIC_GROUPS.map(group => {
+      const values = group.metrics.map(m => r[group.key]?.[m.key] ?? 0);
+      const filled = values.filter(v => v > 0);
+      const average = filled.length ? filled.reduce((a, b) => a + b, 0) / filled.length : 0;
+
+      return {
+        key: group.key,
+        label: group.label,
+        color: group.color,
+        sectionLabel: group.sectionLabel,
+        averageText: average ? average.toFixed(1) : '—',
+        averageColor: ratingColorOf(average),
+        rows: group.metrics.map((m, i) => ({ key: m.key, label: m.label, value: values[i] })),
+      };
+    });
+  });
+
+  /** متوسط كل مجموعة — 10 محاور بدل 28، عشان اللافتات تفضل مقروءة */
+  readonly radarData = computed<Record<string, number>>(() => {
+    const cards = this.ratingCards();
+    const out: Record<string, number> = {};
+    REPORT_METRIC_GROUPS.forEach((group, i) => {
+      const rows = cards[i]?.rows ?? [];
+      const filled = rows.map(row => row.value).filter(v => v > 0);
+      out[group.short] = filled.length ? +(filled.reduce((a, b) => a + b, 0) / filled.length).toFixed(2) : 0;
+    });
+    return out;
+  });
+
+  // السلّم الحالي 1→10، وبرضه 1→10 للتقارير القديمة (اللي قبل استبدال البنود)،
+  // فالتلوين واحد للاتنين. التقارير اللي اتكتبت في أسبوع سلّم 1→5 بتتلوّن
+  // بالسلّم الواسع فبتبان أقل من حقيقتها — أثر جانبي معروف لقرار "بلا migration".
   overallStyle(rating: number): string {
-    const color = rating >= 8 ? '#22c55e' : rating >= 5 ? '#f59e0b' : '#f43f5e';
+    const color = ratingColorOf(rating, this.hasRatings() ? RATING_MAX : 10);
     return `background:${color}18; color:${color}`;
   }
 

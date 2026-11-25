@@ -3,7 +3,8 @@ import request from 'supertest';
 import mongoose from 'mongoose';
 import app from '../app.js';
 import SeasonMatch from '../models/seasonMatchModel.js';
-import { createAdmin, createCoach, createObserver, createPlayer, createReport, createTeam, defaultTeamIds, reportPayload, seedAgeGroups, setupPlayerMatchDay } from './helpers/factory.js';
+import { createAdmin, createCoach, createObserver, createPlayer, createReport, createTeam, defaultTeamIds, reportPayload, reportRatings, seedAgeGroups, setupPlayerMatchDay } from './helpers/factory.js';
+import { REPORT_METRIC_PAIRS } from '../constants/reportMetrics.js';
 
 // reportPayload() plus fresh Team ids matching the player's age group — also sets up the player's
 // team + today's SeasonMatch (the report links to it)
@@ -104,15 +105,15 @@ describe('POST /api/v1/players/:playerId/reports', () => {
     expect(res.body.data.document.overallRating).toBeDefined();
   });
 
-  it('auto-calculates overallRating as average of all 15 metrics', async () => {
+  // طلب مالك 2026-11-18 (استبدال البنود) و2026-11-25 (31 بند، سلّم 1→10).
+  // المتوسط المتوقَّع محسوب من نفس الـpayload اللي اتبعت (كل البنود من
+  // constants/reportMetrics.js)، مش من قايمة أرقام مكتوبة بالإيد زي قبل كده —
+  // كده التست مايفسدش لو بند اتغيّر.
+  it('auto-calculates overallRating as the average of every metric', async () => {
     const { token } = await createCoach();
     const player = await createPlayer(token);
 
-    const payload = await payloadFor(player, {
-      technical: { turning: 8, dribbling: 6, tackling: 7, twoFooted: 9, longPassing: 8, shortPassing: 7, heading: 6 },
-      physical:  { shortSprints: 8, longSprints: 7, agility: 6, aerialDuels: 9, groundDuels: 9 },
-      mental:    { vision: 7, personality: 8, movement: 6 },
-    });
+    const payload = await payloadFor(player);
 
     const res = await request(app)
       .post(`/api/v1/players/${player._id}/reports`)
@@ -120,8 +121,10 @@ describe('POST /api/v1/players/:playerId/reports', () => {
       .send(payload);
 
     expect(res.status).toBe(201);
-    const allScores = [8,6,7,9,8,7,6, 8,7,6,9,9, 7,8,6];
-    const expected = parseFloat((allScores.reduce((a,b)=>a+b,0) / 15).toFixed(2));
+
+    const allScores = REPORT_METRIC_PAIRS.map(([group, field]) => payload[group][field]);
+    expect(allScores).toHaveLength(31);
+    const expected = parseFloat((allScores.reduce((a, b) => a + b, 0) / allScores.length).toFixed(2));
     expect(res.body.data.document.overallRating).toBe(expected);
   });
 
@@ -174,13 +177,17 @@ describe('POST /api/v1/players/:playerId/reports', () => {
     const res = await request(app)
       .post(`/api/v1/players/${player._id}/reports`)
       .set('Authorization', `Bearer ${token}`)
+      // ⚠️ الـoverride بيستبدل المجموعة كلها، فلازم تبقى كاملة (7 بنود) وإلا
+      // الرفض بييجي من "بند ناقص" مش من "قيمة تحت الحد" — تست بيقيس حاجة تانية.
+      // reportRatings() هي الأساس عشان البنود تفضل متسقة مع المصدر.
       .send(await payloadFor(player, {
-        technical: { turning: 0, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 6, heading: 8 },
+        technicalSkills: { ...reportRatings().technicalSkills, firstTouch: 0 },
       }));
 
     expect(res.status).toBe(400);
   });
 
+  // السلّم رجع 1→10 (2026-11-25)، فـ11 هي اللي فوق الحد تاني
   it('returns 400 for rating above maximum (11)', async () => {
     const { token } = await createCoach();
     const player = await createPlayer(token);
@@ -189,7 +196,7 @@ describe('POST /api/v1/players/:playerId/reports', () => {
       .post(`/api/v1/players/${player._id}/reports`)
       .set('Authorization', `Bearer ${token}`)
       .send(await payloadFor(player, {
-        technical: { turning: 11, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 6, heading: 8 },
+        technicalSkills: { ...reportRatings().technicalSkills, firstTouch: 11 },
       }));
 
     expect(res.status).toBe(400);
@@ -214,10 +221,10 @@ describe('POST /api/v1/players/:playerId/reports', () => {
     expect(res.body.data.document.coach._id).toBe(admin._id.toString());
   });
 
-  it('returns 400 when technical fields are missing', async () => {
+  it('returns 400 when a whole rating group is missing', async () => {
     const { token } = await createCoach();
     const player = await createPlayer(token);
-    const { technical: _, ...rest } = await payloadFor(player);
+    const { technicalSkills: _, ...rest } = await payloadFor(player);
 
     const res = await request(app)
       .post(`/api/v1/players/${player._id}/reports`)
@@ -327,7 +334,13 @@ describe('PATCH /api/v1/players/:playerId/reports/:id', () => {
     const res = await request(app)
       .patch(`/api/v1/players/${player._id}/reports/${report._id}`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ technical: { turning: 10, dribbling: 10, tackling: 10, twoFooted: 10, longPassing: 10, shortPassing: 10, heading: 10 } });
+      // المجموعة كاملة: $set بيستبدل الكائن كله، فبنود ناقصة كانت هتتشال من
+      // المستند وتخلي متوسطه محسوب من بنود أقل
+      .send({
+        technicalSkills: Object.fromEntries(
+          Object.keys(reportRatings().technicalSkills).map((field) => [field, 1])
+        ),
+      });
 
     expect(res.status).toBe(200);
     expect(res.body.data.document.overallRating).not.toBe(originalRating);
@@ -681,8 +694,11 @@ describe('GET /api/v1/players/reports/average-ratings', () => {
     const playerA = await createPlayer(token);
     const playerB = await createPlayer(token);
 
-    await createReport(token, playerA._id, { technical: { turning: 10, dribbling: 10, tackling: 10, twoFooted: 10, longPassing: 10, shortPassing: 10, heading: 10 } });
-    await createReport(token, playerA._id, { technical: { turning: 6, dribbling: 6, tackling: 6, twoFooted: 6, longPassing: 6, shortPassing: 6, heading: 6 } });
+    // تقريرين بمتوسطين مختلفين — المجموعة كاملة في الحالتين (override بيستبدلها)
+    const technicalAll = (value) =>
+      Object.fromEntries(Object.keys(reportRatings().technicalSkills).map((f) => [f, value]));
+    await createReport(token, playerA._id, { technicalSkills: technicalAll(10) });
+    await createReport(token, playerA._id, { technicalSkills: technicalAll(4) });
     await createReport(token, playerB._id);
 
     const res = await request(app)

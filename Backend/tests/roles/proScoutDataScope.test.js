@@ -503,7 +503,8 @@ describe('proScout — scoped aggregates (US1, FR-012, FR-013)', () => {
       ...reportPayload(),
       player: onPro._id,
       coach: scout.user._id,
-      overallRating: 8,
+      // overallRating مابيتبعتش بالإيد — pre('save') بيحسبه من بنود reportPayload
+      // (قيمة مكتوبة بالإيد بتبقى كذب على المستند أول ما السلّم يتغيّر)
       matchDate: new Date('2026-03-01T00:00:00.000Z'),
     });
 

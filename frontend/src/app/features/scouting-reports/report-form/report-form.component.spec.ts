@@ -11,6 +11,7 @@ import { SeasonMatchService } from '../../season-matches/services/season-match.s
 import { TeamService } from '../../teams/services/team.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { AuthService } from '../../../core/auth/auth.service';
+import { REPORT_METRIC_GROUPS } from '../report-metrics';
 
 // A professional player has no ageGroup at all — playedModel skips the derivation
 // for them. loadScopedOptions() used to key entirely off the age group, so it
@@ -32,12 +33,17 @@ const YOUTH_TEAM = { _id: 'youthteam1', name: 'Youth Club' };
 // التقييمات الـ15 مطلوبة كلها (Validators.min(1)) وقيمتها الابتدائية 0، فـsubmit()
 // بيرجع قبل ما ينده create لو مااتملّتش. التستات اللي بتفحص شكل الـpayload كانت
 // ناسية ده فكانت بتفشل على createSpy.calls.mostRecent() = undefined.
+// البنود بقت 31 في 10 مجموعات، والسلّم 1→10 (قيمة 4 صالحة في الاتنين). مبنية من
+// REPORT_METRIC_GROUPS بدل ليستة مكتوبة بالإيد، فبند جديد مابيكسّرش التستات دي.
 function fillRatings(comp: any): void {
-  comp.form.patchValue({
-    technical: { turning: 8, dribbling: 8, tackling: 8, twoFooted: 8, longPassing: 8, shortPassing: 8, heading: 8 },
-    physical: { shortSprints: 8, longSprints: 8, agility: 8, aerialDuels: 8, groundDuels: 8 },
-    mental: { vision: 8, personality: 8, movement: 8 },
-  });
+  comp.form.patchValue(
+    Object.fromEntries(
+      REPORT_METRIC_GROUPS.map(group => [
+        group.key,
+        Object.fromEntries(group.metrics.map(metric => [metric.key, 4])),
+      ])
+    )
+  );
 }
 
 function makeMatch(id: string, home: any, away: any) {

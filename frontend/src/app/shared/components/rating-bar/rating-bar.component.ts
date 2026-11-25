@@ -26,19 +26,25 @@ export class RatingBarComponent {
   readonly max = input<number>(10);
   readonly label = input<string>('');
 
-  readonly percentage = computed(() => (this.value() / this.max()) * 100);
+  readonly percentage = computed(() => (this.value() / (this.max() || 1)) * 100);
+
+  // ⚠️ الحدود **نسبة** من max مش أرقام ثابتة (كانت 8 و5 مكتوبين بالإيد). سلّم
+  // بنود التقرير اتغيّر مرتين في أسبوع (1→10 ثم 1→5 ثم 1→10 تاني)، وكل مرة
+  // كانت الأرقام الثابتة بتبوّظ الألوان — 4 من 5 كانت بتطلع أحمر وهي تقريباً
+  // أعلى تقدير. النسبة بتخلي الدالة صح مع أي سلّم بلا تعديل.
+  private get ratio(): number {
+    return this.value() / (this.max() || 1);
+  }
 
   barColor(): string {
-    const v = this.value();
-    if (v >= 8) return 'bg-primary-500';
-    if (v >= 5) return 'bg-accent-500';
+    if (this.ratio >= 0.8) return 'bg-primary-500';
+    if (this.ratio >= 0.5) return 'bg-accent-500';
     return 'bg-danger-500';
   }
 
   valueColor(): string {
-    const v = this.value();
-    if (v >= 8) return '#22c55e';
-    if (v >= 5) return '#f59e0b';
+    if (this.ratio >= 0.8) return '#22c55e';
+    if (this.ratio >= 0.5) return '#f59e0b';
     return '#f43f5e';
   }
 }

@@ -140,7 +140,9 @@ describe('proScout — createdBy-only player scope (Stage 11, US1)', () => {
       ...reportPayload(),
       player: aPlayer._id,
       coach: scoutA.user._id,
-      overallRating: 8,
+      // overallRating مابيتكتبش بالإيد — pre('save') بيحسبه من بنود
+      // reportPayload، فالقيمة المكتوبة بتبقى كذب على المستند أول ما السلّم
+      // أو البنود يتغيّروا (وده حصل تلات مرات)
       matchDate: new Date('2026-03-01T00:00:00.000Z'),
     });
 
@@ -168,7 +170,6 @@ describe('proScout — createdBy-only player scope (Stage 11, US1)', () => {
       ...reportPayload(),
       player: aPlayer._id,
       coach: scoutA.user._id,
-      overallRating: 7,
       matchDate: new Date('2026-03-01T00:00:00.000Z'),
     });
 
@@ -267,7 +268,6 @@ describe('proScout — authorship does not override player scope (Stage 11, US3)
       ...reportPayload(),
       player: aPlayer._id,
       coach: scoutB.user._id,
-      overallRating: 6,
       matchDate: new Date('2026-03-01T00:00:00.000Z'),
     });
     mediaByB = await PlayerMedia.create({

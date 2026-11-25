@@ -19,36 +19,20 @@ import { AgeGroup } from '../../../core/models/age-group.model';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
 import { PlayerContextService } from '../../../core/services/player-context.service';
 
-interface RatingField { key: string; label: string; }
+import {
+  REPORT_METRIC_GROUPS,
+  REPORT_METRICS_FLAT,
+  REPORT_METRIC_COUNT,
+  RATING_MIN,
+  RATING_MAX,
+  RATING_STEPS,
+  ratingColorOf,
+} from '../report-metrics';
 
-// طلب مالك 2026-09 — استبدال كامل لمجموعة الفيلدز (راجع Backend/models/scoutingReportModel.js
-// لتفاصيل القرار والتسميات المقابلة بالعربي).
-const ratingColorOf = (value: number | null | undefined): string =>
-  !value ? 'var(--text-muted)' : value >= 8 ? '#22c55e' : value >= 5 ? '#f59e0b' : '#f43f5e';
-
-const TECHNICAL_FIELDS: RatingField[] = [
-  { key: 'turning', label: 'REPORTS.FORM.TURNING' },
-  { key: 'dribbling', label: 'REPORTS.FORM.DRIBBLING' },
-  { key: 'tackling', label: 'REPORTS.FORM.TACKLING' },
-  { key: 'twoFooted', label: 'REPORTS.FORM.TWO_FOOTED' },
-  { key: 'longPassing', label: 'REPORTS.FORM.LONG_PASSING' },
-  { key: 'shortPassing', label: 'REPORTS.FORM.SHORT_PASSING' },
-  { key: 'heading', label: 'REPORTS.FORM.HEADING' },
-];
-
-const PHYSICAL_FIELDS: RatingField[] = [
-  { key: 'shortSprints', label: 'REPORTS.FORM.SHORT_SPRINTS' },
-  { key: 'longSprints', label: 'REPORTS.FORM.LONG_SPRINTS' },
-  { key: 'agility', label: 'REPORTS.FORM.AGILITY' },
-  { key: 'aerialDuels', label: 'REPORTS.FORM.AERIAL_DUELS' },
-  { key: 'groundDuels', label: 'REPORTS.FORM.GROUND_DUELS' },
-];
-
-const MENTAL_FIELDS: RatingField[] = [
-  { key: 'vision', label: 'REPORTS.FORM.VISION' },
-  { key: 'personality', label: 'REPORTS.FORM.PERSONALITY' },
-  { key: 'movement', label: 'REPORTS.FORM.MOVEMENT' },
-];
+// طلب مالك 2026-11-18 — استبدال كامل تالت لمجموعة البنود: 10 مجموعات بدل 3،
+// و2026-11-25 — 31 بند والسلّم 1→10. التعريف (المفاتيح والألوان ومفاتيح
+// الترجمة) في ../report-metrics.ts، ونسخته على السيرفر في
+// Backend/constants/reportMetrics.js.
 
 @Component({
     selector: 'app-report-form',
@@ -64,19 +48,22 @@ const MENTAL_FIELDS: RatingField[] = [
         cursor: pointer; transition: all 0.1s ease; flex-shrink: 0;
         display: flex; align-items: center; justify-content: center;
       }
-      .pip:hover { transform: scale(1.15); z-index: 1; }
+      /* لون كل مجموعة بييجي كـ CSS custom property من الكارد (--pip-color /
+         --pip-tint)، فمفيش كلاس لكل مجموعة — كانوا 3 كلاسات لـ3 مجموعات،
+         والمجموعات بقت 10.
 
-      /* Technical = green */
-      .pip-t.pip-on { background: rgba(34,197,94,0.18); border-color: #22c55e; color: #22c55e; }
-      .pip-t:hover  { border-color: #22c55e; color: #22c55e; }
-
-      /* Physical = sky */
-      .pip-p.pip-on { background: rgba(56,189,248,0.18); border-color: #38bdf8; color: #38bdf8; }
-      .pip-p:hover  { border-color: #38bdf8; color: #38bdf8; }
-
-      /* Mental = purple */
-      .pip-m.pip-on { background: rgba(139,92,246,0.18); border-color: #8b5cf6; color: #8b5cf6; }
-      .pip-m:hover  { border-color: #8b5cf6; color: #8b5cf6; }
+         ⚠️ الـ:hover لازم يفضل CSS صِرف (قاعدة CLAUDE.md): أي (mouseenter) في
+         القالب معناه دورة تغيير كاملة على 31 بند × 10 أزرار لمجرد مرور الماوس. */
+      .pip:hover {
+        transform: scale(1.15); z-index: 1;
+        border-color: var(--pip-color, var(--border-color));
+        color: var(--pip-color, inherit);
+      }
+      .pip.pip-on {
+        background: var(--pip-tint, transparent);
+        border-color: var(--pip-color, var(--border-color));
+        color: var(--pip-color, inherit);
+      }
 
       /* Category section header */
       .cat-header {
@@ -455,118 +442,60 @@ const MENTAL_FIELDS: RatingField[] = [
               }
             </div>
 
-            <!-- ── Technical ── -->
-            <div class="card p-5" style="border-top:3px solid #22c55e">
-              <div class="cat-header">
-                <div class="cat-icon" style="background:rgba(34,197,94,0.12)">
-                  <svg style="width:17px;height:17px;color:#22c55e" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 8v4l3 3"/>
-                  </svg>
-                </div>
-                <div class="flex-1">
-                  <h3 class="text-sm font-bold" style="color:#22c55e">{{ 'REPORTS.FORM.TECHNICAL' | translate }}</h3>
-                  <p class="text-xs" style="color:var(--text-muted)">{{ technicalFields.length }} {{ 'REPORTS.FORM.METRICS' | translate }}</p>
-                </div>
-                <span class="text-xl font-black tabular-nums" [style.color]="categoryColors().technical">
-                  {{ categoryAverages().technical || '—' }}
-                </span>
-              </div>
-              <div class="space-y-5" formGroupName="technical">
-                @for (field of ratingRows().technical; track field.key) {
-                  <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                      <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
-                      <span class="text-sm font-black tabular-nums w-6 text-center" [style.color]="field.color">
-                        {{ field.value }}
-                      </span>
-                    </div>
-                    <div class="flex gap-1">
-                      @for (n of pipRange; track n) {
-                        <button type="button" class="pip pip-t flex-1"
-                                [class.pip-on]="n <= field.value"
-                                (click)="setRating(field.path, n)">{{ n }}</button>
-                      }
-                    </div>
-                  </div>
-                }
-              </div>
-            </div>
+            <!-- ══ بنود التقييم: 10 مجموعات / 31 بند، كل بند 1→10 ═════════════
+                 كارد واحد مكرر بلفّة على ratingCards()
+                 بدل 3 كاردات مكتوبة بالإيد — البنود والمجموعات والألوان كلها
+                 من report-metrics.ts.
 
-            <!-- ── Physical ── -->
-            <div class="card p-5" style="border-top:3px solid #38bdf8">
-              <div class="cat-header">
-                <div class="cat-icon" style="background:rgba(56,189,248,0.12)">
-                  <svg style="width:17px;height:17px;color:#38bdf8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                  </svg>
+                 الصفوف (القيمة واللون والمسار) محسوبة في ratingCards()، فمفيش
+                 أي نداء دالة جوه @for — قاعدة CLAUDE.md، وهي أهم هنا من الأول:
+                 31 بند × 10 أزرار = 310 عنصر في الشجرة. -->
+            @for (card of ratingCards(); track card.key) {
+              @if (card.sectionLabel) {
+                <div class="pt-1">
+                  <h2 class="text-sm font-black" style="color:var(--text-primary)">{{ card.sectionLabel | translate }}</h2>
+                  <p class="text-xs mt-0.5" style="color:var(--text-muted)">{{ 'REPORTS.GROUPS.SPECIAL_SECTION_HINT' | translate }}</p>
                 </div>
-                <div class="flex-1">
-                  <h3 class="text-sm font-bold" style="color:#38bdf8">{{ 'REPORTS.FORM.PHYSICAL' | translate }}</h3>
-                  <p class="text-xs" style="color:var(--text-muted)">{{ physicalFields.length }} {{ 'REPORTS.FORM.METRICS' | translate }}</p>
-                </div>
-                <span class="text-xl font-black tabular-nums" [style.color]="categoryColors().physical">
-                  {{ categoryAverages().physical || '—' }}
-                </span>
-              </div>
-              <div class="space-y-5" formGroupName="physical">
-                @for (field of ratingRows().physical; track field.key) {
-                  <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                      <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
-                      <span class="text-sm font-black tabular-nums w-6 text-center" [style.color]="field.color">
-                        {{ field.value }}
-                      </span>
-                    </div>
-                    <div class="flex gap-1">
-                      @for (n of pipRange; track n) {
-                        <button type="button" class="pip pip-p flex-1"
-                                [class.pip-on]="n <= field.value"
-                                (click)="setRating(field.path, n)">{{ n }}</button>
-                      }
-                    </div>
+              }
+              <div class="card p-5" [style.border-top]="'3px solid ' + card.color">
+                <div class="cat-header">
+                  <div class="cat-icon" [style.background]="card.tintColor">
+                    <svg style="width:17px;height:17px" [style.color]="card.color" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 8v4l3 3"/>
+                    </svg>
                   </div>
-                }
-              </div>
-            </div>
-
-            <!-- ── Mental ── -->
-            <div class="card p-5" style="border-top:3px solid #8b5cf6">
-              <div class="cat-header">
-                <div class="cat-icon" style="background:rgba(139,92,246,0.12)">
-                  <svg style="width:17px;height:17px;color:#8b5cf6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-1.14Z"/>
-                    <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-1.14Z"/>
-                  </svg>
-                </div>
-                <div class="flex-1">
-                  <h3 class="text-sm font-bold" style="color:#8b5cf6">{{ 'REPORTS.FORM.MENTAL' | translate }}</h3>
-                  <p class="text-xs" style="color:var(--text-muted)">{{ mentalFields.length }} {{ 'REPORTS.FORM.METRICS' | translate }}</p>
-                </div>
-                <span class="text-xl font-black tabular-nums" [style.color]="categoryColors().mental">
-                  {{ categoryAverages().mental || '—' }}
-                </span>
-              </div>
-              <div class="space-y-5" formGroupName="mental">
-                @for (field of ratingRows().mental; track field.key) {
-                  <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                      <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
-                      <span class="text-sm font-black tabular-nums w-6 text-center" [style.color]="field.color">
-                        {{ field.value }}
-                      </span>
-                    </div>
-                    <div class="flex gap-1">
-                      @for (n of pipRange; track n) {
-                        <button type="button" class="pip pip-m flex-1"
-                                [class.pip-on]="n <= field.value"
-                                (click)="setRating(field.path, n)">{{ n }}</button>
-                      }
-                    </div>
+                  <div class="flex-1">
+                    <h3 class="text-sm font-bold" [style.color]="card.color">{{ card.label | translate }}</h3>
+                    <p class="text-xs" style="color:var(--text-muted)">{{ card.count }} {{ 'REPORTS.FORM.METRICS' | translate }}</p>
                   </div>
-                }
+                  <span class="text-xl font-black tabular-nums" [style.color]="card.averageColor">
+                    {{ card.averageText }}
+                  </span>
+                </div>
+                <!-- لون المجموعة بيتحدد مرة واحدة على الحاوية (مش على كل زرار)
+                     وبيوصل للأزرار بالوراثة عن طريق var() — ربط واحد بدل 140 -->
+                <div class="space-y-5" [formGroupName]="card.key" [style]="card.pipStyle">
+                  @for (field of card.rows; track field.key) {
+                    <div class="space-y-2">
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="text-xs font-semibold" style="color:var(--text-secondary)">{{ field.label | translate }}</span>
+                        <span class="text-sm font-black tabular-nums w-6 text-center flex-shrink-0" [style.color]="field.color">
+                          {{ field.value }}
+                        </span>
+                      </div>
+                      <div class="flex gap-1">
+                        @for (n of pipRange; track n) {
+                          <button type="button" class="pip flex-1"
+                                  [class.pip-on]="n <= field.value"
+                                  (click)="setRating(field.path, n)">{{ n }}</button>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
               </div>
-            </div>
+            }
 
             <!-- ── Notes ── -->
             <div class="card p-5">
@@ -624,52 +553,37 @@ const MENTAL_FIELDS: RatingField[] = [
               <div class="overall-ring" [style]="overallRingStyle()">
                 <div>
                   <div class="text-3xl font-black leading-none tabular-nums">{{ liveOverall() ?? '—' }}</div>
-                  <div class="text-xs font-medium mt-0.5" style="color:var(--text-muted)">/ 10</div>
+                  <div class="text-xs font-medium mt-0.5" style="color:var(--text-muted)">/ {{ ratingMax }}</div>
                 </div>
               </div>
               <p class="text-xs mt-3" style="color:var(--text-muted)">{{ 'REPORTS.FORM.PREVIEW' | translate }}</p>
+              <p class="text-[11px] mt-1 tabular-nums" style="color:var(--text-muted)">
+                {{ filledCount() }} / {{ metricCount }}
+              </p>
 
-              <!-- Category breakdown bars -->
+              <!-- متوسط كل مجموعة — لفّة على نفس ratingCards() اللي الفورم بيلفّ عليها -->
               <div class="mt-5 space-y-3 text-left">
-                <div>
-                  <div class="flex justify-between items-center mb-1">
-                    <span class="text-xs font-semibold" style="color:#22c55e">{{ 'REPORTS.FORM.TECHNICAL' | translate }}</span>
-                    <span class="text-xs font-bold tabular-nums" style="color:#22c55e">{{ categoryAverages().technical }}</span>
+                @for (card of ratingCards(); track card.key) {
+                  <div>
+                    <div class="flex justify-between items-center mb-1 gap-2">
+                      <span class="text-xs font-semibold truncate" [style.color]="card.color">{{ card.label | translate }}</span>
+                      <span class="text-xs font-bold tabular-nums flex-shrink-0" [style.color]="card.color">{{ card.averageText }}</span>
+                    </div>
+                    <div class="h-1.5 rounded-full" [style.background]="card.tintColor">
+                      <div class="cat-bar-fill" [style.background]="card.color"
+                           [style.width.%]="card.averagePercent"></div>
+                    </div>
                   </div>
-                  <div class="h-1.5 rounded-full" style="background:rgba(34,197,94,0.12)">
-                    <div class="cat-bar-fill" style="background:#22c55e"
-                         [style.width]="(categoryAverages().technical * 10) + '%'"></div>
-                  </div>
-                </div>
-                <div>
-                  <div class="flex justify-between items-center mb-1">
-                    <span class="text-xs font-semibold" style="color:#38bdf8">{{ 'REPORTS.FORM.PHYSICAL' | translate }}</span>
-                    <span class="text-xs font-bold tabular-nums" style="color:#38bdf8">{{ categoryAverages().physical }}</span>
-                  </div>
-                  <div class="h-1.5 rounded-full" style="background:rgba(56,189,248,0.12)">
-                    <div class="cat-bar-fill" style="background:#38bdf8"
-                         [style.width]="(categoryAverages().physical * 10) + '%'"></div>
-                  </div>
-                </div>
-                <div>
-                  <div class="flex justify-between items-center mb-1">
-                    <span class="text-xs font-semibold" style="color:#8b5cf6">{{ 'REPORTS.FORM.MENTAL' | translate }}</span>
-                    <span class="text-xs font-bold tabular-nums" style="color:#8b5cf6">{{ categoryAverages().mental }}</span>
-                  </div>
-                  <div class="h-1.5 rounded-full" style="background:rgba(139,92,246,0.12)">
-                    <div class="cat-bar-fill" style="background:#8b5cf6"
-                         [style.width]="(categoryAverages().mental * 10) + '%'"></div>
-                  </div>
-                </div>
+                }
               </div>
             </div>
 
-            <!-- Radar chart -->
+            <!-- Radar chart — متوسط كل مجموعة (10 محاور) -->
             <div class="card p-4">
               <p class="text-xs font-semibold uppercase tracking-widest mb-3 text-center" style="color:var(--text-muted)">
                 {{ 'REPORTS.FORM.RADAR' | translate }}
               </p>
-              <app-radar-chart [data]="radarData()" />
+              <app-radar-chart [data]="radarData()" [max]="ratingMax" />
             </div>
 
           </div>
@@ -823,9 +737,9 @@ export class ReportFormComponent implements OnInit {
   readonly selectedAgeGroupMatch = signal('');
   readonly submitted = signal(false);
 
-  readonly technicalFields = TECHNICAL_FIELDS;
-  readonly physicalFields = PHYSICAL_FIELDS;
-  readonly mentalFields = MENTAL_FIELDS;
+  readonly metricGroups = REPORT_METRIC_GROUPS;
+  readonly metricCount = REPORT_METRIC_COUNT;
+  readonly ratingMax = RATING_MAX;
 
   // Report date = creation date, server-controlled & read-only in the UI
   readonly reportDate = signal<string>(new Date().toLocaleDateString());
@@ -839,72 +753,94 @@ export class ReportFormComponent implements OnInit {
     // باقي الرولات)، فالحقل ده ظاهر في مساره بس
     matchDate: [''],
     notes: [''],
-    technical: this.fb.group({
-      turning: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      dribbling: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      tackling: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      twoFooted: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      longPassing: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      shortPassing: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      heading: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-    }),
-    physical: this.fb.group({
-      shortSprints: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      longSprints: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      agility: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      aerialDuels: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      groundDuels: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-    }),
-    mental: this.fb.group({
-      vision: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      personality: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-      movement: [0, [Validators.required, Validators.min(1), Validators.max(10)]],
-    }),
+    // الـ10 مجموعات مبنيّة من report-metrics.ts — 28 سطر مكرر اتشالوا، وبند
+    // جديد بقى سطر واحد هناك. أسماء المجموعات والبنود هي نفسها مسارات الـAPI.
+    ...ReportFormComponent.buildRatingControls(),
   });
 
-  readonly pipRange = [1,2,3,4,5,6,7,8,9,10];
+  readonly pipRange = RATING_STEPS;
+
+  /**
+   * مجموعات التقييم كـ FormGroups. static عشان تتنادى جوه تعريف الحقل نفسه
+   * (قبل ما الـinstance يكتمل)، وبتستخدم FormBuilder مستقل لنفس السبب.
+   */
+  private static buildRatingControls(): Record<string, ReturnType<FormBuilder['group']>> {
+    const fb = new FormBuilder();
+    return Object.fromEntries(
+      REPORT_METRIC_GROUPS.map(group => [
+        group.key,
+        fb.group(
+          Object.fromEntries(
+            group.metrics.map(metric => [
+              metric.key,
+              [0, [Validators.required, Validators.min(RATING_MIN), Validators.max(RATING_MAX)]] as const,
+            ])
+          )
+        ),
+      ])
+    );
+  }
 
   private readonly formValues = toSignal(this.form.valueChanges, { initialValue: this.form.value });
 
-  readonly liveOverall = computed(() => {
-    const v = this.formValues();
-    const scores = [
-      v.technical?.turning, v.technical?.dribbling, v.technical?.tackling, v.technical?.twoFooted,
-      v.technical?.longPassing, v.technical?.shortPassing, v.technical?.heading,
-      v.physical?.shortSprints, v.physical?.longSprints, v.physical?.agility, v.physical?.aerialDuels, v.physical?.groundDuels,
-      v.mental?.vision, v.mental?.personality, v.mental?.movement,
-    ].filter((s): s is number => s != null && s > 0);
-    return scores.length === 15 ? +(scores.reduce((a, b) => a + b, 0) / 15).toFixed(1) : null;
+  /** كل البنود المدخولة فعلاً (قيمتها > 0) — أساس كل حسابات المعاينة تحت */
+  private readonly filledScores = computed(() => {
+    const v = this.formValues() as Record<string, Record<string, number | null> | undefined>;
+    return REPORT_METRICS_FLAT
+      .map(({ group, metric }) => v?.[group.key]?.[metric.key] ?? 0)
+      .filter((s): s is number => s > 0);
   });
 
-  readonly categoryAverages = computed(() => {
-    const v = this.formValues();
-    const avg = (nums: (number | null | undefined)[]): number => {
-      const valid = nums.filter((x): x is number => x != null && x > 0);
-      return valid.length ? +(valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1) : 0;
-    };
-    return {
-      technical: avg([v.technical?.turning, v.technical?.dribbling, v.technical?.tackling, v.technical?.twoFooted, v.technical?.longPassing, v.technical?.shortPassing, v.technical?.heading]),
-      physical:  avg([v.physical?.shortSprints, v.physical?.longSprints, v.physical?.agility, v.physical?.aerialDuels, v.physical?.groundDuels]),
-      mental:    avg([v.mental?.vision, v.mental?.personality, v.mental?.movement]),
-    };
+  readonly filledCount = computed(() => this.filledScores().length);
+
+  // التقييم العام في المعاينة بيظهر بس لما الـ31 بند يتملوا كلهم — زي السيرفر
+  // بالظبط (كل البنود required)، فالرقم اللي الكشاف شايفه هو اللي هيتخزن.
+  readonly liveOverall = computed(() => {
+    const scores = this.filledScores();
+    if (scores.length !== REPORT_METRIC_COUNT) return null;
+    return +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
   });
 
   // ⚠️ القالب كان بينده form.get('technical.' + key) **12 مرة لكل حقل** × 15 حقل
   // = 180 نداء + 180 `split('.')` + 180 نص متسلسل، في كل دورة تغيير — والقيم
   // كلها متاحة أصلاً في formValues. هنا بتتحسب مرة واحدة لما الفورم يتغير.
-  readonly ratingRows = computed(() => {
+  // بقت أهم كمان: البنود 28 والأزرار 140.
+  //
+  // كارد واحد لكل مجموعة: الصفوف + متوسط المجموعة + ألوانها، جاهزين للعرض.
+  readonly ratingCards = computed(() => {
     const v = this.formValues() as Record<string, Record<string, number | null> | undefined>;
-    const build = (group: 'technical' | 'physical' | 'mental', fields: RatingField[]) =>
-      fields.map(f => {
-        const value = v?.[group]?.[f.key] ?? 0;
-        return { key: f.key, label: f.label, path: `${group}.${f.key}`, value, color: ratingColorOf(value) };
+
+    return REPORT_METRIC_GROUPS.map(group => {
+      const rows = group.metrics.map(metric => {
+        const value = v?.[group.key]?.[metric.key] ?? 0;
+        return {
+          key: metric.key,
+          label: metric.label,
+          path: `${group.key}.${metric.key}`,
+          value,
+          color: ratingColorOf(value),
+        };
       });
-    return {
-      technical: build('technical', TECHNICAL_FIELDS),
-      physical: build('physical', PHYSICAL_FIELDS),
-      mental: build('mental', MENTAL_FIELDS),
-    };
+
+      const filled = rows.map(r => r.value).filter(x => x > 0);
+      const average = filled.length ? +(filled.reduce((a, b) => a + b, 0) / filled.length).toFixed(1) : 0;
+
+      return {
+        key: group.key,
+        label: group.label,
+        sectionLabel: group.sectionLabel,
+        color: group.color,
+        tintColor: `${group.color}1f`,
+        // لون الأزرار بيوصل كـ CSS custom property على حاوية المجموعة
+        pipStyle: `--pip-color:${group.color};--pip-tint:${group.color}2e`,
+        count: group.metrics.length,
+        rows,
+        average,
+        averageText: average ? average.toFixed(1) : '—',
+        averageColor: ratingColorOf(average),
+        averagePercent: (average / RATING_MAX) * 100,
+      };
+    });
   });
 
   // admin-manual-match-info — الطرفين لازم يكونوا متحددين (اختيار أو اسم حر)
@@ -915,30 +851,13 @@ export class ReportFormComponent implements OnInit {
     return homeOk && awayOk;
   });
 
-  readonly categoryColors = computed(() => {
-    const a = this.categoryAverages();
-    return { technical: ratingColorOf(a.technical), physical: ratingColorOf(a.physical), mental: ratingColorOf(a.mental) };
-  });
-
-  readonly radarData = computed(() => {
-    const v = this.formValues();
-    return {
-      turning: v.technical?.turning ?? 0,
-      dribbling: v.technical?.dribbling ?? 0,
-      tackling: v.technical?.tackling ?? 0,
-      twoFooted: v.technical?.twoFooted ?? 0,
-      longPassing: v.technical?.longPassing ?? 0,
-      shortPassing: v.technical?.shortPassing ?? 0,
-      heading: v.technical?.heading ?? 0,
-      shortSprints: v.physical?.shortSprints ?? 0,
-      longSprints: v.physical?.longSprints ?? 0,
-      agility: v.physical?.agility ?? 0,
-      aerialDuels: v.physical?.aerialDuels ?? 0,
-      groundDuels: v.physical?.groundDuels ?? 0,
-      vision: v.mental?.vision ?? 0,
-      personality: v.mental?.personality ?? 0,
-      movement: v.mental?.movement ?? 0,
-    };
+  /** الرادار بياخد متوسط كل مجموعة (10 محاور) — 28 لافتة مش بتتقرا */
+  readonly radarData = computed<Record<string, number>>(() => {
+    const out: Record<string, number> = {};
+    this.ratingCards().forEach((card, i) => {
+      out[REPORT_METRIC_GROUPS[i].short] = card.average;
+    });
+    return out;
   });
 
   today(): string {
@@ -948,14 +867,14 @@ export class ReportFormComponent implements OnInit {
   overallStyle(): string {
     const o = this.liveOverall();
     if (!o) return 'border-color:var(--border-color); color:var(--text-muted)';
-    const color = o >= 8 ? '#22c55e' : o >= 5 ? '#f59e0b' : '#f43f5e';
+    const color = ratingColorOf(o);
     return `border-color:${color}; color:${color}`;
   }
 
   overallRingStyle(): string {
     const o = this.liveOverall();
     if (!o) return 'border-color:var(--border-color); color:var(--text-muted)';
-    const color = o >= 8 ? '#22c55e' : o >= 5 ? '#f59e0b' : '#f43f5e';
+    const color = ratingColorOf(o);
     return `border-color:${color}; color:${color}; box-shadow:0 0 20px ${color}33`;
   }
 
@@ -1488,13 +1407,15 @@ export class ReportFormComponent implements OnInit {
     this.loading.set(true);
 
     const v = this.form.getRawValue();
+    const raw = v as unknown as Record<string, unknown>;
     // matchDate is set server-side (creation date, or the linked match's date) —
     // never sent by the client, except on the admin's manual path below.
+    //
+    // الـ10 مجموعات بتتبعت بأسمائها زي ما هي (نفس مفاتيح الـAPI) — مشتقّة من
+    // report-metrics.ts فمفيش مجموعة بتتنسى لو اتضافت واحدة جديدة.
     const payload: Record<string, unknown> = {
       notes: v.notes,
-      technical: v.technical,
-      physical: v.physical,
-      mental: v.mental,
+      ...Object.fromEntries(REPORT_METRIC_GROUPS.map(group => [group.key, raw[group.key]])),
     };
 
     if (this.adminManualMatch()) {

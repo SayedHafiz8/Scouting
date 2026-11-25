@@ -12,6 +12,7 @@ import {
   createPlayer,
   createTeam,
   coachEvaluationPayload,
+  reportRatings,
   seedAgeGroups,
 } from './helpers/factory.js';
 import { currentYearMonthUTC, isCurrentMonthUTC } from '../utils/time.js';
@@ -226,9 +227,7 @@ describe('Coach evaluations — auto-captured stats', () => {
       matchDate: new Date(),
       homeTeam: home._id,
       awayTeam: away._id,
-      technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-      physical: { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-      mental: { vision: 7, personality: 8, movement: 9 },
+      ...reportRatings(),
     });
 
     // one attended match this month

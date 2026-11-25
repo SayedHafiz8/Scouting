@@ -219,13 +219,35 @@ export async function setupPlayerMatchDay(playerId, teamIds, matchDate, options 
 }
 
 // ── Base payload for a valid scouting report (homeTeam/awayTeam must be Team ids) ────
+// ── الـ10 مجموعات / 31 بند لوحدهم، بلا أي حقل تاني ──────────────────────────
+// طلب مالك 2026-11-18 — استبدال كامل للبنود، و2026-11-25 — تلات بنود اتضافوا
+// للمهارات الفنية والسلّم رجع 1→10. التعريف المرجعي في
+// Backend/constants/reportMetrics.js.
+//
+// منفصلة عن reportPayload عشان التستات اللي بتعمل ScoutingReport.create(...)
+// مباشرة (ownership / userReferences / databaseAuditFixes / التقييمات الشهرية)
+// — كانوا بينسخوا البنود بالإيد في 11 مكان، فتغيير بند واحد كان بيكسّرهم كلهم.
+export function reportRatings(overrides = {}) {
+  return {
+    decisionMaking:    { positioningAndPossession: 8, interceptingWithoutTackling: 6 },
+    selfMotivation:    { consistency: 8, winningBallBack: 9, coachability: 7 },
+    technicalSkills:   { firstTouch: 9, twoFooted: 6, shieldingUnderPressure: 8, beatingOpponent: 7, longPassing: 7, shortPassing: 8, heading: 6 },
+    physicalAbilities: { pace: 9, agility: 8, dynamism: 7, bodyUseInDuels: 6 },
+    personality:       { leadership: 8, motivatingTeammates: 6, teamwork: 9 },
+    specialDefending:  { blockingShots: 4, strongInDuels: 8, preventingPenetration: 6 },
+    specialAttacking:  { buildUpPlay: 8, creatingGoals: 9, scoringGoals: 7 },
+    workEthic:         { maximumEffort: 9, continuousImprovement: 9, purposeAndDedication: 8 },
+    onFieldLeadership: { inspiringLeader: 6, teamSpirit: 8 },
+    winningMentality:  { fullCommitment: 10 },
+    ...overrides,
+  };
+}
+
 export function reportPayload(overrides = {}) {
   return {
     // matchDate is set server-side to the creation date — not sent by the client
     notes: 'Excellent performance.',
-    technical: { turning: 8, dribbling: 7, tackling: 6, twoFooted: 8, longPassing: 7, shortPassing: 8, heading: 6 },
-    physical:  { shortSprints: 9, longSprints: 7, agility: 8, aerialDuels: 6, groundDuels: 6 },
-    mental:    { vision: 7, personality: 8, movement: 9 },
+    ...reportRatings(),
     ...overrides,
   };
 }
